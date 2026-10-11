@@ -263,9 +263,11 @@ print("--- C. YouTube moderation (bot) ---")
 UCA, UCB, UCM = "UC" + "a" * 22, "UC" + "b" * 22, "UC" + "m" * 22
 w.s.set("yt_bot_url", "http://127.0.0.1:8812"); w.s.set("youtube", "https://www.youtube.com/watch?v=7NlbmyxncOk")
 from app.settings import Settings as _Settings
-_fresh = os.path.join(os.environ["APPDATA"], "fresh_settings.json"); open(_fresh, "w").write('{"cloud_url": "", "yt_bot_url": "   "}')
+_fresh = os.path.join(os.environ["APPDATA"], "fresh_settings.json"); open(_fresh, "w").write('{"cloud_url": "", "yt_bot_url": "   ", "update_repo": "Deba-dev/ChatVoice"}')
 _fs = _Settings(_fresh)
-ok(_fs.get("cloud_url").startswith("https://") and "workers.dev" in _fs.get("cloud_url") and _fs.get("yt_bot_url").startswith("https://"), "the cloud and bot addresses are built in (even if an old settings file saved them empty): streamers never type them")
+ok(_fs.get("cloud_url").startswith("https://") and "workers.dev" in _fs.get("cloud_url") and _fs.get("yt_bot_url").startswith("https://")
+   and _fs.get("update_repo") == "Deba-dev/ChatDoom",
+   "built-in service URLs remain available and old update settings migrate to the renamed GitHub repository")
 w.ytmod.refresh_info(); wait(600)
 ok(w.ytmod.bot_state == "online" and w.s.get("yt_bot_handle") == "@ChatVoice-V1" and "Bot online" in w.ytpage.bot_badge.text(), "page shows the bot online with its name")
 ok("@ChatVoice-V1" in w.ytpage.step2.body.text() and w.ytpage.handle.text() == "@ChatVoice-V1", "instructions name the bot to add as moderator")
@@ -396,20 +398,30 @@ print("--- F. updates ---")
 import hashlib, app.updater as upd
 from app.version import VERSION
 ok(upd.parse_version("v0.10.0") > upd.parse_version("0.9.9") and upd.parse_version("v1") == (1, 0, 0) and upd.parse_version("v" + VERSION) == upd.parse_version(VERSION), "version numbers compare correctly (0.10 is newer than 0.9)")
+release_repo = "Deba-dev/ChatDoom"
+release_asset = "https://github.com/Deba-dev/ChatDoom/releases/download/V1.0.5/CHATDOOM-Setup.exe"
+ok(upd.Updater._release_repo("https://github.com/Deba-dev/ChatDoom/releases/tag/V1.0.5") == release_repo
+   and upd.Updater._is_release_asset(release_asset, release_repo)
+   and not upd.Updater._is_release_asset("https://evil.example/Deba-dev/ChatDoom/releases/download/V1.0.5/CHATDOOM-Setup.exe", release_repo),
+   "updater recognizes the renamed GitHub repository and rejects external asset hosts")
 BLOB = b"MZ-fake-installer-bytes" * 5000
 GH = {"tag": "v9.9.9", "digest": "sha256:" + hashlib.sha256(BLOB).hexdigest(), "asset": "http://127.0.0.1:8813/dl/CHATDOOM-Setup.exe"}
 class Gh(BaseHTTPRequestHandler):
     def log_message(self, *a): pass
     def do_GET(self):
         if self.path.endswith("/releases/latest"):
-            b = json.dumps({"tag_name": GH["tag"], "html_url": "https://github.com/Deba-dev/ChatVoice/releases/tag/x", "body": "New things", "assets": [{"name": "CHATDOOM-Setup.exe", "browser_download_url": GH["asset"], "digest": GH["digest"]}]}).encode()
+            b = json.dumps({"tag_name": GH["tag"], "html_url": "https://github.com/Deba-dev/ChatDoom/releases/tag/x", "body": "New things", "assets": [{"name": "CHATDOOM-Setup.exe", "browser_download_url": GH["asset"], "digest": GH["digest"]}]}).encode()
         elif self.path.startswith("/dl/"): b = BLOB
         else: self.send_response(404); self.end_headers(); return
         self.send_response(200); self.send_header("Content-Length", str(len(b))); self.end_headers(); self.wfile.write(b)
 ghs = ThreadingHTTPServer(("127.0.0.1", 8813), Gh); threading.Thread(target=ghs.serve_forever, daemon=True).start()
-upd.GH_API = "http://127.0.0.1:8813"; upd.DL_PREFIX = "http://127.0.0.1:8813/dl/"
+upd.GH_API = "http://127.0.0.1:8813"
+upd.Updater._is_release_asset = staticmethod(lambda asset, repo: asset.startswith("http://127.0.0.1:8813/dl/"))
+w.s.set("update_repo", "Deba-dev/ChatVoice")
 w.banner.hide(); w.updater.check(True); wait(900)
-ok(w.banner.isVisible() and "9.9.9" in w.banner_text.text() and w.pending_update["notes"] == "New things", "newer version -> banner appears")
+ok(w.banner.isVisible() and "9.9.9" in w.banner_text.text() and w.pending_update["notes"] == "New things"
+   and w.s.get("update_repo") == "Deba-dev/ChatDoom" and w.pending_update["repo"] == "Deba-dev/ChatDoom",
+   "newer release is found under the canonical renamed repository")
 launched, quits = [], []
 w.updater.frozen = False; w.updater.launch = lambda path: launched.append(path); w.updater.quit_now.disconnect(); w.updater.quit_now.connect(lambda: quits.append(1))
 w.upd_btn.setEnabled(True); w._update_now(); wait(1500)

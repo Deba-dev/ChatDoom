@@ -34,7 +34,7 @@ D. GOOD TO KNOW
 - The very first installation (v0.4.0) is manual. Updates are automatic from then on.
 - The repository must stay public so installed apps can see releases without a login.
 - The updater only accepts files from YOUR repository's releases, and checks GitHub's checksum when GitHub provides one.
-- If the repository name is different from Deba-dev/ChatVoice, change "update_repo" in %APPDATA%\ChatVoice\settings.json
-  (or tell me and I will change the default).
+- If the repository name is different from Deba-dev/ChatDoom, change "update_repo" in %APPDATA%\ChatVoice\settings.json
+  (or tell me and I will change the default). Saved settings from the old ChatVoice repository are migrated automatically.
 - Windows may still show the "unknown publisher" warning on a first manual install because the app is not code-signed.
   Updates started from inside the app do not show it.

@@ -8,6 +8,7 @@ import sys
 import tempfile
 import threading
 import time
+import urllib.parse
 import urllib.request
 
 from PySide6.QtCore import QObject, Signal
@@ -15,7 +16,6 @@ from PySide6.QtCore import QObject, Signal
 from .version import VERSION
 
 GH_API = "https://api.github.com"
-DL_PREFIX = "https://github.com/{repo}/releases/download/"
 
 
 def parse_version(v):
@@ -61,9 +61,13 @@ class Updater(QObject):
                     self._evt.emit("status", "There is not any update at all. Wait for the devs to update the app.")
                 return
             asset = next((a for a in d.get("assets", []) if a.get("name", "").lower().endswith("setup.exe")), None)
+            canonical_repo = self._release_repo(d.get("html_url", ""))
+            if canonical_repo:
+                self.s.set("update_repo", canonical_repo)
             self._evt.emit("found", {"version": tag.lstrip("v"), "page": d.get("html_url", ""),
                                      "asset": asset.get("browser_download_url", "") if asset else "",
-                                     "digest": (asset or {}).get("digest", ""), "notes": (d.get("body") or "")[:300]})
+                                     "digest": (asset or {}).get("digest", ""), "notes": (d.get("body") or "")[:300],
+                                     "repo": canonical_repo or repo})
         except Exception as e:
             if manual:
                 self._evt.emit("status", "Could not check for updates (%s)" % str(e)[:60])
@@ -73,13 +77,35 @@ class Updater(QObject):
     # ----- install -----
     def install(self, info):
         asset = info.get("asset", "")
-        if not asset.startswith(DL_PREFIX.format(repo=self.s.get("update_repo").strip())):
+        repo = (info.get("repo") or self.s.get("update_repo") or "").strip().strip("/")
+        if not self._is_release_asset(asset, repo):
             self.message.emit("The update file is not from your GitHub repository, so it was not downloaded.")
             return
         if self.busy:
             return
         self.busy = True
         threading.Thread(target=self._download, args=(info,), daemon=True).start()
+
+    @staticmethod
+    def _release_repo(page_url):
+        parsed = urllib.parse.urlparse(page_url or "")
+        match = re.fullmatch(r"/([^/]+)/([^/]+)/releases/tag/[^/]+", parsed.path)
+        if parsed.scheme != "https" or parsed.hostname != "github.com" or not match:
+            return ""
+        return "%s/%s" % (match.group(1), match.group(2))
+
+    @staticmethod
+    def _is_release_asset(asset, repo):
+        if not repo or repo.count("/") != 1:
+            return False
+        parsed = urllib.parse.urlparse(asset or "")
+        owner, name = repo.split("/", 1)
+        prefix = "/%s/%s/releases/download/" % (owner, name)
+        path = urllib.parse.unquote(parsed.path)
+        return (parsed.scheme == "https" and parsed.hostname == "github.com"
+                and parsed.username is None and parsed.password is None
+                and path.casefold().startswith(prefix.casefold())
+                and all(part not in (".", "..") for part in path.split("/")))
 
     def _download(self, info):
         path = os.path.join(tempfile.gettempdir(), "CHATDOOM-Setup-%s.exe" % info["version"])
