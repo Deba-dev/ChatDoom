@@ -3,15 +3,15 @@ FROM PROJECT FOLDER TO CHATDOOM-Setup.exe  -  free, using GitHub (about 15 minut
 You need: a free GitHub account (github.com). You do NOT need Python or any tool on your PC.
 
 A. PUT THE PROJECT ON GITHUB  (easiest way: GitHub Desktop)
-1. Unzip ChatVoice-Project.zip. You get a folder named ChatVoice.
+1. Unzip CHATDOOM-Project.zip. You get a folder named CHATDOOM.
 2. Install GitHub Desktop (desktop.github.com) and sign in.
-3. File > Add local repository > choose the ChatVoice folder. If it says "not a repository", click "create a repository".
+3. File > Add local repository > choose the CHATDOOM project folder. If it says "not a repository", click "create a repository".
 4. Click "Commit to main", then "Publish repository". Untick "Keep this code private" (public repositories get unlimited
    free build minutes; private ones get a monthly allowance). Publish.
    Nothing secret is inside the project: your Discord / Google / Razorpay keys are never in these files.
 
    Without GitHub Desktop: on github.com click New repository (public), then "uploading an existing file", drag the contents
-   of the ChatVoice folder in. The hidden folder .github may be skipped: then click Add file > Create new file, type the name
+   of the CHATDOOM project folder in. The hidden folder .github may be skipped: then click Add file > Create new file, type the name
    .github/workflows/build.yml  and paste the contents of that file from the zip.
 
 B. BUILD

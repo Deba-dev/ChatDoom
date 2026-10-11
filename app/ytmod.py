@@ -1,7 +1,7 @@
-"""YouTube auto-moderation through the ChatVoice bot.
+"""YouTube auto-moderation through the CHATDOOM moderator bot.
 
-ChatVoice keeps reading your chat itself (free, no sign-in). When a message breaks one of your rules it asks the
-ChatVoice bot, which you added as a moderator of your channel, to remove it. You never sign in to Google.
+CHATDOOM keeps reading your chat itself (free, no sign-in). When a message breaks one of your rules it asks the
+moderator bot, which you added as a moderator of your channel, to remove it. You never sign in to Google.
 """
 import json
 import re
@@ -23,7 +23,7 @@ UC = re.compile(r"^UC[\w-]{20,30}$")
 def bot_call(settings, method, path, body=None, token=None, timeout=75):
     """Calls the hosted bot. Returns a dict that always has 'status'. A sleeping free host can take ~50 s to wake."""
     url = settings.get("yt_bot_url").strip().rstrip("/") + path
-    headers = {"User-Agent": "ChatVoice-app", "Accept": "application/json"}
+    headers = {"User-Agent": "CHATDOOM-app", "Accept": "application/json"}
     data = None
     if body is not None:
         data = json.dumps(body).encode()
@@ -45,7 +45,7 @@ def bot_call(settings, method, path, body=None, token=None, timeout=75):
         out.setdefault("error", "The bot answered with error %d" % e.code)
         return out
     except Exception as e:
-        return {"status": 0, "ok": False, "error": "Cannot reach the ChatVoice bot (%s)" % str(e)[:60]}
+        return {"status": 0, "ok": False, "error": "Cannot reach the CHATDOOM moderator bot (%s)" % str(e)[:60]}
 
 
 class YtModerator(QObject):
@@ -162,8 +162,6 @@ class YtModerator(QObject):
                 bot = res.get("bot") or {}
                 if bot.get("handle"):
                     self.s.set("yt_bot_handle", bot["handle"] if bot["handle"].startswith("@") else "@" + bot["handle"])
-                if bot.get("title"):
-                    self.s.set("yt_bot_title", bot["title"])
             else:
                 self.bot_state = "offline"
             self.changed.emit()
@@ -171,7 +169,7 @@ class YtModerator(QObject):
             if res.get("ok"):
                 self.code = res["code"]
                 self.code_exp = time.time() + int(res.get("expiresIn", 900))
-                self.message = "Type the code in your live chat. ChatVoice checks automatically."
+                self.message = "Type the code in your live chat. CHATDOOM checks automatically."
             else:
                 self.code = ""
                 self.message = res.get("error", "Could not start verification.")

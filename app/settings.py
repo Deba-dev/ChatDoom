@@ -60,6 +60,8 @@ class Settings:
             self.data.update(loaded)
             if self.data.get("update_repo", "").strip().casefold() == "deba-dev/chatvoice":
                 self.data["update_repo"] = DEFAULTS["update_repo"]
+            if str(self.data.get("yt_bot_title", "")).strip().casefold() == "chat voice":
+                self.data["yt_bot_title"] = DEFAULTS["yt_bot_title"]
             for k, default in (("cloud_url", CLOUD_URL), ("yt_bot_url", YT_BOT_URL)):      # older settings files saved an empty address
                 if not str(self.data.get(k, "")).strip():
                     self.data[k] = default

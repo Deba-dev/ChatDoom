@@ -21,7 +21,7 @@ GATEWAYS = {
                  "Add Name and Message fields to your payment form. (Field names are not confirmed yet - see PAYMENTS-SETUP.txt.)"),
     "generic": ("Any other tool (Zapier, Make, n8n, Google Apps Script...)", "A secret you choose",
                 'Send a POST with JSON {"name":"...","message":"...","amount":100,"currency":"INR"} to this address, with the header '
-                "X-ChatVoice-Secret set to your secret (or put it in the JSON as \"secret\")."),
+                "X-ChatVoice-Secret is the existing webhook header; set it to your secret (or put it in the JSON as \"secret\")."),
 }
 
 

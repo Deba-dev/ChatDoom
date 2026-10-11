@@ -1,7 +1,7 @@
 """The two web pages OBS shows (as a Browser Source): payment/Super Chat alerts and chat on screen."""
 
 PAGE = r"""<!doctype html>
-<html><head><meta charset="utf-8"><title>ChatVoice overlay</title>
+<html><head><meta charset="utf-8"><title>CHATDOOM overlay</title>
 <style>
 @font-face{font-family:Poppins;font-weight:500;src:url(/fonts/Poppins-Medium.ttf)}
 @font-face{font-family:Poppins;font-weight:700;src:url(/fonts/Poppins-Bold.ttf)}
@@ -136,9 +136,9 @@ tick();
 </script></body></html>
 """
 
-INDEX = """<!doctype html><meta charset="utf-8"><title>ChatVoice overlays</title>
+INDEX = """<!doctype html><meta charset="utf-8"><title>CHATDOOM overlays</title>
 <body style="font:16px sans-serif;background:#10101c;color:#eee;padding:30px">
-<h2>ChatVoice overlays</h2><p style="opacity:.7">ChatVoice (BETA) by itsmeblitz</p><p>Add these as <b>Browser sources</b> in OBS:</p>
+<h2>CHATDOOM overlays</h2><p style="opacity:.7">CHATDOOM (BETA) by itsmeblitz</p><p>Add these as <b>Browser sources</b> in OBS:</p>
 <ul><li><a style="color:#8ab4ff" href="/alert">/alert</a> payment, subscription, and channel-event alerts</li>
 <li><a style="color:#8ab4ff" href="/chat">/chat</a> chat on screen</li>
 <li><a style="color:#8ab4ff" href="/music">/music</a> now playing</li></ul></body>"""

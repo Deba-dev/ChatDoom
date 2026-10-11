@@ -4,7 +4,7 @@ import time
 import urllib.parse
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
-PAGE = ("<html><head><meta charset='utf-8'><title>ChatVoice</title></head><body style=\"font:18px 'Segoe UI',sans-serif;"
+PAGE = ("<html><head><meta charset='utf-8'><title>CHATDOOM</title></head><body style=\"font:18px 'Segoe UI',sans-serif;"
         "background:#0e1118;color:#eef;display:grid;place-items:center;height:100vh;margin:0\"><div style='text-align:center'>"
         "<div style='font-size:46px'>%s</div><h2 style='margin:8px'>%s</h2><p style='opacity:.7'>%s</p></div></body></html>")
 
@@ -32,8 +32,8 @@ class Loopback:
                     self.end_headers()
                     return
                 good = q.get("ok") == "1"
-                body = PAGE % (("\u2705", "You are connected", "You can close this tab and go back to ChatVoice.") if good
-                               else ("\u26a0\ufe0f", "Not connected", "Nothing was changed. You can close this tab and try again in ChatVoice."))
+                body = PAGE % (("\u2705", "You are connected", "You can close this tab and go back to CHATDOOM.") if good
+                               else ("\u26a0\ufe0f", "Not connected", "Nothing was changed. You can close this tab and try again in CHATDOOM."))
                 self.send_response(200)
                 self.send_header("Content-Type", "text/html; charset=utf-8")
                 self.end_headers()

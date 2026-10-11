@@ -43,7 +43,7 @@ jobs:
         env:
           GITHUB_REF_NAME: ${{ github.ref_name }}
       - run: pip install -r requirements.txt pyinstaller
-      - run: pyinstaller --noconfirm --windowed --noupx --name ChatVoice --icon assets/icon.ico --version-file version_info.txt --add-data "assets;assets" --exclude-module numpy --exclude-module PIL --exclude-module tkinter --exclude-module matplotlib --collect-submodules pytchat --collect-submodules edge_tts --collect-all PySide6.QtWebEngineCore --collect-all PySide6.QtWebEngineWidgets main.py
+      - run: pyinstaller --noconfirm --windowed --noupx --name CHATDOOM --icon assets/icon.ico --version-file version_info.txt --add-data "assets;assets" --exclude-module numpy --exclude-module PIL --exclude-module tkinter --exclude-module matplotlib --collect-submodules pytchat --collect-submodules edge_tts --collect-all PySide6.QtWebEngineCore --collect-all PySide6.QtWebEngineWidgets main.py
       - run: choco install innosetup -y --no-progress
       - run: '& "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" installer.iss'
       - uses: actions/upload-artifact@v4

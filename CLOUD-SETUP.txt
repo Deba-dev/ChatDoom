@@ -1,4 +1,4 @@
-CHATVOICE CLOUD  -  one-time setup, done once by YOU (the person sharing the app)
+CHATDOOM CLOUD  -  one-time setup, done once by YOU (the person sharing the app)
 Free service setup; Google consent verification can take longer. Your friends never configure the cloud.
 
 WHAT IT IS
@@ -10,7 +10,7 @@ A. ACCOUNTS AND TOOLS
 1. Free Cloudflare account (cloudflare.com). 2. Node.js LTS (nodejs.org).
 
 B. DISCORD APPLICATION  (discord.com/developers/applications)
-1. New Application, name it "ChatVoice".
+1. New Application, name it "CHATDOOM".
 2. Bot tab: Reset Token and copy it. Leave "Public Bot" ON.
    Also switch ON  "Server Members Intent"  (needed to see who just joined). No verification is needed for small bots.
 3. OAuth2 tab: copy the Client ID and the Client Secret.
@@ -22,7 +22,7 @@ C. DEPLOY  (Command Prompt inside the "cloud" folder)
    npx wrangler deploy                           -> prints your address: https://chatvoice-cloud.YOURNAME.workers.dev
 
 D. PUBLIC APP PAGES FOR GOOGLE OAUTH
-   The Worker serves the ChatVoice home page, privacy policy, and terms of service at:
+   The Worker serves the CHATDOOM home page, privacy policy, and terms of service at:
        https://chatvoice-cloud.YOURNAME.workers.dev/
        https://chatvoice-cloud.YOURNAME.workers.dev/privacy
        https://chatvoice-cloud.YOURNAME.workers.dev/terms
@@ -78,8 +78,8 @@ F. CHECK
    Optional self-test of the cloud code:  node test.mjs
 
 EACH STREAMER  (CHATDOOM > Discord page)  -  NOTHING TO COPY, NO CLOUDFLARE LINK, NO KEY
-1. Press "Add ChatVoice bot to my server". The browser opens on Discord: choose the server, press Authorize.
-   ChatVoice connects by itself (the cloud address is built into the app, and the key comes back automatically).
+1. Press "Add CHATDOOM bot to my server". The browser opens on Discord: choose the server, press Authorize.
+   CHATDOOM connects by itself (the cloud address is built into the app, and the key comes back automatically).
    The bot asks for: Manage Roles (to give roles), Create Invite (to make the links), View Channels, and Manage Server
    (Discord requires it just to see how often each invite was used). If a server added the bot before this version,
    press the button again so it gets the new permissions.
@@ -93,29 +93,29 @@ Everything else (manual keys, your own invites, chat-activity roles, link page) 
 EACH STREAMER  (CHATDOOM > Connect page)
 1. Paste a YouTube live URL or Twitch channel and press Connect to read chat. Reading still works without signing in.
 2. Press Login on the YouTube or Twitch card and approve the requested permissions in your browser. The connected account
-   name appears in ChatVoice. YouTube membership alerts come from live chat; YouTube new-subscriber alerts poll the API
+   name appears in CHATDOOM. YouTube membership alerts come from live chat; YouTube new-subscriber alerts poll the API
    every five minutes and can only show subscribers whose subscriptions are public.
 3. Twitch login enables follower, subscription/resubscription, gift, and raid alerts through EventSub. If you signed in
    before alert permissions were added, disconnect that Twitch account and log in again to grant the new scopes.
    Select YouTube or Twitch in Live chat to send a message or create a poll. YouTube actions only work for an active
    stream owned by the signed-in YouTube channel.
-4. Disconnect the account from its platform card to revoke ChatVoice's provider grant and remove its cloud session. The app
+4. Disconnect the account from its platform card to revoke CHATDOOM's provider grant and remove its cloud session. The app
    encrypts its session handle using Windows DPAPI; provider tokens are encrypted in the cloud's D1 database.
 Kick remains read-only because this version has no supported Kick integration.
 OPTIONAL CHAT TRANSLATION (each streamer)
-1. Make sure CHATDOOM is connected to the ChatVoice cloud from its Discord page. Translation uses this connection; YouTube
+1. Make sure CHATDOOM is connected to its cloud service from the Discord page. Translation uses this connection; YouTube
    or Twitch account login is not required.
 2. Open CHATDOOM's Voice page and turn on "Translate chat into English". It is off by default.
 3. Start or connect to chat as usual. Allowed non-English messages are translated into English before they are spoken.
-   English messages do not need translation. If translation fails, ChatVoice shows an error and tries to speak the
+   English messages do not need translation. If translation fails, CHATDOOM shows an error and tries to speak the
    original message.
-The message text selected for translation is sent through the authenticated ChatVoice Worker to Cloudflare Workers AI.
+The message text selected for translation is sent through the authenticated CHATDOOM Worker to Cloudflare Workers AI.
 The shared daily limit is 300 requests for all users; messages are limited to 500 characters. Check Cloudflare's current
 pricing and usage in your account. To stop translation, turn the Voice option off.
 
 PLATFORM LOGIN NOTES
 - YouTube chat actions use the YouTube Data API and share the Google project's daily API quota across all app users.
-  Message/poll creation costs 50 quota units per request; ChatVoice caps its own actions at 8,000 units/day (reset at
+  Message/poll creation costs 50 quota units per request; CHATDOOM caps its own actions at 8,000 units/day (reset at
   midnight Pacific Time) to leave a safety margin. When the cap is reached, YouTube actions stop until reset; anonymous
   chat reading continues. A separate Google project for the hosted moderator bot avoids competing with its quota.
 - If the Google consent screen is still in Testing, refresh tokens may expire after about 7 days and require sign-in again.
@@ -124,7 +124,7 @@ PLATFORM LOGIN NOTES
 - Keep PLATFORM_TOKEN_ENCRYPTION_KEY backed up securely. Changing it makes already-stored tokens unreadable; affected users
   will need to disconnect and sign in again.
 
-THE PERSON WHO RUNS CHATVOICE (you) sets the cloud address once in app/config.py (CLOUD_URL) before building the installer.
+THE PERSON WHO RUNS CHATDOOM sets the cloud address once in app/config.py (CLOUD_URL) before building the installer.
 The Discord developer portal still needs the two redirect links from step D above, and "Server Members Intent" switched on.
 
 LIMITS OF INVITE ROLES (honest version)
@@ -140,7 +140,7 @@ TROUBLESHOOTING
 - /health shows false for something: set that secret again with  npx wrangler secret put NAME  then  npx wrangler deploy
 - "Error 1101" or a Discord error about client_id: a secret is missing (check with  npx wrangler secret list).
 - "Invalid redirect": the two redirect links in step D are missing or have a typo.
-- "Could not give the ... role (403)": the ChatVoice role is below that role. Drag it higher.
+- "Could not give the ... role (403)": the CHATDOOM role is below that role. Drag it higher.
 - Invite check says "Server Members Intent": switch it on in the Developer Portal (Bot tab).
 - Translation is unavailable: check /health for WORKERS_AI = true, confirm Workers AI is enabled in Cloudflare, and deploy
   the Worker again from the cloud folder. Also confirm the Discord cloud connection is active and translation is enabled

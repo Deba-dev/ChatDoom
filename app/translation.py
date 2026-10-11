@@ -1,4 +1,4 @@
-"""Language detection and authenticated ChatVoice cloud translation."""
+"""Language detection and authenticated CHATDOOM cloud translation."""
 import json
 import urllib.error
 import urllib.parse
@@ -40,13 +40,13 @@ def translate_to_english(text, settings):
     if not token or not parsed.netloc or not (
             parsed.scheme == "https" or
             (parsed.scheme == "http" and parsed.hostname in ("127.0.0.1", "localhost"))):
-        raise ValueError("connect ChatVoice to its cloud service on the Discord page first")
+        raise ValueError("connect CHATDOOM to its cloud service on the Discord page first")
 
     data = json.dumps({"text": text[:500], "source_lang": source}).encode("utf-8")
     request = urllib.request.Request(
         base + "/api/translate", data=data, method="POST",
         headers={"Accept": "application/json", "Content-Type": "application/json",
-                 "Authorization": "Bearer " + token, "User-Agent": "ChatVoice/0.5"},
+                 "Authorization": "Bearer " + token, "User-Agent": "CHATDOOM/1.0"},
     )
     try:
         with urllib.request.urlopen(request, timeout=20) as response:

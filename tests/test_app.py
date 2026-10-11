@@ -230,7 +230,7 @@ ok([g["role"] for g in C["grants"]] == ["regular", "supporter"], "paid message -
 for i in range(4): w.on_message(Message("youtube", "Neha", "hi %d" % i, uid="UC2", mod=True))
 wait(500); n = len(C["grants"])
 for i in range(4): w.on_message(Message("youtube", "Neha", "again %d" % i, uid="UC2", mod=True))
-wait(300); ok(len(C["grants"]) == n and "move the ChatVoice role above" in w.feed.toPlainText(), "failed grant (403): clear hint, and no retry flood")
+wait(300); ok(len(C["grants"]) == n and "move the CHATDOOM role above" in w.feed.toPlainText(), "failed grant (403): clear hint, and no retry flood")
 w.links.save(); ok(json.load(open(os.path.join(os.environ["APPDATA"], "ChatVoice", "counts.json")))["youtube:UC1"]["regular"], "counts saved to disk")
 
 # ===== B. payments =====
@@ -304,7 +304,7 @@ w.on_status("youtube", "Connected", True); ok(not w.yt_beat.isActive(), "no wake
 w.s.set("yt_bot_token", "TOKEN123"); w.on_status("youtube", "Connected", True); ok(w.yt_beat.isActive(), "while connected to YouTube the app keeps the free-hosted bot awake")
 w.on_status("youtube", "Disconnected", False); ok(not w.yt_beat.isActive(), "pings stop when you disconnect")
 w.s.set("yt_bot_url", "http://127.0.0.1:9"); post("Net", UCB, "net www.down.com"); wait(1200)
-ok("Cannot reach the ChatVoice bot" in w.feed.toPlainText(), "if the bot cannot be reached the streamer sees a plain message")
+ok("Cannot reach the CHATDOOM moderator bot" in w.feed.toPlainText(), "if the bot cannot be reached the streamer sees a plain message")
 w.s.set("yt_bot_url", "http://127.0.0.1:8812")
 w.goto(5); wait(300); w.grab().save(os.path.join(os.environ["APPDATA"], "payments.png")); w.goto(6); wait(300); w.grab().save(os.path.join(os.environ["APPDATA"], "ytmod.png"))
 

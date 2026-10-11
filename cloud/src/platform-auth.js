@@ -84,7 +84,7 @@ async function reserveYouTubeQuota(env, cost) {
   const result = await d.prepare("UPDATE platform_api_quota SET used = used + ? WHERE day = ? AND used + ? <= ?")
     .bind(cost, day, cost, YOUTUBE_ACTION_QUOTA_BUDGET).run();
   if (!result.meta || result.meta.changes !== 1) {
-    const error = new Error("ChatVoice's shared YouTube action budget is used up for today (resets at midnight Pacific Time)");
+    const error = new Error("CHATDOOM's shared YouTube action budget is used up for today (resets at midnight Pacific Time)");
     error.status = 429;
     throw error;
   }
@@ -216,7 +216,7 @@ async function callback(env, origin, url, platform) {
   const config = providerConfig(env, platform);
   const state = url.searchParams.get("state") || "";
   const saved = state && await kvGet(env, `platform-oauth-state:${state}`);
-  if (!saved || saved.platform !== platform) return json({ error: "Login expired or state did not match. Start again in ChatVoice." }, 400);
+  if (!saved || saved.platform !== platform) return json({ error: "Login expired or state did not match. Start again in CHATDOOM." }, 400);
   await env.KV.delete(`platform-oauth-state:${state}`);
   if (url.searchParams.has("error") || !url.searchParams.get("code")) {
     const error = clean(url.searchParams.get("error_description") || url.searchParams.get("error") || "login cancelled", 100);
@@ -226,7 +226,7 @@ async function callback(env, origin, url, platform) {
   let token, identity;
   try {
     token = await exchangeCode(env, platform, config, url.searchParams.get("code"), origin + config.callback);
-    if (!token.refresh_token) throw new Error("The provider did not issue a refresh token; revoke ChatVoice access and try login again");
+    if (!token.refresh_token) throw new Error("The provider did not issue a refresh token; revoke CHATDOOM access and try login again");
     identity = await profile(env, platform, token.access_token);
   } catch (error) {
     return Response.redirect(saved.returnUrl + "?ok=0&error=" + encodeURIComponent(clean(error.message, 140)), 302);

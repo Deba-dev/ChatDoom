@@ -1,4 +1,4 @@
-// ChatVoice cloud: Discord role linking for streamers. Runs on Cloudflare Workers (free tier).
+// CHATDOOM cloud: Discord role linking for streamers. Runs on Cloudflare Workers (free tier).
 // It never touches money. It only: (1) installs the bot, (2) links viewers to Discord accounts,
 // (3) gives roles when the desktop app reports activity.
 import { handlePlatformAuth } from "./platform-auth.js";
@@ -324,8 +324,8 @@ async function bot(env, method, path, body) {
     headers: {
       Authorization: "Bot " + env.DISCORD_BOT_TOKEN,
       "Content-Type": "application/json",
-      "User-Agent": "DiscordBot (https://chatvoice.local, 0.2)",
-      "X-Audit-Log-Reason": "ChatVoice role sync",
+      "User-Agent": "DiscordBot (https://github.com/Deba-dev/ChatDoom, 1.0)",
+      "X-Audit-Log-Reason": "CHATDOOM role sync",
     },
     body: body ? JSON.stringify(body) : undefined,
   });
@@ -431,7 +431,7 @@ async function setupCallback(env, origin, url) {
   if (old) cache.delete("t:" + old.token);
   if (st.ret) return backToApp(st.ret, { ok: "1", token, guild: tok.guild.name, gid: guildId });      // the app receives the key by itself
   return page("Bot added to " + tok.guild.name,
-    `<p>Copy this <b>server key</b> into ChatVoice (Discord page). Keep it private:</p><code>${esc(token)}</code>
+    `<p>Copy this <b>server key</b> into CHATDOOM (Discord page). Keep it private:</p><code>${esc(token)}</code>
      <p>You can now close this page.</p>`);
 }
 

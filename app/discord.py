@@ -1,4 +1,4 @@
-"""Discord side of ChatVoice: cloud calls, !link claims, activity reporting, and webhook posts."""
+"""Discord side of CHATDOOM: cloud calls, !link claims, activity reporting, and webhook posts."""
 import json
 import re
 import threading
@@ -11,7 +11,7 @@ from PySide6.QtCore import QObject, Signal
 from .platforms import youtube_id
 
 LINK_RX = re.compile(r"^!link\s+([A-Za-z0-9]{4}-[A-Za-z0-9]{4})\s*$", re.I)
-UA = "ChatVoice/0.2 (+desktop app)"
+UA = "CHATDOOM/1.0 (+desktop app)"
 
 
 class Bridge(QObject):
@@ -74,7 +74,7 @@ def post_webhook(url, content="", embed=None):
     if not re.match(r"^https://(?:canary\.|ptb\.)?discord(?:app)?\.com/api/webhooks/", url):
         return {"error": "That does not look like a Discord webhook link"}
     payload = {
-        "username": "ChatVoice",
+        "username": "CHATDOOM",
         "allowed_mentions": {"parse": []},
     }
     if content:
@@ -116,7 +116,7 @@ def post_live_announcement(url, message, youtube_link, title="🔴 LIVE NOW"):
         "fields": [
             {"name": "Watch on YouTube", "value": "[▶ Open the live stream](%s)" % link, "inline": False}
         ],
-        "footer": {"text": "ChatVoice • Live announcement"},
+        "footer": {"text": "CHATDOOM • Live announcement"},
     }
     return post_webhook(url, embed=embed)
 
@@ -217,5 +217,5 @@ class LinkManager(QObject):
                 self.notice.emit("Gave the %s role to %s" % (role, key.split(":", 1)[0] + " viewer"))
             else:
                 self.retry_at[(key, role)] = time.time() + 600
-                hint = " - move the ChatVoice role above it in Discord" if res.get("status") == 403 else ""
+                hint = " - move the CHATDOOM role above it in Discord" if res.get("status") == 403 else ""
                 self.notice.emit("Could not give the %s role (%s)%s" % (role, res.get("error") or res.get("status"), hint))

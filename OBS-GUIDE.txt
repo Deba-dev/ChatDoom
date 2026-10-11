@@ -1,12 +1,12 @@
-USING CHATVOICE WITH OBS
-ChatVoice is a normal window. OBS uses it in three ways. Start ChatVoice BEFORE you go live and keep it running (minimised is fine).
+USING CHATDOOM WITH OBS
+CHATDOOM is a normal window. OBS uses it in three ways. Start CHATDOOM BEFORE you go live and keep it running (minimised is fine).
 
 1. THE VOICE (audio)
-   OBS: Sources > + > "Application Audio Capture" > pick ChatVoice.  (Windows 10 version 2004+, OBS 28+.)
+   OBS: Sources > + > "Application Audio Capture" > pick CHATDOOM.  (Windows 10 version 2004+, OBS 28+.)
    If that source is missing, use "Desktop Audio" instead. Wear headphones, or your microphone will pick up the voice again.
 
 2. TIPS, SUPER CHATS AND MEMBERSHIP ALERTS ON SCREEN
-   ChatVoice > "OBS overlays" page > copy the Alerts address (looks like http://127.0.0.1:8765/alert).
+   CHATDOOM > "OBS overlays" page > copy the Alerts address (looks like http://127.0.0.1:8765/alert).
    OBS: Sources > + > Browser > Create new > paste it in URL. Width 1280, Height 420. OK.
    Put it at the top centre of your scene. It is invisible until an alert comes, then an animated card appears with
    the sender, amount, and message. Supported event sources include payment tips, YouTube Super Chats, public YouTube
@@ -23,24 +23,24 @@ ChatVoice is a normal window. OBS uses it in three ways. Start ChatVoice BEFORE 
    Streamer panel, or Cherry blossom. Moderation applies: skipped messages never show.
 
 4. USE YOUR STREAM ELEMENTS OVERLAY INSTEAD
-   In ChatVoice > OBS overlays, paste your StreamElements overlay URL and copy it. In OBS, add a separate
+   In CHATDOOM > OBS overlays, paste your StreamElements overlay URL and copy it. In OBS, add a separate
    Browser source and paste that URL. Set the width and height to match your StreamElements overlay.
    Use "Open StreamElements" to go directly to the overlay dashboard; sign in there if asked.
-   This keeps the StreamElements overlay independent from ChatVoice's alert and chat sources; ChatVoice
+   This keeps the StreamElements overlay independent from CHATDOOM's alert and chat sources; CHATDOOM
    does not import or host it. The saved URL is stored encrypted with the app's other protected settings.
 
 NOTES
 - Streamlabs and StreamElements follow the same general pattern: connect a platform account, receive platform events,
-  then render customized alerts through an OBS Browser source. ChatVoice connects to Twitch EventSub and YouTube's
+  then render customized alerts through an OBS Browser source. CHATDOOM connects to Twitch EventSub and YouTube's
   public-subscriber API for its own alert source; memberships and paid messages also come from live chat.
-- The addresses only work on the PC that runs ChatVoice, and only while ChatVoice is open.
-- If port 8765 is busy, ChatVoice uses the next free one and shows the new addresses on the page: copy them again.
+- The addresses only work on the PC that runs CHATDOOM, and only while CHATDOOM is open.
+- If port 8765 is busy, CHATDOOM uses the next free one and shows the new addresses on the page: copy them again.
 - Leave "Shutdown source when not visible" and "Refresh browser when scene becomes active" unticked.
 - Hindi text works. The overlay uses the same Poppins font as the app.
 - Old alerts are never replayed when you reload the Browser source.
 
 4. NOW PLAYING (from the Music page)
-   ChatVoice > Music > copy the address ending in /music. OBS: Sources > + > Browser, Width 700, Height 160. It slides in with
+   CHATDOOM > Music > copy the address ending in /music. OBS: Sources > + > Browser, Width 700, Height 160. It slides in with
    the song title and artist, and hides when the music is paused. Showing the title also credits artists whose licence asks for it.
-   Music and the chat voice share ChatVoice's audio in OBS (Application Audio Capture). While the voice speaks, the music
+   Music and the chat voice share CHATDOOM's audio in OBS (Application Audio Capture). While the voice speaks, the music
    is lowered automatically (Music page > Mix with your voice).

@@ -1,5 +1,5 @@
 """Stream-safe music player: plays the streamer's own no-copyright / licensed files, shows 'now playing' in OBS,
-and lowers itself while ChatVoice is reading a chat message aloud."""
+and lowers itself while CHATDOOM is reading a chat message aloud."""
 import os
 import random
 import re
@@ -261,7 +261,7 @@ class MusicPlayer(QObject):
         self._apply_volume()
 
     def duck(self, on):
-        """Called while ChatVoice reads a message aloud."""
+        """Called while CHATDOOM reads a message aloud."""
         self.ducked = bool(on)
         self._apply_volume()
 

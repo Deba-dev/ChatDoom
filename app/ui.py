@@ -46,7 +46,7 @@ PAGE_BLURB = (
     "Decide which messages are read and which are skipped.",
     "Add the bot, and viewers get roles for where they joined from.",
     "Hear paid messages and tips on stream.",
-    "Add the ChatVoice bot to your channel and keep your chat clean.",
+    "Add the CHATDOOM bot to your channel and keep your chat clean.",
     "Browser sources for alerts, chat and the song playing, or your StreamElements overlay.",
     "Play no-copyright music on stream, quieter while your chat is read aloud.",
 )

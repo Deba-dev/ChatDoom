@@ -1,30 +1,30 @@
 YOUTUBE AUTO-MODERATION  -  a moderator bot for your live chat, like Nightbot
-No Google sign-in, no keys. You add the ChatVoice bot to your channel once, prove the channel is yours, and choose the rules.
+No Google sign-in, no keys. You add the moderator bot to your channel once, prove the channel is yours, and choose the rules.
 
-FOR STREAMERS  (ChatVoice > YouTube mod page shows the same three steps)
+FOR STREAMERS  (CHATDOOM > YouTube mod page shows the same three steps)
 1. ADD THE BOT TO YOUR CHANNEL
-   YouTube Studio (studio.youtube.com) > Settings > Community > Moderators > add the bot's name shown in ChatVoice
+   YouTube Studio (studio.youtube.com) > Settings > Community > Moderators > add the bot's name shown in CHATDOOM
    (@ChatVoice-V1). YouTube may rename menus; the idea is "add this channel as a moderator". It can take a minute.
    Moderators can only remove chat messages and time people out. They cannot see anything private.
 2. VERIFY YOUR CHANNEL  (you need to be live)
-   Paste your live link on the Connect page, then press "Verify my channel". ChatVoice shows a code like CV-7K2M9P.
-   Type it in your OWN live chat. ChatVoice notices it within a few seconds and shows "Verified".
+   Paste your live link on the Connect page, then press "Verify my channel". CHATDOOM shows a code like CV-7K2M9P.
+   Type it in your OWN live chat. CHATDOOM notices it within a few seconds and shows "Verified".
    This proves the stream is yours, so nobody else can use the bot on your chat. It lasts about 90 days.
 3. CHOOSE WHAT TO REMOVE
    Blocked words (list on the Moderation page), links, spam. Start in TEST MODE: the feed shows what WOULD be removed.
    Turn test mode off when it behaves. Moderators and you are never touched. Repeat offenders get a time-out.
 
 GOOD TO KNOW
-- ChatVoice reads your chat itself and asks the bot to remove messages, so it works while ChatVoice is open and connected
+- CHATDOOM reads your chat itself and asks the moderator bot to remove messages, so it works while CHATDOOM is open and connected
   to your YouTube live chat.
-- The bot is hosted on a free service that sleeps when nobody uses it. ChatVoice wakes it when you open the page and keeps it
+- The bot is hosted on a free service that sleeps when nobody uses it. CHATDOOM wakes it when you open the page and keeps it
   awake while you stream. The first wake-up can take up to a minute ("Waking up..." badge).
-- Daily limit: YouTube gives the whole ChatVoice bot a shared daily allowance. Each removal or time-out costs a part of it,
-  so ChatVoice stops at your daily action limit (default 60, maximum 150).
-- If ChatVoice says "the bot is not a moderator of your channel yet", repeat step 1.
+- Daily limit: YouTube gives the moderator bot a shared daily allowance. Each removal or time-out costs a part of it,
+  so CHATDOOM stops at your daily action limit (default 60, maximum 150).
+- If CHATDOOM says "the bot is not a moderator of your channel yet", repeat step 1.
 - "Remove verification" on the page forgets the proof on this PC. You can verify again any time.
 
-FOR THE PERSON WHO RUNS CHATVOICE
+FOR THE PERSON WHO RUNS CHATDOOM
 The bot server is the folder youtube-bot (Node, no packages). Setup, free hosting on Render, the other hosting choices and
 what each costs in YouTube quota are in youtube-bot/README.txt. Put its address in app/config.py (YT_BOT_URL) before building.
 

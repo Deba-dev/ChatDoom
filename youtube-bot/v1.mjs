@@ -1,4 +1,4 @@
-// Streamer-facing API used by the ChatVoice desktop app.
+// Streamer-facing API used by the CHATDOOM desktop app.
 //
 // How it works (no per-streamer Google sign-in, no polling by this server):
 //   1. The streamer adds the bot's YouTube channel as a moderator (manual step in YouTube Studio).
@@ -149,7 +149,7 @@ export function createV1({ env, now, api, accessToken, readBody, json, actions, 
   async function moderate(req, res) {
     const auth = (req.headers.authorization || "").replace(/^Bearer\s+/i, "");
     const tok = readToken(auth);
-    if (!tok) return fail(res, 401, "Your channel is not verified (or the verification expired). Verify it again in ChatVoice.");
+    if (!tok) return fail(res, 401, "Your channel is not verified (or the verification expired). Verify it again in CHATDOOM.");
     if (limited(`mod:${tok.ch}`, 120)) return fail(res, 429, "Slow down: too many moderation requests.");
     const body = await readBody(req);
     if (!validVideo(body.videoId)) return fail(res, 400, "Missing live video ID.");
@@ -188,7 +188,7 @@ export function createV1({ env, now, api, accessToken, readBody, json, actions, 
         notes.push(`Deleted ${who}'s message (${String(it.reason || "rule").slice(0, 30)})`);
       } catch (error) {
         if (error.status === 429) { notes.push("The shared YouTube budget for today is used up. Moderation resumes tomorrow."); break; }
-        if (error.status === 403) { notes.push("YouTube refused: the ChatVoice bot is not a moderator of your channel yet. Add it in YouTube Studio."); break; }
+        if (error.status === 403) { notes.push("YouTube refused: the moderator bot is not a moderator of your channel yet. Add it in YouTube Studio."); break; }
         notes.push(`Could not act on ${who}'s message: ${String(error.message).slice(0, 80)}`);
       }
     }

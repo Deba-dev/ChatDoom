@@ -26,7 +26,7 @@ PAGES IN THE APP
   Moderation  what gets read aloud: link / command / bot / repeat filters, blocked words
   Discord     one click to add the bot, one click to make roles and invite links; the rest is under Advanced
   Payments    payment alerts (Razorpay / Stripe / Cashfree / any tool) plus a shareable quick tip link
-  YouTube mod add the ChatVoice bot to your channel, verify it is yours, choose the rules (like Nightbot)
+  YouTube mod add the CHATDOOM moderator bot to your channel, verify it is yours, choose the rules (like Nightbot)
   OBS overlays  alerts for tips, YouTube public subscribers/members, and Twitch follows/subs/raids, with multiple looks
   Music       browse StreamBeats music and Mixkit sound effects in-app, download/import them, and use local files
   Sidebar     Theme (4 colour themes) and Lite mode (turns off glow/fade animations for weak PCs or gaming)
@@ -72,7 +72,7 @@ CHATDOOM is a normal window that plays sound on your PC. To put the voice on you
 4. USE HEADPHONES. With speakers, your microphone picks the voice up again and viewers hear an echo.
 5. To show the chat on screen: Sources > + > "Window Capture" > CHATDOOM, then open its "Live chat" page.
 
-FILES THE APP KEEPS  (%APPDATA%\ChatVoice)
+FILES THE APP KEEPS  (%APPDATA%\ChatVoice; legacy folder name retained for upgrades)
 settings.json, hinglish_words.txt (add short forms: short=how to say it), blocked_words.txt
 
 NOTES
@@ -80,4 +80,4 @@ NOTES
 - Chat reading is anonymous; YouTube automatically retries after a chat connection drops. Kick uses its
   unofficial chat connection and remains read-only. YouTube/Twitch login enables sending chat messages and creating polls.
 - Platform sign-in needs the one-time OAuth setup in CLOUD-SETUP.txt. YouTube API quota is shared by all users of the app.
-- YouTube moderation still uses the separate ChatVoice moderator bot; login does not make the app a platform moderator.
+- YouTube moderation still uses the separate moderator account shown on the YouTube mod page; login does not make the app a platform moderator.

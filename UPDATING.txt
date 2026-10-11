@@ -5,7 +5,7 @@ and updates itself with one click. Settings, keys and counters are kept (they li
 
 A. PUBLISH A NEW VERSION  (you, about 15 minutes, no tools needed)
 1. Get the new project files (from me, or your own edits) and put them in your GitHub repository.
-   - GitHub Desktop: unzip the new project over your local ChatVoice folder (replace files), then in GitHub Desktop write a
+   - GitHub Desktop: unzip the new project over your local CHATDOOM folder (replace files), then in GitHub Desktop write a
      short message, click "Commit to main", then "Push origin".
    - Or on github.com: Add file > Upload files, drag the changed files/folders in, Commit.
      (The hidden folder .github is skipped by the web uploader. Only needed if the workflow changed: open
@@ -35,6 +35,6 @@ D. GOOD TO KNOW
 - The repository must stay public so installed apps can see releases without a login.
 - The updater only accepts files from YOUR repository's releases, and checks GitHub's checksum when GitHub provides one.
 - If the repository name is different from Deba-dev/ChatDoom, change "update_repo" in %APPDATA%\ChatVoice\settings.json
-  (or tell me and I will change the default). Saved settings from the old ChatVoice repository are migrated automatically.
+  (or tell me and I will change the default). Saved settings from the old project are migrated automatically.
 - Windows may still show the "unknown publisher" warning on a first manual install because the app is not code-signed.
   Updates started from inside the app do not show it.

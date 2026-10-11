@@ -47,12 +47,12 @@ class DiscordPage(FormScrollArea):
         # ---------- 1. connect ----------
         c, cl = section_card("Connect Discord",
                              "Press the button, choose your server on Discord's page and press Authorize. "
-                             "ChatVoice connects by itself: no keys, no links to copy.")
+                             "CHATDOOM connects by itself: no keys, no links to copy.")
         self.badge = make_badge("\u25cf  Not connected", "pill")
         self.status = QLabel("")
         self.status.setObjectName("sub")
         self.status.setWordWrap(True)
-        self.connect_btn = QPushButton("Add ChatVoice bot to my server")
+        self.connect_btn = QPushButton("Add CHATDOOM bot to my server")
         self.connect_btn.setObjectName("primary")
         self.connect_btn.setCursor(Qt.PointingHandCursor)
         self.connect_btn.clicked.connect(self.connect)
@@ -65,7 +65,7 @@ class DiscordPage(FormScrollArea):
 
         # ---------- 2. roles + invites made for you ----------
         self.roles_card, cl = section_card("Roles for your viewers",
-                                           "Tick the platforms you stream on. ChatVoice creates a role and a never-expiring invite link for each. "
+                                           "Tick the platforms you stream on. CHATDOOM creates a role and a never-expiring invite link for each. "
                                            "Everyone who joins through a link gets that role within about 2 minutes.")
         self.src_switch, self.src_link, self.src_role = {}, {}, {}
         for src in SOURCES:
@@ -177,7 +177,7 @@ class DiscordPage(FormScrollArea):
         test = QPushButton("Test connection")
         test.setObjectName("primary")
         test.clicked.connect(self.test)
-        cl.addWidget(field_row("ChatVoice cloud address", "Built in. Change it only if you run your own cloud.", self.url))
+        cl.addWidget(field_row("CHATDOOM cloud address", "Built in. Change it only if you run your own cloud.", self.url))
         cl.addWidget(field_row("Server key", "Filled in automatically by the one-click connection.", self.key))
         cl.addWidget(hrow(test))
         al.addWidget(c)
@@ -204,7 +204,7 @@ class DiscordPage(FormScrollArea):
 
         c, cl = section_card("Chat-activity roles",
                              "Viewers who link their account get Verified. Active chatters become Regulars. Paid messages grant Supporter. "
-                             "The ChatVoice role must sit above these roles in Discord.")
+                             "The CHATDOOM role must sit above these roles in Discord.")
         self.boxes = {}
         for key, label in (("role_verified", "Verified (after linking)"), ("role_regular", "Regular (after N messages)"),
                            ("role_supporter", "Supporter (after a paid message)")):
@@ -258,7 +258,7 @@ class DiscordPage(FormScrollArea):
         else:
             set_badge(self.badge, "\u25cf  Not connected", "pill")
             self.status.setText("Add the bot to start.")
-            self.connect_btn.setText("Add ChatVoice bot to my server")
+            self.connect_btn.setText("Add CHATDOOM bot to my server")
             _style(self.connect_btn, "primary")
         self.roles_card.setEnabled(self.connected)
         done = sum(1 for src in SOURCES if self.src_link[src].text())
@@ -269,7 +269,7 @@ class DiscordPage(FormScrollArea):
     def connect(self):
         base = self.s.get("cloud_url").strip().rstrip("/")
         if not base:
-            self.status.setText("The ChatVoice cloud address is missing. Open Advanced options.")
+            self.status.setText("The CHATDOOM cloud address is missing. Open Advanced options.")
             return
         self.loop = Loopback(self.bridge, "dc:connect")
         back = self.loop.start()
@@ -482,7 +482,7 @@ class DiscordPage(FormScrollArea):
         elif tag == "ui:save":
             self.rstatus.setText(err or "Rules saved")
         elif tag == "ui:inv":
-            self.istatus.setText(err or "Saved. ChatVoice's cloud checks for new members every 2 minutes.")
+            self.istatus.setText(err or "Saved. CHATDOOM's cloud checks for new members every 2 minutes.")
         elif tag == "ui:invcheck":
             if err or res.get("error"):
                 self.istatus.setText(err or res["error"])

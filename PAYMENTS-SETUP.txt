@@ -1,25 +1,25 @@
-PAYMENTS  -  viewers pay on the streamer's OWN payment page; ChatVoice reads name, amount and message aloud
-and shows an alert in OBS. Money goes straight from the viewer to the streamer. ChatVoice and the cloud never hold it.
+PAYMENTS  -  viewers pay on the streamer's OWN payment page; CHATDOOM reads name, amount and message aloud
+and shows an alert in OBS. Money goes straight from the viewer to the streamer. CHATDOOM and the cloud never hold it.
 
 Works with:  Razorpay, Stripe, Cashfree, and ANY other tool that can send a webhook (Zapier, Make, n8n, Google Apps Script...).
 Do FIRST: the Discord page (server key). Payments use the same connection. The cloud needs the D1 step in CLOUD-SETUP.txt.
 
 SET UP (same for every gateway)
-1. ChatVoice > Payments > choose your gateway.
+1. CHATDOOM > Payments > choose your gateway.
 2. Type the secret asked for (see the table) and click "Save secret". A webhook ADDRESS appears: click Copy.
 3. In your payment service, add that address as a webhook (see the table), using the same secret.
-4. Put two fields on your payment page, labelled  Name  and  Message  (ChatVoice finds them by their labels).
+4. Put two fields on your payment page, labelled  Name  and  Message  (CHATDOOM finds them by their labels).
 5. Test in the service's TEST MODE. Then tick "Listen for payments and read them aloud".
 
 QUICK TIP LINK (simpler, no payment alert)
-If you already have a public tip/donation URL, open ChatVoice > Payments > Quick tip link, paste the HTTPS link, and save it.
+If you already have a public tip/donation URL, open CHATDOOM > Payments > Quick tip link, paste the HTTPS link, and save it.
 Copy/open the link to share it with viewers. Viewers pay on the provider's page; this shortcut does not verify payments,
 read messages, or create OBS alerts. Use the webhook setup above if you want payment notifications.
 
 WHERE TO PUT IT
   Razorpay : Settings > Webhooks > Add. Secret = the one you typed. Event: payment.captured (only).
   Stripe   : Developers > Webhooks > Add endpoint. Event: checkout.session.completed. After saving, Stripe shows a
-             "signing secret" (whsec_...): paste THAT into ChatVoice. Add custom fields Name / Message to your Payment Link.
+             "signing secret" (whsec_...): paste THAT into CHATDOOM. Add custom fields Name / Message to your Payment Link.
   Cashfree : Developers > Webhooks. The secret is your Payment Gateway secret key. Works with payment success and
              payment-form webhooks.
   Any tool : send a POST with JSON to the address:  {"name":"Rahul","message":"Great stream","amount":100,"currency":"INR"}
@@ -28,7 +28,7 @@ WHERE TO PUT IT
 
 TEST THE WHOLE CHAIN WITHOUT ANY PAYMENT (Windows PowerShell), using the "Any other tool" address and secret:
   Invoke-RestMethod -Method Post -Uri "ADDRESS" -Headers @{"X-ChatVoice-Secret"="YOURSECRET"} -ContentType "application/json" -Body '{"name":"Rahul","message":"Great stream bhai","amount":100,"currency":"INR"}'
-  Within about 10 seconds ChatVoice reads it aloud and the OBS alert pops up.
+  Within about 10 seconds CHATDOOM reads it aloud and the OBS alert pops up.
 
 HOW IT BEHAVES
 - A message with a blocked word is never read or shown; the name and amount still are.
@@ -42,7 +42,7 @@ HOW SURE I AM ABOUT EACH GATEWAY (honest version, from the services' own documen
 - Stripe: the signature scheme (t=...,v1=..., 5 minute tolerance) is confirmed; the custom-field layout is from my knowledge of Stripe's
   format, not from a real payment.
 - Cashfree: the signature scheme (timestamp + body, base64) is confirmed. Cashfree's documentation I could read does not
-  show where payment-form fields such as Name/Message appear, so ChatVoice searches the whole payload for fields labelled
+  show where payment-form fields such as Name/Message appear, so CHATDOOM searches the whole payload for fields labelled
   like a name or a message. Test it first in Cashfree's sandbox.
 - Any tool: my own simple format, fully tested.
 If a name or message does not show up in test mode, send me the webhook payload from your dashboard and I will adjust it.

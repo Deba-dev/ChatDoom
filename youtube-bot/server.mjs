@@ -20,7 +20,7 @@ const json = (res, status, data) => {
 const html = (res, status, body) => {
   res.writeHead(status, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" });
   res.end(`<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width">
-<title>ChatVoice YouTube Moderator</title><style>body{font:16px system-ui;max-width:680px;margin:50px auto;padding:0 20px;background:#10131b;color:#eee}
+<title>CHATDOOM YouTube Moderator</title><style>body{font:16px system-ui;max-width:680px;margin:50px auto;padding:0 20px;background:#10131b;color:#eee}
 main{padding:24px;background:#191e29;border-radius:14px}input,button{font:inherit;padding:10px;margin:5px 0}input{width:min(95%,460px)}a{color:#9cf}</style><main>${body}</main>`);
 };
 
@@ -277,14 +277,14 @@ export function createService({ env = process.env, fetchImpl = fetch, dataDir = 
       return json(res, 200, { ok: true, authorized: Boolean(token?.refresh_token), streams: streams.size });
     }
     if (req.method === "GET" && url.pathname === "/") {
-      return html(res, 200, '<h1>ChatVoice YouTube Moderator</h1><p>Service is running.</p><p><a href="/admin">Open admin setup</a></p><p>Health: <a href="/health">/health</a></p>');
+      return html(res, 200, '<h1>CHATDOOM YouTube Moderator</h1><p>Service is running.</p><p><a href="/admin">Open admin setup</a></p><p>Health: <a href="/health">/health</a></p>');
     }
     if (v1.handled(url)) return v1.handle(req, res, url);
     if (url.pathname.startsWith("/api/") && !authorized(req, adminKey)) {
       return json(res, 401, { error: "Unauthorized" });
     }
     if (req.method === "GET" && url.pathname === "/admin") {
-      return html(res, 200, `<h1>ChatVoice moderator setup</h1><p>Enter your private Railway BOT_ADMIN_KEY. This page stores it only in this browser tab.</p>
+      return html(res, 200, `<h1>CHATDOOM moderator setup</h1><p>Enter your private Railway BOT_ADMIN_KEY. This page stores it only in this browser tab.</p>
 <input id="key" type="password" autocomplete="off" placeholder="BOT_ADMIN_KEY"><button id="auth">Authorize bot Google account</button>
 <p id="result"></p><hr><h2>Register a live stream</h2><p>For now, add one stream while it is live. Use the streamer's channel ID and the current live video ID. Test mode is always on initially.</p>
 <textarea id="cfg" rows="14" cols="75">{\n  "channelId": "UC...",\n  "videoId": "VIDEO_ID",\n  "blockedWords": [],\n  "deleteLinks": true,\n  "deleteSpam": false,\n  "dryRun": true,\n  "dailyLimit": 60\n}</textarea><br><button id="save">Save stream configuration</button><pre id="status"></pre>

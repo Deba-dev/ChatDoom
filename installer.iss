@@ -16,7 +16,7 @@ PrivilegesRequired=lowest
 OutputDir=installer
 OutputBaseFilename=CHATDOOM-Setup
 SetupIconFile=assets\icon.ico
-UninstallDisplayIcon={app}\ChatVoice.exe
+UninstallDisplayIcon={app}\CHATDOOM.exe
 Compression=lzma2
 SolidCompression=yes
 WizardStyle=modern
@@ -25,12 +25,15 @@ WizardStyle=modern
 Name: "desktopicon"; Description: "Create a desktop shortcut"; Flags: unchecked
 
 [Files]
-Source: "dist\ChatVoice\*"; DestDir: "{app}"; Flags: recursesubdirs ignoreversion
+Source: "dist\CHATDOOM\*"; DestDir: "{app}"; Flags: recursesubdirs ignoreversion
+
+[InstallDelete]
+Type: files; Name: "{app}\ChatVoice.exe"
 
 [Icons]
-Name: "{autoprograms}\CHATDOOM"; Filename: "{app}\ChatVoice.exe"
-Name: "{autodesktop}\CHATDOOM"; Filename: "{app}\ChatVoice.exe"; Tasks: desktopicon
+Name: "{autoprograms}\CHATDOOM"; Filename: "{app}\CHATDOOM.exe"
+Name: "{autodesktop}\CHATDOOM"; Filename: "{app}\CHATDOOM.exe"; Tasks: desktopicon
 
 [Run]
-Filename: "{app}\ChatVoice.exe"; Description: "Start CHATDOOM"; Flags: nowait postinstall skipifsilent
-Filename: "{app}\ChatVoice.exe"; Flags: nowait; Check: WizardSilent
+Filename: "{app}\CHATDOOM.exe"; Description: "Start CHATDOOM"; Flags: nowait postinstall skipifsilent
+Filename: "{app}\CHATDOOM.exe"; Flags: nowait; Check: WizardSilent

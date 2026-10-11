@@ -5,9 +5,9 @@ VSVersionInfo(
       StringStruct('CompanyName', 'itsmeblitz'),
       StringStruct('FileDescription', 'CHATDOOM (BETA) - live chat reader and stream tools'),
       StringStruct('FileVersion', '1.0.6.0'),
-      StringStruct('InternalName', 'ChatVoice'),
+      StringStruct('InternalName', 'CHATDOOM'),
       StringStruct('LegalCopyright', 'Created by itsmeblitz'),
-      StringStruct('OriginalFilename', 'ChatVoice.exe'),
+      StringStruct('OriginalFilename', 'CHATDOOM.exe'),
       StringStruct('ProductName', 'CHATDOOM'),
       StringStruct('ProductVersion', '1.0.6 BETA')])]),
     VarFileInfo([VarStruct('Translation', [1033, 1200])])

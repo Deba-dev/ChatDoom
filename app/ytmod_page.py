@@ -1,4 +1,4 @@
-"""YouTube auto-moderation page: add the ChatVoice bot to your channel, verify it is yours, choose the rules."""
+"""YouTube auto-moderation page: add the CHATDOOM moderator bot, verify your channel, and choose rules."""
 import time
 
 from PySide6.QtCore import Qt, QTimer, QUrl

@@ -1,4 +1,4 @@
-"""Platform OAuth and authenticated chat actions through the ChatVoice cloud service."""
+"""Platform OAuth and authenticated chat actions through the CHATDOOM cloud service."""
 import json
 import urllib.error
 import urllib.parse
@@ -14,7 +14,7 @@ from .platforms import youtube_id
 
 def _request(url, method="GET", body=None, token=""):
     data = json.dumps(body).encode() if body is not None else None
-    headers = {"Accept": "application/json", "User-Agent": "ChatVoice/0.5"}
+    headers = {"Accept": "application/json", "User-Agent": "CHATDOOM/1.0"}
     if data is not None:
         headers["Content-Type"] = "application/json"
     if token:
@@ -33,7 +33,7 @@ def _request(url, method="GET", body=None, token=""):
         result["status"] = error.code
         return result
     except Exception as error:
-        return {"error": "Cannot reach ChatVoice cloud (%s)" % str(error)[:80]}
+        return {"error": "Cannot reach CHATDOOM cloud (%s)" % str(error)[:80]}
 
 
 class PlatformAuth(QObject):
@@ -81,7 +81,7 @@ class PlatformAuth(QObject):
             self.changed.emit(platform)
             return
         if not self._base():
-            self.notice.emit("Platform sign-in requires an HTTPS ChatVoice cloud address.")
+            self.notice.emit("Platform sign-in requires an HTTPS CHATDOOM cloud address.")
             return
         run_bg(self.bridge, "platform:account:%s" % platform,
                lambda: _request(self._base() + "/platform-auth/account", token=token))
@@ -91,7 +91,7 @@ class PlatformAuth(QObject):
             self.notice.emit("Login is not supported for %s." % platform.title())
             return
         if not self._base():
-            self.notice.emit("Platform sign-in requires an HTTPS ChatVoice cloud address.")
+            self.notice.emit("Platform sign-in requires an HTTPS CHATDOOM cloud address.")
             return
         loop = Loopback(self.bridge, "platform:return:%s" % platform)
         self.loops[platform] = loop
@@ -106,7 +106,7 @@ class PlatformAuth(QObject):
             self.changed.emit(platform)
             return
         if not self._base():
-            self.notice.emit("Platform sign-in requires an HTTPS ChatVoice cloud address.")
+            self.notice.emit("Platform sign-in requires an HTTPS CHATDOOM cloud address.")
             return
         run_bg(self.bridge, "platform:disconnect:%s" % platform,
                lambda: _request(self._base() + "/platform-auth/account", "DELETE", token=token))
@@ -132,7 +132,7 @@ class PlatformAuth(QObject):
         if not token:
             return {"error": "Sign in to Twitch before starting alert subscriptions."}
         if not self._base():
-            return {"error": "Twitch alert subscriptions require an HTTPS ChatVoice cloud address."}
+            return {"error": "Twitch alert subscriptions require an HTTPS CHATDOOM cloud address."}
         return _request(self._base() + "/platform-auth/eventsub", "POST", {"sessionId": session_id}, token)
 
     def poll_youtube_subscribers(self, since):
@@ -140,7 +140,7 @@ class PlatformAuth(QObject):
         if not token:
             return {"error": "Sign in to YouTube before checking subscriber alerts."}
         if not self._base():
-            return {"error": "YouTube subscriber alerts require an HTTPS ChatVoice cloud address."}
+            return {"error": "YouTube subscriber alerts require an HTTPS CHATDOOM cloud address."}
         run_bg(self.bridge, "platform:youtube-subscribers",
                lambda: _request(self._base() + "/platform-auth/youtube-subscribers", "POST", {"since": since}, token))
 
@@ -153,7 +153,7 @@ class PlatformAuth(QObject):
             self.notice.emit("Sign in to %s on the Connect page before sending." % platform.title())
             return
         if not self._base():
-            self.notice.emit("Platform sign-in requires an HTTPS ChatVoice cloud address.")
+            self.notice.emit("Platform sign-in requires an HTTPS CHATDOOM cloud address.")
             return
         run_bg(self.bridge, "platform:action", lambda: _request(
             self._base() + "/platform-auth/" + action, "POST", body, token))

@@ -46,7 +46,7 @@ class Updater(QObject):
         threading.Thread(target=self._check, args=(manual,), daemon=True).start()
 
     def _fetch(self, url):
-        req = urllib.request.Request(url, headers={"User-Agent": "ChatVoice-updater", "Accept": "application/vnd.github+json"})
+        req = urllib.request.Request(url, headers={"User-Agent": "CHATDOOM-updater", "Accept": "application/vnd.github+json"})
         with urllib.request.urlopen(req, timeout=15) as r:
             return json.loads(r.read())
 
@@ -110,7 +110,7 @@ class Updater(QObject):
     def _download(self, info):
         path = os.path.join(tempfile.gettempdir(), "CHATDOOM-Setup-%s.exe" % info["version"])
         try:
-            req = urllib.request.Request(info["asset"], headers={"User-Agent": "ChatVoice-updater"})
+            req = urllib.request.Request(info["asset"], headers={"User-Agent": "CHATDOOM-updater"})
             sha, done = hashlib.sha256(), 0
             with urllib.request.urlopen(req, timeout=30) as r, open(path, "wb") as f:
                 total = int(r.headers.get("Content-Length") or 0)

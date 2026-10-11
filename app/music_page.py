@@ -42,7 +42,7 @@ class _MusicCatalogDialog(QDialog):
         self.setWindowTitle(title)
         self.resize(1000, 720)
         layout = QVBoxLayout(self)
-        self.status = QLabel("Browse the official catalog. Downloaded audio is copied into your ChatVoice music library.")
+        self.status = QLabel("Browse the official catalog. Downloaded audio is copied into your CHATDOOM music library.")
         self.status.setWordWrap(True)
         layout.addWidget(self.status)
         self.browser = QWebEngineView(self)
@@ -134,17 +134,17 @@ class MusicPage(FormScrollArea):
             b.clicked.connect(fn)
         cl.addWidget(hrow(self.prev_btn, self.play_btn, self.next_btn))
         cl.addWidget(option_switch_row("Shuffle", "Play the songs in a random order.", bind_switch(self.s, "music_shuffle", accent)))
-        cl.addWidget(option_switch_row("Start music when ChatVoice opens", "Starts the first song automatically.", bind_switch(self.s, "music_autoplay", accent)))
+        cl.addWidget(option_switch_row("Start music when CHATDOOM opens", "Starts the first song automatically.", bind_switch(self.s, "music_autoplay", accent)))
         lay.addWidget(c)
 
         # ---------- StreamBeats download library ----------
         c, cl = section_card(
             "Get StreamBeats music",
-            "Browse the official StreamBeats catalog inside ChatVoice. Supported audio and album ZIP downloads are added to your music library automatically.",
+            "Browse the official StreamBeats catalog inside CHATDOOM. Supported audio and album ZIP downloads are added to your music library automatically.",
         )
         cl.addWidget(info_box(
             "StreamBeats publishes its own creator license for its tracks. Review the current terms on the provider's site before using a track. "
-            "ChatVoice downloads files directly from the provider and does not bundle or redistribute its music. "
+            "CHATDOOM downloads files directly from the provider and does not bundle or redistribute its music. "
             "A license does not guarantee that automated copyright systems will never flag a stream; keep the official license page as proof.",
             "License and claims",
         ))
@@ -185,8 +185,8 @@ class MusicPage(FormScrollArea):
         cl.addWidget(self.sound_list)
         cl.addWidget(hrow(browse_sounds, add_sounds, play_sound, stop_sound, self.sound_status))
         cl.addWidget(info_box(
-            "Browse Mixkit's free sound-effects catalog inside ChatVoice, then download eligible effects directly into your soundboard. "
-            "Check the current Mixkit license and the license for each sound before use. ChatVoice does not bundle or redistribute sound files.",
+            "Browse Mixkit's free sound-effects catalog inside CHATDOOM, then download eligible effects directly into your soundboard. "
+            "Check the current Mixkit license and the license for each sound before use. CHATDOOM does not bundle or redistribute sound files.",
             "Sound licenses",
         ))
         lay.addWidget(c)
@@ -222,7 +222,7 @@ class MusicPage(FormScrollArea):
         vol.setValue(int(self.s.get("music_volume")))
         vol.valueChanged.connect(self.player.set_volume)
         cl.addWidget(meter_row("Music volume", "How loud the music is.", vol, lambda v: "%d%%" % v))
-        cl.addWidget(option_switch_row("Lower the music while chat is read aloud", "Fades the music down whenever ChatVoice speaks.",
+        cl.addWidget(option_switch_row("Lower the music while chat is read aloud", "Fades the music down whenever CHATDOOM speaks.",
                                        bind_switch(self.s, "music_duck", accent)))
         duck = QSlider(Qt.Horizontal)
         duck.setRange(5, 80)
@@ -247,7 +247,7 @@ class MusicPage(FormScrollArea):
             "Read each license"))
         cl.addWidget(info_box(
             "No service can guarantee that a copyright-claim system will never make a mistake. Use the provider's authorized download, "
-            "follow its license, and keep a copy of the permission and download details. Do not redistribute music files from ChatVoice.",
+            "follow its license, and keep a copy of the permission and download details. Do not redistribute music files from CHATDOOM.",
             "Stay safe"))
         lay.addWidget(c)
         lay.addStretch(1)
