@@ -1,4 +1,4 @@
-FROM PROJECT FOLDER TO ChatVoice-Setup.exe  -  free, using GitHub (about 15 minutes)
+FROM PROJECT FOLDER TO CHATDOOM-Setup.exe  -  free, using GitHub (about 15 minutes)
 
 You need: a free GitHub account (github.com). You do NOT need Python or any tool on your PC.
 
@@ -16,12 +16,12 @@ A. PUT THE PROJECT ON GITHUB  (easiest way: GitHub Desktop)
 
 B. BUILD
 1. On the repository page open the "Actions" tab. If asked, click "I understand my workflows, go ahead and enable them".
-2. Left side: "Build ChatVoice" > "Run workflow" (green button) > "Run workflow".
+2. Left side: "Build CHATDOOM" > "Run workflow" (green button) > "Run workflow".
 3. Wait 5 to 10 minutes. A green tick means success. A red cross: open it, click the failed step, and send me the red text.
 
 C. DOWNLOAD
-1. Open the finished run. At the bottom, under "Artifacts", click "ChatVoice-Setup". A zip downloads.
-2. Unzip it: inside is ChatVoice-Setup.exe. That is the installer you give to friends.
+1. Open the finished run. At the bottom, under "Artifacts", click "CHATDOOM-Setup". A zip downloads.
+2. Unzip it: inside is CHATDOOM-Setup.exe. That is the installer you give to friends.
 3. Run it. Windows may show "Windows protected your PC": click More info > Run anyway (it is unsigned; a signing certificate costs money).
 
 D. NEXT VERSIONS  (full steps in UPDATING.txt)

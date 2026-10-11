@@ -1,4 +1,4 @@
-ChatVoice (BETA)  -  Phase 5  -  v0.5.0
+CHATDOOM (BETA)  -  Phase 5  -  v0.5.0
 Created by itsmeblitz
 Reads YouTube, Twitch and Kick chat aloud in Hindi / Hinglish / English, with moderation, Discord roles,
 payment alerts from the streamer's own payment page (Razorpay, Stripe, Cashfree or any tool), YouTube message deleting,
@@ -8,13 +8,13 @@ WHAT IS INSIDE
   main.py, app\           the Windows app (Python + PySide6)
   cloud\                  the free Cloudflare server (Discord roles, payment webhook)
   youtube-bot\            the hosted YouTube moderator bot (Node; runs free on Render)
-  assets\                 icon and the Poppins font
+  assets\                 CHATDOOM logo, app icon and the Poppins font
   tests\                  automatic checks (node test.mjs for the cloud, python tests\test_app.py for the app)
   CLOUD-SETUP.txt         one-time cloud + Discord setup (you, once)
   PAYMENTS-SETUP.txt      Razorpay payment page and webhook
   YT-MODERATION-SETUP.txt add the bot to your channel and verify it (streamers) + how it is run
   youtube-bot\README.txt  deploy the bot, free hosting, other hosting options
-  GITHUB-BUILD-GUIDE.txt  turn the project into ChatVoice-Setup.exe, free
+  GITHUB-BUILD-GUIDE.txt  turn the project into CHATDOOM-Setup.exe, free
   UPDATING.txt            publish a new version; users update with one click
   OBS-GUIDE.txt           voice, alerts, chat and now-playing in OBS
   MUSIC-GUIDE.txt         StreamBeats downloads/imports, licenses and OBS music setup
@@ -35,22 +35,22 @@ RUN IT (easiest)
 1. Install Python 3.12 from python.org.
 2. Double-click run.bat   (installs the libraries the first time, then opens the app)
 
-GET A REAL ChatVoice-Setup.exe  (free, no command window when it runs)
+GET A REAL CHATDOOM-Setup.exe  (free, no command window when it runs)
 Your friends only run the finished Setup.exe. They never need Python or any command line.
 Option 1 - build it in the cloud, nothing to install on your PC:
   1. Make a free GitHub account, create a repository, upload everything from this folder.
-  2. Open the "Actions" tab > "Build ChatVoice" > "Run workflow".
-  3. When it finishes (about 5-10 minutes), download "ChatVoice-Setup" from the run page.
+  2. Open the "Actions" tab > "Build CHATDOOM" > "Run workflow".
+  3. When it finishes (about 5-10 minutes), download "CHATDOOM-Setup" from the run page.
   (Public repositories get unlimited free build minutes; private ones get a monthly allowance.)
 Option 2 - build it on your PC: install Python 3.12 and the free Inno Setup 6 (jrsoftware.org),
-  then double-click build.bat. You get installer\ChatVoice-Setup.exe.
+  then double-click build.bat. You get installer\CHATDOOM-Setup.exe.
 
 ABOUT WINDOWS WARNINGS AND GAMES
 - A new unsigned app shows "Windows protected your PC": click "More info" > "Run anyway". Removing this
   needs a paid code-signing certificate; free signing exists only for open-source projects.
 - Some antivirus programs wrongly flag apps made this way. The build keeps the app as a folder (not one
   big file) which reduces this. You can report a false alarm to Microsoft Defender.
-- While running, ChatVoice has no console window, runs at below-normal CPU priority so games and OBS
+- While running, CHATDOOM has no console window, runs at below-normal CPU priority so games and OBS
   always come first, and it does not hook into games.
 
 USING IT
@@ -63,14 +63,14 @@ USING IT
   Needs the one-time cloud setup: see CLOUD-SETUP.txt.
 
 USING IT WITH OBS
-ChatVoice is a normal window that plays sound on your PC. To put the voice on your stream:
-1. Start ChatVoice BEFORE you go live and keep it running (minimised is fine).
-2. In OBS: Sources > + > "Application Audio Capture", pick the ChatVoice window.
+CHATDOOM is a normal window that plays sound on your PC. To put the voice on your stream:
+1. Start CHATDOOM BEFORE you go live and keep it running (minimised is fine).
+2. In OBS: Sources > + > "Application Audio Capture", pick the CHATDOOM window.
    (Needs Windows 10 version 2004+ and OBS 28 or newer. If it is missing, add "Audio Output Capture" instead,
    or just rely on "Desktop Audio".) If you started it with run.bat, the app may show as python.exe.
 3. In the OBS audio mixer you can now raise or lower the voice separately from your game and mic.
 4. USE HEADPHONES. With speakers, your microphone picks the voice up again and viewers hear an echo.
-5. To show the chat on screen: Sources > + > "Window Capture" > ChatVoice, then open its "Live chat" page.
+5. To show the chat on screen: Sources > + > "Window Capture" > CHATDOOM, then open its "Live chat" page.
 
 FILES THE APP KEEPS  (%APPDATA%\ChatVoice)
 settings.json, hinglish_words.txt (add short forms: short=how to say it), blocked_words.txt

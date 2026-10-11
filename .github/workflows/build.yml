@@ -1,4 +1,4 @@
-name: Build ChatVoice
+name: Build CHATDOOM
 on:
   workflow_dispatch:
   push:
@@ -27,7 +27,7 @@ jobs:
           iss = Path("installer.iss")
           text = iss.read_text(encoding="utf-8")
           text = re.sub(r"AppVersion=.*", "AppVersion=%s" % ver, text)
-          text = re.sub(r"AppVerName=ChatVoice .*", "AppVerName=ChatVoice %s BETA" % ver, text)
+          text = re.sub(r"AppVerName=CHATDOOM .*", "AppVerName=CHATDOOM %s BETA" % ver, text)
           text = re.sub(r"VersionInfoVersion=.*", "VersionInfoVersion=%d.%d.%d.%d" % tuple(parts), text)
           iss.write_text(text, encoding="utf-8")
           info = Path("version_info.txt")
@@ -45,9 +45,9 @@ jobs:
       - run: '& "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" installer.iss'
       - uses: actions/upload-artifact@v4
         with:
-          name: ChatVoice-Setup
-          path: installer/ChatVoice-Setup.exe
+          name: CHATDOOM-Setup
+          path: installer/CHATDOOM-Setup.exe
       - uses: softprops/action-gh-release@v2
         if: startsWith(github.ref, 'refs/tags/')
         with:
-          files: installer/ChatVoice-Setup.exe
+          files: installer/CHATDOOM-Setup.exe

@@ -44,8 +44,10 @@ def parse_twitch_line(line):
     author = tags.get("display-name") or m.group("nick")
     bits = tags.get("bits")
     if bits:
-        return Message("twitch", author, text, "super", "%s bits" % bits, mod, tags.get("user-id", ""))
-    return Message("twitch", author, text, "chat", "", mod, tags.get("user-id", ""))
+        return Message("twitch", author, text, "super", "%s bits" % bits, mod, tags.get("user-id", ""),
+                       event_id=tags.get("id", ""))
+    return Message("twitch", author, text, "chat", "", mod, tags.get("user-id", ""),
+                   event_id=tags.get("id", ""))
 
 
 def parse_kick_event(event, raw):
@@ -157,7 +159,8 @@ class YouTubeSource(Source):
                                     getattr(c, "amountString", "") if paid else "",
                                     bool(getattr(a, "isChatModerator", False) or getattr(a, "isChatOwner", False)),
                                     str(getattr(a, "channelId", "") or ""),
-                                    bool(getattr(a, "isChatBot", False))))
+                                    bool(getattr(a, "isChatBot", False)),
+                                    str(getattr(c, "id", "") or getattr(c, "messageId", "") or "")))
                     self.stop_evt.wait(1)
             except Exception as e:
                 if not self.stop_evt.is_set():

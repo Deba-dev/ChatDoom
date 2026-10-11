@@ -1,4 +1,4 @@
-"""ChatVoice main window. Animations only run on interaction, so idle CPU stays near zero."""
+"""CHATDOOM main window. Animations only run on interaction, so idle CPU stays near zero."""
 import html
 import os
 import sys
@@ -33,7 +33,7 @@ from .settings import Settings, data_dir
 from .speech import VOICES, Speaker
 from .theme import DEFAULT_THEME, FX, THEMES, build_qss
 from .updater import Updater
-from .version import CREATOR, STAGE, VERSION, label
+from .version import CREATOR, PRODUCT_NAME, STAGE, VERSION, label
 
 COLORS = {"youtube": "#ff4d4d", "twitch": "#9146ff", "kick": "#53fc18", "test": "#00d4ff", "tip": "#ffd24d"}
 TAGS = {"youtube": "YT", "twitch": "TW", "kick": "KICK", "test": "TEST", "tip": "TIP"}
@@ -409,7 +409,7 @@ class MainWindow(QWidget):
     def __init__(self):
         super().__init__()
         self.setObjectName("root")
-        self.setWindowTitle("ChatVoice (%s) \u2014 by %s" % (STAGE, CREATOR))
+        self.setWindowTitle("%s (%s) \u2014 by %s" % (PRODUCT_NAME, STAGE, CREATOR))
         self.resize(1180, 760)
         self.setMinimumSize(980, 680)
         self.s = Settings()
@@ -511,9 +511,15 @@ class MainWindow(QWidget):
         lay = QVBoxLayout(side)
         lay.setContentsMargins(0, 16, 0, 14)
         lay.setSpacing(2)
-        self.logo = QLabel("ChatVoice")
+        self.logo = QLabel()
         self.logo.setObjectName("logo")
-        self.logo.setContentsMargins(16, 0, 12, 8)
+        self.logo.setAlignment(Qt.AlignCenter)
+        self.logo.setContentsMargins(4, 4, 4, 8)
+        logo = QPixmap(os.path.join(ROOT, "assets", "chatdoom-logo.png"))
+        if not logo.isNull():
+            self.logo.setPixmap(logo.scaled(196, 100, Qt.KeepAspectRatio, Qt.SmoothTransformation))
+        else:
+            self.logo.setText(PRODUCT_NAME)
         lay.addWidget(self.logo)
         self.nav = QButtonGroup(self)
         self.nav.setExclusive(True)
@@ -745,7 +751,7 @@ class MainWindow(QWidget):
         al.setContentsMargins(18, 16, 18, 16)
         title = QLabel("One voice for every chat")
         title.setStyleSheet("font-size:15px; font-weight:650;")
-        body = QLabel("Connect any mix of platforms. ChatVoice speaks the messages you allow, and keeps passwords off this page.")
+        body = QLabel("Connect any mix of platforms. CHATDOOM speaks the messages you allow, and keeps passwords off this page.")
         body.setObjectName("sub")
         body.setWordWrap(True)
         al.addWidget(title)
@@ -1371,7 +1377,6 @@ class MainWindow(QWidget):
         t = THEMES[name]
         self.s.set("theme", name)
         self.setStyleSheet(build_qss(name))
-        self.logo.setText('<span style="color:%s">🎙 Chat</span><span style="color:%s">Voice</span>' % (t["a3"], t["a2"]))
         self.fx.recolor(t["a1"])
         for switch in self.findChildren(Switch):
             switch.set_accent(t["a1"])
@@ -1441,10 +1446,6 @@ class MainWindow(QWidget):
         self._sync_summary()
         if ok:
             self.discord.auto_announce(platform, card.edit.text().strip() if platform == "youtube" else None)
-        elif platform == "youtube" and text == "Disconnected":
-            self.discord.reset_announce()
-        elif not self.connected:
-            self.discord.reset_announce()
         if platform == "youtube":
             if ok and self.ytmod.verified:
                 self.ytmod.refresh_info()
@@ -1493,7 +1494,8 @@ class MainWindow(QWidget):
             msg, note = "", "message hidden: blocked word"
         elif msg and ev.get("currency") == "INR" and float(ev.get("value") or 0) < int(self.s.get("tip_min")):
             msg, note = "", "message not read: below the minimum amount"
-        self.on_message(Message("tip", ev.get("name") or "Someone", msg, "super", ev.get("display", "")))
+        self.on_message(Message("tip", ev.get("name") or "Someone", msg, "super", ev.get("display", ""),
+                               event_id=str(ev.get("id") or "")))
         if note:
             self.feed.append("<span style='color:#5d667d'>%s</span>" % esc(note))
 

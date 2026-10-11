@@ -102,7 +102,7 @@ class OverlayPage(FormScrollArea):
 
         c, cl = section_card("Use a StreamElements overlay",
                              "Already have an overlay in StreamElements? Paste its overlay URL here, then add it to OBS as a separate "
-                             "Browser source. ChatVoice does not import or host this overlay.")
+                             "Browser source. CHATDOOM does not import or host this overlay.")
         self.external_url = QLineEdit(self.s.get("ov_external_url"))
         self.external_url.setPlaceholderText("Paste your StreamElements overlay URL")
         self.external_url.editingFinished.connect(lambda: self.s.set("ov_external_url", self.external_url.text().strip()))
@@ -114,7 +114,7 @@ class OverlayPage(FormScrollArea):
         open_se.clicked.connect(lambda: QDesktopServices.openUrl(QUrl("https://streamelements.com/dashboard/overlays")))
         cl.addWidget(hrow(self.external_url, copy_external))
         cl.addWidget(hrow(open_se))
-        cl.addWidget(info_box("Use ChatVoice's own alerts for payments and Super Chats, and your StreamElements overlay for its own follower, "
+        cl.addWidget(info_box("Use CHATDOOM's own alerts for payments and Super Chats, and your StreamElements overlay for its own follower, "
                               "sub and tip alerts. Add both as separate Browser sources and disable duplicate alert types in one source.",
                               "Using both together"))
         lay.addWidget(c)

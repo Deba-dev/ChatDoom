@@ -87,7 +87,7 @@ class YtModPage(FormScrollArea):
 
         # ---------- step 3: rules ----------
         c, cl = section_card("Step 3 \u2014 What the bot removes",
-                             "Moderators and you are never touched. Start in test mode: ChatVoice only tells you what it WOULD remove.")
+                             "Moderators and you are never touched. Start in test mode: CHATDOOM only tells you what it WOULD remove.")
         for title, note, key in (("Messages with blocked words", "The list on the Moderation page.", "mod_del_blocked"),
                                  ("Messages with links", "Links from viewers who are not moderators.", "mod_del_links"),
                                  ("Spam and repeated messages", "Walls of the same letter, copy-pasted spam.", "mod_del_spam"),
@@ -107,7 +107,7 @@ class YtModPage(FormScrollArea):
         cl.addWidget(self.used)
         lay.addWidget(c)
 
-        lay.addWidget(info_box("ChatVoice reads your chat itself and asks the bot to remove messages, so it only works while ChatVoice is open "
+        lay.addWidget(info_box("CHATDOOM reads your chat itself and asks the bot to remove messages, so it only works while CHATDOOM is open "
                                "and connected to your YouTube live chat. You never sign in to Google.", "How it works"))
         lay.addStretch(1)
 

@@ -82,7 +82,7 @@ class Updater(QObject):
         threading.Thread(target=self._download, args=(info,), daemon=True).start()
 
     def _download(self, info):
-        path = os.path.join(tempfile.gettempdir(), "ChatVoice-Setup-%s.exe" % info["version"])
+        path = os.path.join(tempfile.gettempdir(), "CHATDOOM-Setup-%s.exe" % info["version"])
         try:
             req = urllib.request.Request(info["asset"], headers={"User-Agent": "ChatVoice-updater"})
             sha, done = hashlib.sha256(), 0

@@ -1,20 +1,20 @@
-; Inno Setup script (free) - turns dist\ChatVoice into a normal ChatVoice-Setup.exe
+; Inno Setup script (free) - packages the CHATDOOM desktop app
 [Setup]
 AppId=ChatVoice
-AppName=ChatVoice
+AppName=CHATDOOM
 AppVersion=0.5.0
 AppPublisher=itsmeblitz
 AppCopyright=Created by itsmeblitz
-AppVerName=ChatVoice 0.5.0 BETA
+AppVerName=CHATDOOM 0.5.0 BETA
 VersionInfoVersion=0.5.0.0
 VersionInfoCompany=itsmeblitz
-VersionInfoDescription=ChatVoice (BETA) installer
+VersionInfoDescription=CHATDOOM (BETA) installer
 DefaultDirName={autopf}\ChatVoice
-DefaultGroupName=ChatVoice
+DefaultGroupName=CHATDOOM
 DisableProgramGroupPage=yes
 PrivilegesRequired=lowest
 OutputDir=installer
-OutputBaseFilename=ChatVoice-Setup
+OutputBaseFilename=CHATDOOM-Setup
 SetupIconFile=assets\icon.ico
 UninstallDisplayIcon={app}\ChatVoice.exe
 Compression=lzma2
@@ -28,9 +28,9 @@ Name: "desktopicon"; Description: "Create a desktop shortcut"; Flags: unchecked
 Source: "dist\ChatVoice\*"; DestDir: "{app}"; Flags: recursesubdirs ignoreversion
 
 [Icons]
-Name: "{autoprograms}\ChatVoice"; Filename: "{app}\ChatVoice.exe"
-Name: "{autodesktop}\ChatVoice"; Filename: "{app}\ChatVoice.exe"; Tasks: desktopicon
+Name: "{autoprograms}\CHATDOOM"; Filename: "{app}\ChatVoice.exe"
+Name: "{autodesktop}\CHATDOOM"; Filename: "{app}\ChatVoice.exe"; Tasks: desktopicon
 
 [Run]
-Filename: "{app}\ChatVoice.exe"; Description: "Start ChatVoice"; Flags: nowait postinstall skipifsilent
+Filename: "{app}\ChatVoice.exe"; Description: "Start CHATDOOM"; Flags: nowait postinstall skipifsilent
 Filename: "{app}\ChatVoice.exe"; Flags: nowait; Check: WizardSilent

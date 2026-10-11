@@ -77,7 +77,7 @@ F. CHECK
    Open  https://YOUR-ADDRESS/health  : configured items should say true. It never shows secret values.
    Optional self-test of the cloud code:  node test.mjs
 
-EACH STREAMER  (ChatVoice > Discord page)  -  NOTHING TO COPY, NO CLOUDFLARE LINK, NO KEY
+EACH STREAMER  (CHATDOOM > Discord page)  -  NOTHING TO COPY, NO CLOUDFLARE LINK, NO KEY
 1. Press "Add ChatVoice bot to my server". The browser opens on Discord: choose the server, press Authorize.
    ChatVoice connects by itself (the cloud address is built into the app, and the key comes back automatically).
    The bot asks for: Manage Roles (to give roles), Create Invite (to make the links), View Channels, and Manage Server
@@ -90,7 +90,7 @@ EACH STREAMER  (ChatVoice > Discord page)  -  NOTHING TO COPY, NO CLOUDFLARE LIN
    Whoever joins through a link gets that role within about 2 minutes. Press "Check now" to see the links are working.
 Everything else (manual keys, your own invites, chat-activity roles, link page) is under "Show advanced options".
 
-EACH STREAMER  (ChatVoice > Connect page)
+EACH STREAMER  (CHATDOOM > Connect page)
 1. Paste a YouTube live URL or Twitch channel and press Connect to read chat. Reading still works without signing in.
 2. Press Login on the YouTube or Twitch card and approve the requested permissions in your browser. The connected account
    name appears in ChatVoice. YouTube membership alerts come from live chat; YouTube new-subscriber alerts poll the API
@@ -103,9 +103,9 @@ EACH STREAMER  (ChatVoice > Connect page)
    encrypts its session handle using Windows DPAPI; provider tokens are encrypted in the cloud's D1 database.
 Kick remains read-only because this version has no supported Kick integration.
 OPTIONAL CHAT TRANSLATION (each streamer)
-1. Make sure the app is connected to the ChatVoice cloud from its Discord page. Translation uses this connection; YouTube
+1. Make sure CHATDOOM is connected to the ChatVoice cloud from its Discord page. Translation uses this connection; YouTube
    or Twitch account login is not required.
-2. Open Voice and turn on "Translate chat into English". It is off by default.
+2. Open CHATDOOM's Voice page and turn on "Translate chat into English". It is off by default.
 3. Start or connect to chat as usual. Allowed non-English messages are translated into English before they are spoken.
    English messages do not need translation. If translation fails, ChatVoice shows an error and tries to speak the
    original message.

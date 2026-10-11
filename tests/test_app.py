@@ -89,6 +89,8 @@ from PySide6.QtCore import QUrl
 from PySide6.QtWebEngineCore import QWebEnginePage, QWebEngineProfile
 from PySide6.QtGui import QDesktopServices
 w = MainWindow(); w.show()
+ok(w.windowTitle().startswith("CHATDOOM ") and w.logo.pixmap() is not None and not w.logo.pixmap().isNull(),
+   "app shows the CHATDOOM name and uploaded logo")
 w.s.set("muted", True)
 spoken = []; w.speaker.say = lambda *a: spoken.append(a)
 w.mod.blocked = []
@@ -146,6 +148,8 @@ from app.platform_events import parse_twitch_event
 twitch_bot = parse_twitch_line("@display-name=Nightbot;user-id=123;emotes=25:0-4 :nightbot!nightbot@nightbot.tmi.twitch.tv PRIVMSG #chat :Kappa 😂")
 ok(twitch_bot.author == "Nightbot" and twitch_bot.text == "Kappa 😂" and w.mod.check(twitch_bot)[1] == "bot",
    "Twitch emote names are retained for speech and known bot messages are skipped")
+twitch_bits = parse_twitch_line("@id=paid-123;bits=100;user-id=viewer-1 :viewer!viewer@viewer.tmi.twitch.tv PRIVMSG #chat :cheer100")
+ok(twitch_bits.event_id == "paid-123", "Twitch paid chat preserves its stable event id")
 kick_emote = parse_kick_event("ChatMessageEvent", {"content": "Hi [emote:12:catJAM]", "sender": {"username": "viewer"}})
 ok(kick_emote.text == "Hi catJAM", "Kick custom emotes are read by their names")
 follow_alert = parse_twitch_event({"metadata": {"subscription_type": "channel.follow"}, "payload": {"event": {"user_name": "Follower"}}})
@@ -167,31 +171,47 @@ ok(announcement["body"]["embeds"][0]["thumbnail"]["url"] == "https://i.ytimg.com
    and announcement["body"]["embeds"][0]["description"] == "Come watch https://www.youtube.com/watch?v=abcdefghijk",
    "Discord announcements include a YouTube thumbnail and expand custom link placeholders")
 from app import discord_page as discord_page_module
-old_run_bg, old_post_announcement = discord_page_module.run_bg, discord_page_module.post_live_announcement
+old_run_bg, old_post_announcement, old_post_webhook = (discord_page_module.run_bg,
+                                                         discord_page_module.post_live_announcement,
+                                                         discord_page_module.post_webhook)
 announcement_calls = []
 discord_page_module.run_bg = lambda bridge, tag, fn: announcement_calls.append((tag, fn()))
 discord_page_module.post_live_announcement = lambda *args: {"ok": True}
-w.discord.reset_announce()
+w.s.set("discord_announced_videos", [])
+w.discord._announced_videos.clear()
+w.discord._pending_auto_videos.clear()
 w.discord.hook.setText("https://discord.com/api/webhooks/1/token")
 w.s.set("webhook_url", "https://discord.com/api/webhooks/1/token")
 w.s.set("announce_auto", True)
 w.discord.yt.setText("")
 w.discord.auto_announce("youtube", "https://www.youtube.com/live/abcdefghijk")
 w.discord.on_done(*announcement_calls[-1])
+# Reconnecting to the same live video must not produce another announcement.
 w.discord.auto_announce("youtube", "https://www.youtube.com/live/abcdefghijk")
-ok(len(announcement_calls) == 1 and announcement_calls[0][0] == "ui:hook"
+ok(len(announcement_calls) == 1 and announcement_calls[0][0] == "ui:auto|abcdefghijk"
    and w.s.get("youtube") == "https://www.youtube.com/live/abcdefghijk"
-   and w.discord._announced_video == "abcdefghijk",
-   "automatic Discord announcement uses the connected YouTube live URL once")
+   and w.s.get("discord_announced_videos") == ["abcdefghijk"],
+   "automatic Discord announcement is persisted and sent only once per live video")
 discord_page_module.post_live_announcement = lambda *args: {"error": "Discord webhook unavailable"}
-w.discord.reset_announce()
-w.discord.auto_announce("youtube", "https://www.youtube.com/watch?v=abcdefghijk")
+w.discord.auto_announce("youtube", "https://www.youtube.com/watch?v=lmnopqrstuv")
 w.discord.on_done(*announcement_calls[-1])
-w.discord.auto_announce("youtube", "https://www.youtube.com/watch?v=abcdefghijk")
-ok(len(announcement_calls) == 3 and bool(w.discord._pending_auto_video),
+w.discord.auto_announce("youtube", "https://www.youtube.com/watch?v=lmnopqrstuv")
+ok(len(announcement_calls) == 3 and "lmnopqrstuv" in w.discord._pending_auto_videos,
    "failed automatic announcement can retry on the next YouTube connection")
-discord_page_module.run_bg, discord_page_module.post_live_announcement = old_run_bg, old_post_announcement
-w.discord.reset_announce()
+discord_page_module.post_live_announcement = old_post_announcement
+w.s.set("post_super", True)
+paid_posts = []
+discord_page_module.post_webhook = lambda url, content: paid_posts.append(content) or {"ok": True}
+w.discord.post_paid(Message("twitch", "Viewer", "cheer!", "super", "100 bits", event_id="paid-xyz"))
+w.discord.post_paid(Message("twitch", "Viewer", "cheer!", "super", "100 bits", event_id="paid-xyz"))
+w.discord.post_paid(Message("twitch", "Viewer", "cheer again", "super", "200 bits", event_id="paid-next"))
+ok(len(paid_posts) == 2 and "100 bits" in paid_posts[0] and "200 bits" in paid_posts[1],
+   "each distinct paid event posts immediately, while a duplicate event id is ignored")
+discord_page_module.run_bg, discord_page_module.post_live_announcement, discord_page_module.post_webhook = (
+    old_run_bg, old_post_announcement, old_post_webhook)
+w.discord._paid_event_ids.clear()
+w.discord._paid_event_order.clear()
+w.s.set("post_super", False)
 w.s.set("cloud_url", "http://127.0.0.1:8811"); w.s.set("cloud_token", "KEY")
 w.links.refresh(); wait(500)
 ok(w.links.linked == {"youtube:UC1", "youtube:UC2"}, "linked viewers loaded from the cloud")
@@ -377,12 +397,12 @@ import hashlib, app.updater as upd
 from app.version import VERSION
 ok(upd.parse_version("v0.10.0") > upd.parse_version("0.9.9") and upd.parse_version("v1") == (1, 0, 0) and upd.parse_version("v" + VERSION) == upd.parse_version(VERSION), "version numbers compare correctly (0.10 is newer than 0.9)")
 BLOB = b"MZ-fake-installer-bytes" * 5000
-GH = {"tag": "v9.9.9", "digest": "sha256:" + hashlib.sha256(BLOB).hexdigest(), "asset": "http://127.0.0.1:8813/dl/ChatVoice-Setup.exe"}
+GH = {"tag": "v9.9.9", "digest": "sha256:" + hashlib.sha256(BLOB).hexdigest(), "asset": "http://127.0.0.1:8813/dl/CHATDOOM-Setup.exe"}
 class Gh(BaseHTTPRequestHandler):
     def log_message(self, *a): pass
     def do_GET(self):
         if self.path.endswith("/releases/latest"):
-            b = json.dumps({"tag_name": GH["tag"], "html_url": "https://github.com/Deba-dev/ChatVoice/releases/tag/x", "body": "New things", "assets": [{"name": "ChatVoice-Setup.exe", "browser_download_url": GH["asset"], "digest": GH["digest"]}]}).encode()
+            b = json.dumps({"tag_name": GH["tag"], "html_url": "https://github.com/Deba-dev/ChatVoice/releases/tag/x", "body": "New things", "assets": [{"name": "CHATDOOM-Setup.exe", "browser_download_url": GH["asset"], "digest": GH["digest"]}]}).encode()
         elif self.path.startswith("/dl/"): b = BLOB
         else: self.send_response(404); self.end_headers(); return
         self.send_response(200); self.send_header("Content-Length", str(len(b))); self.end_headers(); self.wfile.write(b)
@@ -393,7 +413,7 @@ ok(w.banner.isVisible() and "9.9.9" in w.banner_text.text() and w.pending_update
 launched, quits = [], []
 w.updater.frozen = False; w.updater.launch = lambda path: launched.append(path); w.updater.quit_now.disconnect(); w.updater.quit_now.connect(lambda: quits.append(1))
 w.upd_btn.setEnabled(True); w._update_now(); wait(1500)
-ok(len(launched) == 1 and launched[0].endswith("ChatVoice-Setup-9.9.9.exe") and open(launched[0], "rb").read() == BLOB and quits == [1], "Update now downloads the installer and starts it without opening GitHub")
+ok(len(launched) == 1 and launched[0].endswith("CHATDOOM-Setup-9.9.9.exe") and open(launched[0], "rb").read() == BLOB and quits == [1], "Update now downloads the installer and starts it without opening GitHub")
 GH["digest"] = "sha256:" + "0" * 64; launched.clear(); w.updater.check(False); wait(700); w.pending_update and w.updater.install(w.pending_update); wait(1500)
 ok(not launched and "did not match" in w.feed.toPlainText(), "corrupted download (wrong checksum) is discarded, not run")
 w.updater.install({"version": "9.9.9", "asset": "http://evil.example/x.exe"}); wait(200)

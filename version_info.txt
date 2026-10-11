@@ -3,12 +3,12 @@ VSVersionInfo(
   kids=[
     StringFileInfo([StringTable('040904B0', [
       StringStruct('CompanyName', 'itsmeblitz'),
-      StringStruct('FileDescription', 'ChatVoice (BETA) - live chat reader and stream tools'),
+      StringStruct('FileDescription', 'CHATDOOM (BETA) - live chat reader and stream tools'),
       StringStruct('FileVersion', '0.5.0.0'),
       StringStruct('InternalName', 'ChatVoice'),
       StringStruct('LegalCopyright', 'Created by itsmeblitz'),
       StringStruct('OriginalFilename', 'ChatVoice.exe'),
-      StringStruct('ProductName', 'ChatVoice'),
+      StringStruct('ProductName', 'CHATDOOM'),
       StringStruct('ProductVersion', '0.5.0 BETA')])]),
     VarFileInfo([VarStruct('Translation', [1033, 1200])])
   ]

@@ -5,6 +5,7 @@ from PySide6.QtGui import QFontDatabase, QIcon
 from PySide6.QtWidgets import QApplication
 
 from app.ui import MainWindow
+from app.version import PRODUCT_NAME
 
 
 def resource(name):
@@ -26,7 +27,7 @@ def lower_priority():
 def main():
     lower_priority()
     app = QApplication(sys.argv)
-    app.setApplicationName("ChatVoice")
+    app.setApplicationName(PRODUCT_NAME)
     app.setStyle("Fusion")
     fonts = resource(os.path.join("assets", "fonts"))
     if os.path.isdir(fonts):                      # bundled Poppins (supports Hindi, English and the rupee sign)

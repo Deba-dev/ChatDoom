@@ -39,7 +39,7 @@ class PaymentsPage(FormScrollArea):
 
         c, cl = section_card(
             "Connect your payment page",
-            "Viewers pay on a page in your own payment account. Your service tells ChatVoice, and ChatVoice reads the name, amount, and message aloud. "
+            "Viewers pay on a page in your own payment account. Your service tells CHATDOOM, and CHATDOOM reads the name, amount, and message aloud. "
             "Complete the Discord page first—payments use the same server connection.",
         )
         self.cfg = {}
@@ -75,7 +75,7 @@ class PaymentsPage(FormScrollArea):
 
         c, cl = section_card(
             "Reading payments aloud",
-            "On your payment page, add two fields labelled Name and Message. ChatVoice finds them by their labels.",
+            "On your payment page, add two fields labelled Name and Message. CHATDOOM finds them by their labels.",
         )
         self.tips_switch = bind_switch(self.s, "tips_on", accent)
         self.tips_switch.toggled.connect(lambda _: self.poller.apply())

@@ -28,6 +28,7 @@ DEFAULTS = {
     "inv_youtube": "", "inv_twitch": "", "inv_kick": "", "inv_role_youtube": "", "inv_role_twitch": "", "inv_role_kick": "",
     "cloud_url": CLOUD_URL, "cloud_token": "", "guild_id": "", "guild_name": "", "webhook_url": "",
     "announce_auto": False, "announce_title": "🔴 LIVE NOW", "announce_text": "I'm live! Come hang out", "post_super": False,
+    "discord_announced_videos": [],
     "pay_gateway": "razorpay", "tip_link": "", "ov_port": 8765, "ov_seconds": 8, "ov_show_message": True, "ov_sound": False, "ov_chat_seconds": 20,
     "ov_alert_style": "neon", "ov_chat_style": "glass", "ov_sound_file": "",
     "ov_alert_tips": True, "ov_alert_superchats": True, "ov_alert_memberships": True,

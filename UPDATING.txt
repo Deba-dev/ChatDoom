@@ -1,6 +1,6 @@
 HOW TO UPDATE THE APP WITH NEW FEATURES
 
-The idea: you publish a new version on GitHub once; every installed ChatVoice shows "A new version is available"
+The idea: you publish a new version on GitHub once; every installed CHATDOOM shows "A new version is available"
 and updates itself with one click. Settings, keys and counters are kept (they live in %APPDATA%\ChatVoice).
 
 A. PUBLISH A NEW VERSION  (you, about 15 minutes, no tools needed)
@@ -18,13 +18,13 @@ A. PUBLISH A NEW VERSION  (you, about 15 minutes, no tools needed)
    - "Choose a tag": type  v0.4.1  (the same number as VERSION, with a v in front) > "Create new tag on publish".
    - Title: anything. Write what is new in the description (installed apps show the first lines).
    - Click "Publish release".
-4. Open the Actions tab: "Build ChatVoice" is running (5-10 minutes). When it turns green, the release has
-   ChatVoice-Setup.exe attached. Done.
+4. Open the Actions tab: "Build CHATDOOM" is running (5-10 minutes). When it turns green, the release has
+   CHATDOOM-Setup.exe attached. Done.
 
 B. WHAT YOUR USERS SEE
 - Within a day (or when they click "Check for updates" in the sidebar) a banner appears: "A new version is available".
-- "Update now" downloads the installer, checks it, installs it quietly and restarts ChatVoice. Nothing to uninstall.
-- They can also just download ChatVoice-Setup.exe from the release page and run it; it installs over the old version.
+- "Update now" downloads the installer, checks it, installs it quietly and restarts CHATDOOM. Nothing to uninstall.
+- They can also just download CHATDOOM-Setup.exe from the release page and run it; it installs over the old version.
 
 C. THE CLOUD PART (Discord, payments) IS SEPARATE
 When the files in the cloud folder change, run this once in that folder:   npx wrangler deploy
