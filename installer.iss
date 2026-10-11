@@ -2,11 +2,11 @@
 [Setup]
 AppId=ChatVoice
 AppName=CHATDOOM
-AppVersion=0.5.0
+AppVersion=1.0.6
 AppPublisher=itsmeblitz
 AppCopyright=Created by itsmeblitz
-AppVerName=CHATDOOM 0.5.0 BETA
-VersionInfoVersion=0.5.0.0
+AppVerName=CHATDOOM 1.0.6 BETA
+VersionInfoVersion=1.0.6.0
 VersionInfoCompany=itsmeblitz
 VersionInfoDescription=CHATDOOM (BETA) installer
 DefaultDirName={autopf}\ChatVoice

@@ -2,7 +2,7 @@ name: Build CHATDOOM
 on:
   workflow_dispatch:
   push:
-    tags: ["v*"]
+    tags: ["v*", "V*"]
 permissions:
   contents: write
 jobs:
@@ -13,13 +13,16 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - name: Write the release tag into the version text
-        if: startsWith(github.ref, 'refs/tags/v')
+      - name: Write the release version into the app
+        if: startsWith(github.ref, 'refs/tags/v') || startsWith(github.ref, 'refs/tags/V')
         shell: python
         run: |
           import os, re
           from pathlib import Path
-          ver = os.environ["GITHUB_REF_NAME"][1:]
+          match = re.fullmatch(r"[vV](\d+(?:\.\d+){0,3})", os.environ["GITHUB_REF_NAME"])
+          if not match:
+              raise SystemExit("Release tag must look like v1.0.7 or V1.0.7")
+          ver = match.group(1)
           parts = [int(x) for x in re.findall(r"\d+", ver)[:4]]
           parts += [0] * (4 - len(parts))
           py = Path("app/version.py")
@@ -48,6 +51,6 @@ jobs:
           name: CHATDOOM-Setup
           path: installer/CHATDOOM-Setup.exe
       - uses: softprops/action-gh-release@v2
-        if: startsWith(github.ref, 'refs/tags/')
+        if: startsWith(github.ref, 'refs/tags/v') || startsWith(github.ref, 'refs/tags/V')
         with:
           files: installer/CHATDOOM-Setup.exe

@@ -15,10 +15,10 @@ A. PUBLISH A NEW VERSION  (you, about 15 minutes, no tools needed)
    For Windows' own labels also change the same number in installer.iss (AppVersion, AppVerName, VersionInfoVersion) and
    version_info.txt. The project I send you already has all of them in step.
 3. On github.com open your repository > "Releases" (right side) > "Draft a new release".
-   - "Choose a tag": type  v0.4.1  (the same number as VERSION, with a v in front) > "Create new tag on publish".
+   - "Choose a tag": type  V1.0.7  (the next version; uppercase V and lowercase v tags are both supported) > "Create new tag on publish".
    - Title: anything. Write what is new in the description (installed apps show the first lines).
    - Click "Publish release".
-4. Open the Actions tab: "Build CHATDOOM" is running (5-10 minutes). When it turns green, the release has
+4. The pushed tag starts "Build CHATDOOM" automatically (5-10 minutes). When it turns green, the release has
    CHATDOOM-Setup.exe attached. Done.
 
 B. WHAT YOUR USERS SEE
