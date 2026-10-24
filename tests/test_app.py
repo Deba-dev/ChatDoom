@@ -1,6 +1,9 @@
-# Run from the project folder:  set APPDATA=%TEMP%\cvtest  &  set QT_QPA_PLATFORM=offscreen  &  set PYTHONPATH=.  &  python tests\test_app.py
-# (use a fresh, empty APPDATA folder each time)
-import os, sys, json, threading, time, urllib.request, urllib.parse
+# Run from the project folder:  set QT_QPA_PLATFORM=offscreen  &  set PYTHONPATH=.  &  python tests\test_app.py
+import os, sys, json, threading, time, urllib.request, urllib.parse, tempfile, atexit, shutil
+_test_appdata = tempfile.mkdtemp(prefix="chatdoom-test-")
+os.environ["APPDATA"] = _test_appdata
+os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+atexit.register(shutil.rmtree, _test_appdata, ignore_errors=True)
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from PySide6.QtWidgets import QApplication, QPushButton
 from PySide6.QtCore import QTimer, QEventLoop
@@ -91,8 +94,16 @@ from PySide6.QtGui import QDesktopServices
 w = MainWindow(); w.show()
 ok(w.windowTitle().startswith("CHATDOOM ") and w.logo.pixmap() is not None and not w.logo.pixmap().isNull(),
    "app shows the CHATDOOM name and uploaded logo")
-w.s.set("muted", True)
+w.mute_btn.setChecked(True)
+ok(w.s.get("muted") and w.mute_btn.text() == "Unmute", "muted voice has a clear Unmute control")
 spoken = []; w.speaker.say = lambda *a: spoken.append(a)
+w.test_voice()
+ok(not spoken and "Click Unmute" in w.feed.toPlainText(), "test voice explains when reading is muted")
+w.mute_btn.setChecked(False)
+ok(not w.s.get("muted") and w.mute_btn.text() == "Mute", "unmuting restores chat reading")
+w.on_message(Message("test", "Test", "speech routing works"))
+ok(spoken == [("Test", "speech routing works", "")], "an allowed incoming chat message reaches the voice queue")
+w.mute_btn.setChecked(True)
 w.mod.blocked = []
 profile = QWebEngineProfile()
 catalog_page = _CatalogPage(profile)
@@ -505,7 +516,7 @@ w.s.set("cloud_token", "KEY"); d.refresh_state()
 
 # ===== K. music =====
 print("--- K. music ---")
-import tempfile, shutil, zipfile
+import zipfile
 from PySide6.QtCore import QObject, Signal
 from app.music import MusicPlayer, describe, import_downloads, scan
 class FakeBackend(QObject):
@@ -577,3 +588,4 @@ w.goto(8); wait(300); w.grab().save(os.path.join(os.environ["APPDATA"], "music.p
 ok(len([b for b in w.findChildren(__import__("PySide6.QtWidgets", fromlist=["QPushButton"]).QPushButton) if b.objectName() == "nav"]) == 9 and w.nav.button(8).text().strip() == "Music" and not w.nav.button(8).icon().isNull(), "sidebar has all 9 pages, each with a drawn icon (Music included)")
 print("\nALL PASSED" if not fails else "\n%d FAILED" % fails)
 w.close()
+shutil.rmtree(os.environ["APPDATA"], ignore_errors=True)

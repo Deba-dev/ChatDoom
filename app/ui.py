@@ -668,11 +668,11 @@ class MainWindow(QWidget):
         self.blurb.setWordWrap(True)
         left.addWidget(self.blurb)
         lay.addLayout(left, 1)
-        self.mute_btn = QPushButton("Mute")
+        self.mute_btn = QPushButton()
         self.mute_btn.setObjectName("quiet")
         self.mute_btn.setCheckable(True)
         self.mute_btn.setChecked(bool(self.s.get("muted")))
-        self.mute_btn.setToolTip("Silence the voice and clear the queue")
+        self._update_mute_button(self.s.get("muted"))
         self.mute_btn.setCursor(Qt.PointingHandCursor)
         self.mute_btn.toggled.connect(self._mute)
         skip = QPushButton("Skip")
@@ -1423,8 +1423,18 @@ class MainWindow(QWidget):
 
     def _mute(self, v):
         self.s.set("muted", v)
+        self._update_mute_button(v)
         if v:
             self.speaker.clear()
+            self.feed.append("<span style='color:#ffb020'>Voice reading muted. Click Unmute to resume.</span>")
+        else:
+            self.feed.append("<span style='color:#7cf0c0'>Voice reading resumed.</span>")
+
+    def _update_mute_button(self, muted):
+        self.mute_btn.setText("Unmute" if muted else "Mute")
+        self.mute_btn.setToolTip(
+            "Voice is muted. Click to resume reading chat." if muted
+            else "Mute voice reading and clear the queue")
 
     def _save_blocked(self):
         try:
@@ -1500,6 +1510,9 @@ class MainWindow(QWidget):
             self.feed.append("<span style='color:#5d667d'>%s</span>" % esc(note))
 
     def test_voice(self):
+        if self.s.get("muted"):
+            self.feed.append("<span style='color:#ffb020'>Voice is muted. Click Unmute before testing speech.</span>")
+            return
         for m in (Message("test", "Test", "bhai kya krra hoga, nhi pta yr, bht mast stream h lol"),
                   Message("test", "Test", "नमस्ते दोस्तों, चैट रीडर चालू है।")):
             self.on_message(m)
