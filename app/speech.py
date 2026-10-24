@@ -44,10 +44,12 @@ class Speaker(QObject):
         self.tts = None
         self.current_file = None
         self.current_spoken = ""
+        self._windows_fallback = False
+        self._tts_started = False
         self._generated.connect(self._on_generated)
         self.watchdog = QTimer(self)
         self.watchdog.setSingleShot(True)
-        self.watchdog.timeout.connect(self.skip)
+        self.watchdog.timeout.connect(self._on_watchdog)
 
     # ----- public -----
     def say(self, author, text, amount=""):
@@ -95,9 +97,10 @@ class Speaker(QObject):
         self.busy = True
         self.busy_changed.emit(True)
         self.token += 1
+        self._windows_fallback = False
+        self.current_spoken = self._format_spoken(author, text, amount)
         self.watchdog.start(45000)
         if self.s.get("engine") != "neural" and not translate:
-            self.current_spoken = self._format_spoken(author, text, amount)
             return self._speak_windows(self.current_spoken)
         threading.Thread(target=self._generate, args=(self.token, author, text, amount, translate),
                          daemon=True).start()
@@ -139,24 +142,55 @@ class Speaker(QObject):
                 self._remove(path)
             return
         self.current_spoken = spoken
-        if err or not path:
+        if not path:
             if err:
-                self.note.emit("Neural voice unavailable (%s) - using Windows voice" % err)
+                return self._fallback_to_windows("Neural voice unavailable (%s)" % err)
             return self._speak_windows(self.current_spoken)
         if self.player is None:
             self.player = QMediaPlayer(self)
             self.audio = QAudioOutput(self)
             self.player.setAudioOutput(self.audio)
             self.player.mediaStatusChanged.connect(self._on_status)
-            self.player.errorOccurred.connect(lambda *a: self._finish())
+            self.player.errorOccurred.connect(self._on_player_error)
         self.audio.setVolume(self.s.get("volume") / 100.0)
         self.current_file = path
-        self.player.setSource(QUrl.fromLocalFile(path))
-        self.player.play()
+        try:
+            self.player.setSource(QUrl.fromLocalFile(path))
+            self.player.play()
+        except Exception as error:
+            self._fallback_to_windows("Neural audio playback failed (%s)" % str(error)[:80])
 
     def _on_status(self, status):
-        if status in (QMediaPlayer.MediaStatus.EndOfMedia, QMediaPlayer.MediaStatus.InvalidMedia):
+        if status == QMediaPlayer.MediaStatus.EndOfMedia:
             self._finish()
+        elif status == QMediaPlayer.MediaStatus.InvalidMedia and self.current_file:
+            self._fallback_to_windows("Neural audio could not be played")
+
+    def _on_player_error(self, error, error_string):
+        if self.current_file:
+            detail = error_string or self.player.errorString()
+            self._fallback_to_windows("Neural audio playback failed (%s)" % (detail or error))
+
+    def _fallback_to_windows(self, reason):
+        if not self.busy or self._windows_fallback:
+            return
+        self._windows_fallback = True
+        self.note.emit("%s - using Windows voice" % reason)
+        path = self.current_file
+        self.current_file = None
+        if self.player:
+            self.player.stop()
+            self.player.setSource(QUrl())
+        if path:
+            self._remove(path)
+        self.watchdog.start(45000)
+        self._speak_windows(self.current_spoken)
+
+    def _on_watchdog(self):
+        if self.s.get("engine") == "neural" and not self._windows_fallback:
+            self.token += 1
+            return self._fallback_to_windows("Neural voice timed out")
+        self.skip()
 
     def _speak_windows(self, spoken):
         if QTextToSpeech is None:
@@ -181,7 +215,11 @@ class Speaker(QObject):
     def _on_tts_state(self, state):
         if state == QTextToSpeech.State.Speaking:
             self._tts_started = True
-        elif state in (QTextToSpeech.State.Ready, QTextToSpeech.State.Error) and getattr(self, "_tts_started", False):
+        elif state == QTextToSpeech.State.Error:
+            self._tts_started = False
+            self.note.emit("Windows voice playback failed")
+            self._finish()
+        elif state == QTextToSpeech.State.Ready and self._tts_started:
             self._tts_started = False
             self._finish()
 
