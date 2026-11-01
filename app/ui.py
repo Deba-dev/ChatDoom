@@ -5,14 +5,16 @@ import sys
 import time
 import urllib.parse
 
-from PySide6.QtCore import Property, QEasingCurve, QEvent, QParallelAnimationGroup, QPropertyAnimation, QSize, Qt, QTimer, QUrl
+from PySide6.QtCore import Property, QEasingCurve, QEvent, QParallelAnimationGroup, QPoint, QPropertyAnimation, QSize, Qt, QTimer, QUrl
 from PySide6.QtGui import QColor, QDesktopServices, QFont, QFontDatabase, QIcon, QPainter, QPalette, QPen, QPixmap, QTextBlockFormat, QTextCursor, QTextOption
 from PySide6.QtWidgets import (QApplication, QButtonGroup, QCheckBox, QColorDialog, QComboBox, QDialog, QDialogButtonBox, QFrame, QGraphicsDropShadowEffect, QGraphicsOpacityEffect, QGridLayout, QHBoxLayout,
                                QLabel, QLineEdit, QPlainTextEdit, QPushButton, QScrollArea, QSlider, QSpinBox, QStackedWidget,
                                QTextEdit, QVBoxLayout, QWidget)
 
 from . import hinglish
-from .discord import Bridge, Cloud, LinkManager
+from .commands import PLATFORM_NAMES, Commands
+from .commands_page import CommandsPage
+from .discord import Bridge, Cloud, LinkManager, post_webhook, run_bg
 from .discord_page import DiscordPage
 from .overlay import Overlay
 from .overlay_ui import OverlayPage
@@ -20,6 +22,7 @@ from .platform_events import TwitchEventSub
 from .payments import TipPoller
 from .payments_page import PaymentsPage
 from .platform_auth import PlatformAuth
+from .hotkeys import Hotkeys
 from .icons import nav_icon
 from .music import MusicPlayer
 from .music_page import MusicPage
@@ -27,18 +30,23 @@ from .ytmod import YtModerator
 from .ytmod_page import YtModPage
 from PySide6.QtCore import QSize
 from .models import Message
-from .moderation import Moderator
-from .platforms import Hub, KickSource, TwitchSource, YouTubeSource
+from .moderation import KNOWN_BOTS, Moderator
+from .platforms import SOURCES, Hub, KickSource, TwitchSource, YouTubeSource
 from .settings import Settings, data_dir
 from .speech import VOICES, Speaker
 from .theme import DEFAULT_THEME, FX, THEMES, build_qss
+from .tools import Tools
+from .tools_page import ToolsPage
+from .visuals import BACKGROUNDS, Backdrop, NavIndicator, Toasts, count_to
 from .updater import Updater
 from .version import CREATOR, PRODUCT_NAME, STAGE, VERSION, label
 
 COLORS = {"youtube": "#ff4d4d", "twitch": "#9146ff", "kick": "#53fc18", "test": "#00d4ff", "tip": "#ffd24d"}
 TAGS = {"youtube": "YT", "twitch": "TW", "kick": "KICK", "test": "TEST", "tip": "TIP"}
-PAGES = ("Connect", "Live chat", "Voice", "Moderation", "Discord", "Payments", "YouTube mod", "OBS overlays", "Music")
-NAV_MARK = ("◎", "☰", "♫", "⌗", "◈", "₹", "▶", "▣", "♪")
+PAGES = ("Connect", "Live chat", "Voice", "Moderation", "Discord", "Payments", "YouTube mod", "OBS overlays", "Music", "Commands", "Stream tools")
+NAV_MARK = ("◎", "☰", "♫", "⌗", "◈", "₹", "▶", "▣", "♪", "!", "≡")
+STREAM_END_GRACE = 180000          # ms with no stream connected before the stream counts as over (reconnects are not an end)
+MAX_EXTRA_STREAMS = 8
 PAGE_BLURB = (
     "Connect your streaming platforms and manage live chat from one place.",
     "Messages that will be read aloud, and the ones moderation skipped.",
@@ -49,6 +57,8 @@ PAGE_BLURB = (
     "Add the CHATDOOM bot to your channel and keep your chat clean.",
     "Browser sources for alerts, chat and the song playing, or your StreamElements overlay.",
     "Play no-copyright music on stream, quieter while your chat is read aloud.",
+    "Your own !commands, and memes viewers play from chat.",
+    "Points, polls, giveaways, counters, timers, song requests, hotkeys and your stream summary.",
 )
 MARKS = {"youtube": ("YT", "#ff4d4d"), "twitch": ("TW", "#9146ff"), "kick": ("KK", "#53fc18")}
 CHAT_FONTS = ("Poppins", "Arial", "Segoe UI", "Calibri", "Verdana", "Tahoma", "Consolas", "Cascadia Mono", "Inter", "Roboto", "DM Sans", "Space Grotesk", "JetBrains Mono")
@@ -372,37 +382,130 @@ class PlatformCard(QFrame):
             self.source.start(*self.args())
 
     def _show(self, text, ok):
-        self.status.setText("●  " + text)
-        if ok:
-            kind = "pillOn"
-        elif "..." in text:
-            kind = "pillWait"
-        elif text in ("Not connected", "Disconnected", "Offline"):
-            kind = "pill"
-            self.status.setText("●  Offline")
-        else:
-            kind = "pillBad"
-        self.status.setObjectName(kind)
-        self.status.style().unpolish(self.status)
-        self.status.style().polish(self.status)
-        if self.source.running and "..." in text:
-            self.btn.setText("Connecting...")
-            role = "primary"
-        elif self.source.running:
-            self.btn.setText("Disconnect")
-            role = "stop"
-        elif kind == "pillBad":
-            self.btn.setText("Retry")
-            role = "primary"
-        else:
-            self.btn.setText("Connect")
-            role = "primary"
-        self.btn.setObjectName(role)
-        self.btn.style().unpolish(self.btn)
-        self.btn.style().polish(self.btn)
+        paint_status(self.status, self.btn, self.source.running, text, ok)
 
     def set_status(self, text, ok):
         self._show(text, ok)
+
+
+def paint_status(status, btn, running, text, ok):
+    """Status pill and Connect / Disconnect / Retry button of a stream card."""
+    status.setText("●  " + text)
+    if ok:
+        kind = "pillOn"
+    elif "..." in text:
+        kind = "pillWait"
+    elif text in ("Not connected", "Disconnected", "Offline"):
+        kind = "pill"
+        status.setText("●  Offline")
+    else:
+        kind = "pillBad"
+    status.setObjectName(kind)
+    status.style().unpolish(status)
+    status.style().polish(status)
+    if running and "..." in text:
+        btn.setText("Connecting...")
+        role = "primary"
+    elif running:
+        btn.setText("Disconnect")
+        role = "stop"
+    elif kind == "pillBad":
+        btn.setText("Retry")
+        role = "primary"
+    else:
+        btn.setText("Connect")
+        role = "primary"
+    btn.setObjectName(role)
+    btn.style().unpolish(btn)
+    btn.style().polish(btn)
+
+
+class ExtraStreamCard(QFrame):
+    """An added chat stream (any platform, its own reader), so two YouTube or Twitch chats can be read together."""
+
+    PLACEHOLDERS = {"youtube": "Paste a live link or video ID", "twitch": "Channel name", "kick": "Channel name"}
+
+    def __init__(self, hub, data, on_change, on_remove):
+        super().__init__()
+        self.setObjectName("tile")
+        self.hub, self.on_change = hub, on_change
+        self.id = int(data["id"])
+        self.key = "extra:%d" % self.id
+        self.source = None
+        lay = QVBoxLayout(self)
+        lay.setContentsMargins(18, 16, 18, 16)
+        lay.setSpacing(10)
+        head = QHBoxLayout()
+        head.setSpacing(10)
+        self.mark = QLabel()
+        self.mark.setAlignment(Qt.AlignCenter)
+        self.mark.setFixedSize(36, 36)
+        head.addWidget(self.mark)
+        self.platform_box = QComboBox()
+        for name, key in (("YouTube Live", "youtube"), ("Twitch", "twitch"), ("Kick", "kick")):
+            self.platform_box.addItem(name, key)
+        head.addWidget(self.platform_box, 1)
+        self.status = QLabel("●  Offline")
+        self.status.setObjectName("pill")
+        head.addWidget(self.status, 0, Qt.AlignVCenter)
+        remove = QPushButton("Remove")
+        remove.setObjectName("quiet")
+        remove.setCursor(Qt.PointingHandCursor)
+        remove.clicked.connect(lambda: on_remove(self))
+        head.addWidget(remove)
+        lay.addLayout(head)
+        self.edit = QLineEdit(data.get("target", ""))
+        lay.addWidget(self.edit)
+        self.room = QLineEdit(data.get("room", ""))
+        self.room.setObjectName("optional")
+        self.room.setPlaceholderText("Kick chatroom ID, only if the name lookup fails")
+        lay.addWidget(self.room)
+        self.label = QLineEdit(data.get("label", ""))
+        self.label.setObjectName("optional")
+        self.label.setMaxLength(16)
+        self.label.setPlaceholderText("Short name in the chat feed (optional), like Vertical")
+        lay.addWidget(self.label)
+        self.btn = QPushButton("Connect")
+        self.btn.setObjectName("primary")
+        self.btn.setCursor(Qt.PointingHandCursor)
+        lay.addWidget(self.btn, 0, Qt.AlignLeft)
+        self.btn.clicked.connect(self.toggle)
+        self.edit.returnPressed.connect(self.toggle)
+        for field in (self.edit, self.room, self.label):
+            field.editingFinished.connect(self.on_change)
+        self.platform_box.setCurrentIndex(max(0, self.platform_box.findData(data.get("platform"))))
+        self.platform_box.currentIndexChanged.connect(lambda _: (self._use_platform(), self.on_change()))
+        self._use_platform()
+
+    def platform(self):
+        return self.platform_box.currentData()
+
+    def _use_platform(self):
+        p = self.platform()
+        self.source = SOURCES[p](self.hub, self.key)
+        letter, color = MARKS[p]
+        self.mark.setText(letter)
+        self.mark.setStyleSheet("background:%s; color:#0b0b10; font-weight:700; font-size:12px; border-radius:10px;" % color)
+        self.edit.setPlaceholderText(self.PLACEHOLDERS[p])
+        self.room.setVisible(p == "kick")
+
+    def data(self):
+        return {"id": self.id, "platform": self.platform(), "target": self.edit.text().strip(),
+                "room": self.room.text().strip(), "label": self.label.text().strip()}
+
+    def toggle(self):
+        if self.source.running:
+            self.source.stop()
+            self.set_status("Stopping...", False)
+        else:
+            self.on_change()
+            d = self.data()
+            self.source.start(*((d["target"], d["room"]) if d["platform"] == "kick" else (d["target"],)))
+            self.platform_box.setEnabled(False)
+
+    def set_status(self, text, ok):
+        paint_status(self.status, self.btn, self.source.running, text, ok)
+        self.platform_box.setEnabled(not self.source.running)
 
 
 class MainWindow(QWidget):
@@ -420,7 +523,10 @@ class MainWindow(QWidget):
         hinglish.load_words(self.words_path)
         hinglish.on_unknown = self._unknown_word
         self.mod = Moderator(self.s, self.blocked_path)
+        self.memes_dir = os.path.join(data_dir(), "Memes")
+        self.commands = Commands(self.s, self.memes_dir)
         self.connected = set()
+        self.extra_cards = {}
         self._anims = []
         self._anim_targets = []
         self.fx = FX()
@@ -440,14 +546,20 @@ class MainWindow(QWidget):
         self.payments = PaymentsPage(self.s, self.cloud, self.bridge, self.poller)
         self.ytmod = YtModerator(self.s, self.bridge)
         self.ytpage = YtModPage(self.s, self.ytmod)
-        self.yt_beat = QTimer(self)                       # keeps the free-hosted bot awake while you stream on YouTube
+        self.yt_beat = QTimer(self)                       # refreshes the bot's status while you stream on YouTube
         self.yt_beat.timeout.connect(self.ytmod.refresh_info)
         self.overlay = Overlay(self.s, os.path.join(ROOT, "assets", "fonts"), self._overlay_cfg,
-                               os.path.join(data_dir(), "Soundboard"))
+                               os.path.join(data_dir(), "Soundboard"), self.memes_dir)
         self.overlay.start()
         self.ovpage = OverlayPage(self.s, self.overlay)
         self.music = MusicPlayer(self.s, self.overlay.push)
         self.musicpage = MusicPage(self.s, self.music, self.overlay)
+        self.cmdpage = CommandsPage(self.s, self.commands, self._test_command)
+        self.tools = Tools(self.s, data_dir(), self.music)
+        self.commands.points = self.tools.points
+        self.toolspage = ToolsPage(self.s, self.tools, self)
+        self.hotkeys = Hotkeys()
+        self._hotkeys_applied = False
         self.updater = Updater(self.s)
         self.pending_update = None
 
@@ -455,8 +567,10 @@ class MainWindow(QWidget):
         root.setContentsMargins(0, 0, 0, 0)
         root.setSpacing(0)
         root.addWidget(self._build_sidebar())
-        canvas = QWidget()
+        canvas = Backdrop(self.s, THEMES.get(self.s.get("theme"), THEMES[DEFAULT_THEME]))
         canvas.setObjectName("canvas")
+        self.canvas = canvas
+        self.toasts = Toasts(canvas, self.s)
         right = QVBoxLayout(canvas)
         right.setContentsMargins(28, 18, 28, 18)
         right.setSpacing(14)
@@ -464,7 +578,7 @@ class MainWindow(QWidget):
         self.banner = self._build_banner()
         right.addWidget(self.banner)
         self.stack = QStackedWidget()
-        for page in (self._page_connect(), self._page_feed(), self._page_voice(), self._page_mod(), self.discord, self.payments, self.ytpage, self.ovpage, self.musicpage):
+        for page in (self._page_connect(), self._page_feed(), self._page_voice(), self._page_mod(), self.discord, self.payments, self.ytpage, self.ovpage, self.musicpage, self.cmdpage, self.toolspage):
             self.stack.addWidget(page)
         right.addWidget(self.stack, 1)
         root.addWidget(canvas, 1)
@@ -482,6 +596,15 @@ class MainWindow(QWidget):
         self.links.notice.connect(lambda t: self.feed.append("<span style='color:#7c9cff'>Discord: %s</span>" % esc(t)))
         self.sync = QTimer(self)                      # report activity to Discord once a minute
         self.sync.timeout.connect(self.links.save)
+        self.sync.timeout.connect(self.tools.save)
+        self.tick = QTimer(self)                      # stream tools: poll end, timers, points bonus (cheap, once a second)
+        self.tick.timeout.connect(self._tools_tick)
+        self.tick.start(1000)
+        self._last_points_tick = self._last_timer_tick = time.time()
+        self.stream_end = QTimer(self)
+        self.stream_end.setSingleShot(True)
+        self.stream_end.timeout.connect(self._stream_over)
+        self.music.changed.connect(lambda: self.toolspage.refresh_live() if self.stack.currentWidget() is self.toolspage else None)
         self.sync.start(60000)
         self.relink = QTimer(self)                    # refresh the list of linked viewers every 5 minutes
         self.relink.timeout.connect(self.links.refresh)
@@ -502,6 +625,7 @@ class MainWindow(QWidget):
         QTimer.singleShot(6000, self._auto_update)
         self.apply_theme(self.s.get("theme"))
         self.goto(0)
+        self.tools_changed()
 
     # ---------- layout ----------
     def _build_sidebar(self):
@@ -523,7 +647,7 @@ class MainWindow(QWidget):
         lay.addWidget(self.logo)
         self.nav = QButtonGroup(self)
         self.nav.setExclusive(True)
-        groups = (("Workspace", (0, 1, 2, 8)), ("Tools", (3, 4, 5, 6, 7)))
+        groups = (("Workspace", (0, 1, 2, 8)), ("Tools", (3, 9, 10, 4, 5, 6, 7)))
         for title, indexes in groups:
             g = QLabel(title.upper())
             g.setObjectName("group")
@@ -538,6 +662,7 @@ class MainWindow(QWidget):
                 self.nav.addButton(b, i)
                 lay.addWidget(b)
         self.nav.idClicked.connect(self.goto)
+        self.nav_glow = NavIndicator(side, self.s)
         lay.addStretch(1)
         box = QWidget()
         bl = QVBoxLayout(box)
@@ -551,6 +676,13 @@ class MainWindow(QWidget):
         theme.setCurrentText(self.s.get("theme") if self.s.get("theme") in THEMES else DEFAULT_THEME)
         theme.currentTextChanged.connect(self.apply_theme)
         bl.addWidget(theme)
+        backdrop = QComboBox()
+        for text, value in BACKGROUNDS:
+            backdrop.addItem(text, value)
+        backdrop.setCurrentIndex(max(0, backdrop.findData(self.s.get("background"))))
+        backdrop.setToolTip("Background behind the pages. The aurora moves only while CHATDOOM is the active window.")
+        backdrop.currentIndexChanged.connect(lambda _: (self.s.set("background", backdrop.currentData()), self.canvas.sync()))
+        bl.addWidget(backdrop)
         lite = QCheckBox("Lite mode")
         lite.setToolTip("Turns off fade and hover motion. Use it on slow PCs or while gaming.")
         lite.setChecked(bool(self.s.get("lite_mode")))
@@ -629,6 +761,7 @@ class MainWindow(QWidget):
         return {"colors": {"a1": t["a1"], "a2": t["a2"], "a3": t["a3"]}, "sound": bool(self.s.get("ov_sound")) and not sound_url,
                 "seconds": int(self.s.get("ov_seconds")), "showMessage": bool(self.s.get("ov_show_message")),
                 "chatSeconds": int(self.s.get("ov_chat_seconds")), "maxLines": 8,
+                "memeSeconds": int(self.s.get("meme_seconds")),
                 "soundUrl": sound_url,
                 "alertStyle": self.s.get("ov_alert_style"), "chatStyle": self.s.get("ov_chat_style"),
                 "showTips": bool(self.s.get("ov_alert_tips")),
@@ -704,9 +837,11 @@ class MainWindow(QWidget):
         return chip, num
 
     def _sync_summary(self):
+        total = len(self.cards) + len(self.extra_cards)
         on = len(self.connected)
-        self.num_on.setText(str(on))
-        self.num_off.setText(str(3 - on))
+        count_to(self.num_total, total, self.s, self)
+        count_to(self.num_on, on, self.s, self)
+        count_to(self.num_off, max(0, total - on), self.s, self)
 
     def _page_connect(self):
         page = QWidget()
@@ -722,7 +857,7 @@ class MainWindow(QWidget):
         lay.setSpacing(14)
         stats = QHBoxLayout()
         stats.setSpacing(10)
-        platforms, _ = self._stat("3", "Platforms")
+        platforms, self.num_total = self._stat("3", "Streams")
         connected, self.num_on = self._stat("0", "Connected")
         offline, self.num_off = self._stat("3", "Offline")
         for chip in (platforms, connected, offline):
@@ -749,22 +884,83 @@ class MainWindow(QWidget):
         aside.setObjectName("aside")
         al = QVBoxLayout(aside)
         al.setContentsMargins(18, 16, 18, 16)
-        title = QLabel("One voice for every chat")
+        title = QLabel("Multi-stream")
         title.setStyleSheet("font-size:15px; font-weight:650;")
-        body = QLabel("Connect any mix of platforms. CHATDOOM speaks the messages you allow, and keeps passwords off this page.")
+        body = QLabel("Read more chats at the same time: a second YouTube live (like your vertical stream), another Twitch "
+                      "channel or more Kick channels. They all share the voice, moderation, commands and overlays.")
         body.setObjectName("sub")
         body.setWordWrap(True)
         al.addWidget(title)
         al.addWidget(body)
         al.addStretch(1)
+        self.add_stream_btn = QPushButton("Add stream")
+        self.add_stream_btn.setObjectName("primary")
+        self.add_stream_btn.setCursor(Qt.PointingHandCursor)
+        self.add_stream_btn.clicked.connect(lambda: self._add_stream())
+        al.addWidget(self.add_stream_btn, 0, Qt.AlignLeft)
         grid.addWidget(aside, 1, 1)
         grid.setColumnStretch(0, 1)
         grid.setColumnStretch(1, 1)
         lay.addLayout(grid)
+        self.extra_grid = QGridLayout()
+        self.extra_grid.setSpacing(12)
+        self.extra_grid.setColumnStretch(0, 1)
+        self.extra_grid.setColumnStretch(1, 1)
+        lay.addLayout(self.extra_grid)
         lay.addStretch(1)
+        for d in self.s.get("extra_streams") or []:
+            if isinstance(d, dict) and d.get("platform") in SOURCES and str(d.get("id", "")).isdigit():
+                self._add_stream(d, save=False)
         scroll.setWidget(inner)
         outer.addWidget(scroll)
         return page
+
+    # ---------- added streams ----------
+    def _add_stream(self, data=None, save=True):
+        if len(self.extra_cards) >= MAX_EXTRA_STREAMS:
+            return None
+        if data is None:
+            data = {"id": max([c.id for c in self.extra_cards.values()] + [1]) + 1, "platform": "youtube"}
+        card = ExtraStreamCard(self.hub, data, self._save_streams, self._remove_stream)
+        self.extra_cards[card.key] = card
+        self._layout_streams()
+        if save:
+            self._save_streams()
+        return card
+
+    def _remove_stream(self, card):
+        card.source.stop()
+        self.extra_cards.pop(card.key, None)
+        self.connected.discard(card.key)
+        card.setParent(None)
+        card.deleteLater()
+        self._layout_streams()
+        self._save_streams()
+        self._update_live()
+
+    def _layout_streams(self):
+        while self.extra_grid.count():
+            self.extra_grid.takeAt(0)
+        for i, card in enumerate(self.extra_cards.values()):
+            self.extra_grid.addWidget(card, i // 2, i % 2)
+        self.add_stream_btn.setEnabled(len(self.extra_cards) < MAX_EXTRA_STREAMS)
+        self.add_stream_btn.setText("Add stream" if len(self.extra_cards) < MAX_EXTRA_STREAMS else "Stream limit reached")
+        self._sync_summary()
+
+    def _save_streams(self):
+        self.s.set("extra_streams", [c.data() for c in self.extra_cards.values()])
+
+    def _tag(self, m):
+        """Feed tag: YT / TW / KICK for the main streams, and YT2, TW·Vertical ... for added ones."""
+        tag = TAGS.get(m.platform, "?")
+        card = self.extra_cards.get(m.stream)
+        if card is None:
+            return tag
+        label = card.label.text().strip()
+        if label:
+            return "%s·%s" % (tag, label)
+        same = [c for c in self.extra_cards.values() if c.platform() == card.platform()]
+        return "%s%d" % (tag, same.index(card) + 2)
 
     def _page_feed(self):
         page = QWidget()
@@ -1380,10 +1576,13 @@ class MainWindow(QWidget):
         self.fx.recolor(t["a1"])
         for switch in self.findChildren(Switch):
             switch.set_accent(t["a1"])
+        if hasattr(self, "canvas"):
+            self.canvas.set_theme(t)
 
     def _lite(self, on):
         self.s.set("lite_mode", on)
         self.fx.set_enabled(not on)
+        self.canvas.sync()
         if on:
             self.pulse.stop()
             self.live_fx.setOpacity(1.0)
@@ -1404,6 +1603,9 @@ class MainWindow(QWidget):
         self.blurb.setText(PAGE_BLURB[i])
         page = self.stack.widget(i)
         self.stack.setCurrentIndex(i)
+        self.nav_glow.move_to(self.nav.button(i))
+        if page is self.toolspage:
+            self.toolspage.refresh()
         if self.s.get("lite_mode"):
             return
         group = QParallelAnimationGroup(self)
@@ -1412,11 +1614,17 @@ class MainWindow(QWidget):
         fx.setOpacity(0.0)
         page.setGraphicsEffect(fx)
         a = QPropertyAnimation(fx, b"opacity")
-        a.setDuration(160)
+        a.setDuration(220)
         a.setStartValue(0.0)
         a.setEndValue(1.0)
         a.setEasingCurve(QEasingCurve.OutCubic)
         group.addAnimation(a)
+        rise = QPropertyAnimation(page, b"pos")
+        rise.setDuration(260)
+        rise.setStartValue(page.pos() + QPoint(0, 18))
+        rise.setEndValue(page.pos())
+        rise.setEasingCurve(QEasingCurve.OutCubic)
+        group.addAnimation(rise)
         group.finished.connect(self._end_anim)
         self._anims, self._anim_targets = [group], targets
         group.start()
@@ -1448,20 +1656,31 @@ class MainWindow(QWidget):
     def _unknown_word(self, w):
         self.feed.append("<span style='color:#8a93a8'>new short word '%s' - add it in Voice > Edit word list</span>" % esc(w))
 
-    def on_status(self, platform, text, ok):
-        card = self.cards.get(platform)
-        if card:
-            card.set_status(text, ok)
-        (self.connected.add if ok else self.connected.discard)(platform)
+    def on_status(self, key, text, ok):
+        card = self.cards.get(key) or self.extra_cards.get(key)
+        if card is None:                          # a stream that was removed while it was still connecting
+            self.connected.discard(key)
+            return
+        card.set_status(text, ok)
+        was_live = bool(self.connected)
+        (self.connected.add if ok else self.connected.discard)(key)
         self._sync_summary()
-        if ok:
-            self.discord.auto_announce(platform, card.edit.text().strip() if platform == "youtube" else None)
-        if platform == "youtube":
-            if ok and self.ytmod.verified:
-                self.ytmod.refresh_info()
-                self.yt_beat.start(8 * 60 * 1000)
-            elif not ok:
-                self.yt_beat.stop()
+        if self.connected and not was_live:
+            self._stream_started()
+        elif was_live and not self.connected:
+            self.stream_end.start(STREAM_END_GRACE)
+        if key in self.cards:                     # Discord announcements and the YouTube bot follow your main streams
+            if ok:
+                self.discord.auto_announce(key, card.edit.text().strip() if key == "youtube" else None)
+            if key == "youtube":
+                if ok and self.ytmod.verified:
+                    self.ytmod.refresh_info()
+                    self.yt_beat.start(8 * 60 * 1000)
+                elif not ok:
+                    self.yt_beat.stop()
+        self._update_live()
+
+    def _update_live(self):
         if self.connected and self.live.isHidden():
             self.live.show()
             self.pulse.start()
@@ -1470,19 +1689,25 @@ class MainWindow(QWidget):
             self.live.hide()
 
     def on_message(self, m):
+        self.tools.stats.add_message(m)
         is_link = self.links.handle(m)
+        if not is_link and self._run_command(m):
+            return
         ok, reason = self.mod.check(m)
         if is_link:
             ok, reason = False, "link code (processing)"
-        elif not ok and m.platform == "youtube" and not m.mod:
-            self.ytmod.flag(m, reason)
+        elif not ok and m.platform == "youtube" and not m.mod and m.stream in ("", "youtube"):
+            self.ytmod.flag(m, reason)            # the bot moderates your main YouTube stream only
         color = COLORS.get(m.platform, "#8a93a8")
         amt = " <span style='color:#ffd24d'>[%s]</span>" % esc(m.amount) if m.amount else ""
-        tag = "<span style='color:%s'><b>%s</b></span>" % (color, TAGS.get(m.platform, "?"))
+        tag = "<span style='color:%s'><b>%s</b></span>" % (color, esc(self._tag(m)))
         if ok:
             author = shape_chat_text(m.author, self.s.get("chat_transform"))
             text = shape_chat_text(m.text, self.s.get("chat_transform"))
             self.feed.append("%s <b>%s</b>%s: %s" % (tag, esc(author), amt, esc(text)))
+            welcome = self.tools.observe(m)
+            if welcome:
+                self._welcome(m, welcome)
             self.speaker.say(m.author, m.text, m.amount if m.kind == "super" else "")
             if m.platform != "tip":
                 self.overlay.push("chat", {"platform": m.platform, "name": m.author, "text": m.text})
@@ -1492,11 +1717,275 @@ class MainWindow(QWidget):
                                             "name": m.author, "amount": m.amount, "message": m.text})
             if m.kind == "super":
                 self.discord.post_paid(m)
+            if m.kind in ("super", "member"):
+                self.toasts.show("%s %s %s" % (m.author, "sent" if m.kind == "super" else "became a member", m.amount or ""), "gold")
         else:
             author = shape_chat_text(m.author, self.s.get("chat_transform"))
             text = shape_chat_text(m.text, self.s.get("chat_transform"))
             self.feed.append("<span style='color:#5d667d'>%s %s: %s <i>(skipped: %s)</i></span>"
-                             % (TAGS.get(m.platform, "?"), esc(author), esc(text), reason))
+                             % (esc(self._tag(m)), esc(author), esc(text), reason))
+
+    # ---------- !commands and !memes ----------
+    def _run_command(self, m):
+        """Answer a !command or play a !meme. True means the message was one, so it is not read aloud itself."""
+        text = (m.text or "").strip()
+        if m.platform == "tip" or not (text.startswith("!") or (self.tools.poll.active and text.isdigit())):
+            return False
+        if m.platform != "test" and ((self.s.get("ignore_bots") and (m.bot or m.author.lower() in KNOWN_BOTS))
+                                     or self.mod._blocked_hit(m.text)):
+            return False                          # moderation skips it and shows why
+        act = self.commands.handle(m) or self.tools.handle(m)
+        if act is None:
+            return False
+        tag = "<span style='color:%s'><b>%s</b></span>" % (COLORS.get(m.platform, "#8a93a8"), esc(self._tag(m)))
+        who = esc(shape_chat_text(m.author, self.s.get("chat_transform")))
+        if act["skipped"]:
+            self.feed.append("<span style='color:#5d667d'>%s %s: %s <i>(!%s not run: %s)</i></span>"
+                             % (esc(self._tag(m)), who, esc(m.text), esc(act["name"]), esc(act["skipped"])))
+            return True
+        welcome = self.tools.observe(m)
+        if welcome:
+            self._welcome(m, welcome)
+        if act["type"] in ("vote", "entry"):
+            self.feed.append("<span style='color:#5d667d'>%s %s: %s <i>(%s)</i></span>"
+                             % (esc(self._tag(m)), who, esc(m.text), "vote counted" if act["type"] == "vote" else "entered the giveaway"))
+            self.tools_changed()
+            return True
+        self.tools.stats.count("meme" if act["type"] == "meme" else "command")
+        self.feed.append("%s <b>%s</b>: <span style='color:#c4a7ff'>%s</span>" % (tag, who, esc(m.text)))
+        if act["reply"]:
+            video, why = self._reply_target(m)
+            if video is None:
+                self.feed.append("<span style='color:#8a93a8'>&raquo; %s <i>(not sent in chat: %s)</i></span>" % (esc(act["reply"]), esc(why)))
+            else:
+                self.platform_auth.send_message(m.platform, act["reply"], video, quiet=True)
+                self.feed.append("<span style='color:#7cf0c0'>&raquo; %s</span>" % esc(act["reply"]))
+        if act["type"] == "meme":
+            self.speaker.announce(act["speak"], act["sound"])
+            if act["image"] or act["speak"]:
+                self.overlay.push("meme", {"name": act["name"], "user": m.author, "caption": act["speak"],
+                                           "image": "/memes/" + urllib.parse.quote(act["image"]) if act["image"] else ""})
+        elif act["speak"]:
+            self.speaker.announce(act["speak"])
+        if act.get("toast"):
+            self.toasts.show(act["toast"])
+        if act["type"] in ("counter", "song", "points"):
+            self.tools_changed(lists=act["type"] == "counter")
+        return True
+
+    # ---------- stream tools ----------
+    def _welcome(self, m, text):
+        self.feed.append("<span style='color:#ffd24d'>\u2605 %s</span>" % esc(text))
+        self.toasts.show("New chatter: %s" % m.author, "good")
+        if self.s.get("welcome_speak"):
+            self.speaker.announce(text)
+        if self.s.get("welcome_reply"):
+            video, _ = self._reply_target(m)
+            if video is not None:
+                self.platform_auth.send_message(m.platform, text, video, quiet=True)
+
+    def _broadcast(self, text):
+        """Post a message in every main chat that is connected and signed in. Returns the platforms it went to."""
+        sent = [p for p in ("youtube", "twitch") if p in self.connected and self.platform_auth.is_connected(p)]
+        for p in sent:
+            self.platform_auth.send_message(p, text, "", quiet=True)
+        where = ", ".join(PLATFORM_NAMES[p] for p in sent)
+        self.feed.append("<span style='color:%s'>&raquo; %s <i>(%s)</i></span>" % (
+            "#7cf0c0" if sent else "#8a93a8", esc(text), ("posted to " + where) if sent else "not posted: connect and sign in to YouTube or Twitch"))
+        return sent
+
+    def tools_changed(self, lists=False):
+        self.overlay.push("widgets", self.tools.widgets(time.time()))
+        if self.stack.currentWidget() is self.toolspage:
+            if lists:
+                self.toolspage.refresh_lists()
+            self.toolspage.refresh_live()
+
+    def _tools_tick(self):
+        now = time.time()
+        poll = self.tools.poll
+        if poll.active and now >= poll.ends:
+            self.end_poll()
+        elif poll.active:
+            self.overlay.push("widgets", self.tools.widgets(now))           # the seconds left count down on stream
+            if self.stack.currentWidget() is self.toolspage:
+                self.toolspage.refresh_live(now)
+        if now - self._last_points_tick >= 60:
+            self._last_points_tick = now
+            self.tools.points.tick(now)
+        if now - self._last_timer_tick >= 20:
+            self._last_timer_tick = now
+            if not self.connected:
+                self.tools.reset_timers()                                    # timers only count while you are live
+            for t in self.tools.due_timers(now):
+                mode = t.get("mode") or "reply"
+                if mode in ("reply", "both"):
+                    self._broadcast(t["message"])
+                if mode in ("speak", "both"):
+                    self.speaker.announce(t["message"])
+
+    def start_poll(self, question, options, seconds):
+        problem = self.tools.poll.start(question, options, seconds, time.time())
+        if problem:
+            self.toasts.show(problem, "warn")
+            return
+        poll = self.tools.poll
+        self._broadcast("Poll: %s Vote with %s" % (poll.question, " | ".join("!vote %d = %s" % (i + 1, o) for i, o in enumerate(poll.options))))
+        self.toasts.show("Poll started: %s" % poll.question, "good")
+        self.tools_changed()
+
+    def end_poll(self):
+        result = self.tools.poll.close()
+        if not result:
+            return
+        self._broadcast(result)
+        self.speaker.announce(result)
+        self.toasts.show(result, "gold", 6)
+        self.tools_changed()
+
+    def open_giveaway(self, keyword, cost):
+        problem = self.tools.giveaway.start(keyword, cost)
+        if problem:
+            self.toasts.show(problem, "warn")
+            return
+        g = self.tools.giveaway
+        self._broadcast("Giveaway open! Type !%s to enter%s." % (g.keyword, " (costs %d %s)" % (g.cost, self.tools.points.name) if g.cost else ""))
+        self.toasts.show("Giveaway open: !%s" % g.keyword, "good")
+        self.tools_changed()
+
+    def close_giveaway(self):
+        g = self.tools.giveaway
+        if g.active:
+            g.active = False
+            self._broadcast("Giveaway entries are closed (%d entered)." % len(g.entries))
+            self.tools_changed()
+
+    def pick_winner(self):
+        win = self.tools.giveaway.pick()
+        if win is None:
+            self.toasts.show("Nobody (else) has entered the giveaway.", "warn")
+            return
+        _, name, platform = win
+        text = "The giveaway winner is %s (%s)!" % (name, PLATFORM_NAMES.get(platform, platform.title()))
+        self._broadcast("Congratulations %s, you won the giveaway!" % name)
+        self.speaker.announce(text)
+        self.toasts.show(text, "gold", 8)
+        self.tools_changed()
+
+    def clear_giveaway(self):
+        self.tools.giveaway.__init__()
+        self.tools_changed()
+
+    def clear_song_requests(self):
+        self.music.requests.clear()
+        self.tools_changed()
+
+    def summary_text(self):
+        return "\n".join(self.tools.stats.lines(time.time()))
+
+    def post_summary(self):
+        if not self.tools.stats.started:
+            self.toasts.show("Nothing to summarize yet: connect a stream first.", "warn")
+            return False
+        url = self.s.get("webhook_url")
+        if not url:
+            self.toasts.show("Add a Discord webhook on the Discord page to post the summary.", "warn")
+            return False
+        text = self.summary_text()
+        run_bg(self.bridge, "ui:summary", lambda: post_webhook(url, text))
+        self.feed.append("<span style='color:#7c9cff'>Discord: stream summary posted</span>")
+        self.toasts.show("Stream summary posted to Discord", "good")
+        return True
+
+    def reset_summary(self):
+        self.tools.stats.reset()
+        if self.connected:
+            self.tools.stats.begin(time.time())
+        self.tools_changed()
+
+    def _stream_started(self):
+        self.stream_end.stop()
+        stats = self.tools.stats
+        if not stats.started or stats.ended:          # a new stream (not a quick reconnect)
+            stats.begin(time.time())
+            self.tools.seen_stream = set()
+            self.tools.reset_timers()
+
+    def _stream_over(self):
+        stats = self.tools.stats
+        if self.connected or not stats.started or stats.ended:
+            return
+        stats.finish(time.time() - STREAM_END_GRACE / 1000)
+        if stats.ended - stats.started < 600:
+            return                                    # a short test connection is not worth a summary
+        self.feed.append("<span style='color:#c4a7ff'>%s</span>" % esc(self.summary_text()).replace("\n", "<br>"))
+        self.toasts.show("Stream summary ready on the Stream tools page", "good", 6)
+        if self.s.get("summary_post") and self.s.get("webhook_url"):
+            self.post_summary()
+
+    # ---------- hotkeys ----------
+    def apply_hotkeys(self):
+        self._hotkeys_applied = True
+        return self.hotkeys.apply(self.winId(), self.s)
+
+    def nativeEvent(self, event_type, message):
+        act = self.hotkeys.match(event_type, message)
+        if act:
+            self._hotkey(act)
+            return True, 0
+        return False, 0                               # not ours: Qt handles it as usual
+
+    def _hotkey(self, act):
+        if act == "hk_skip":
+            self.speaker.skip()
+        elif act == "hk_mute":
+            want = not bool(self.s.get("muted"))
+            if self.mute_btn.isChecked() == want:
+                self._mute(want)
+            else:
+                self.mute_btn.setChecked(want)
+        elif act == "hk_music":
+            self.music.toggle()
+        elif act == "hk_counter":
+            counters = self.tools.counters()
+            if counters:
+                self.tools.bump_counter(counters[0]["name"], 1)
+                c = self.tools.counters()[0]
+                self.toasts.show("%s: %d" % (c.get("label") or c["name"].title(), int(c.get("value") or 0)))
+                self.tools_changed(lists=True)
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        QTimer.singleShot(0, self.nav_glow.follow)
+        if not self._hotkeys_applied:
+            problems = self.apply_hotkeys()
+            if problems and sys.platform == "win32" and QApplication.platformName() == "windows":
+                self.feed.append("<span style='color:#ffb020'>Hotkeys: %s</span>" % esc("; ".join(problems)))
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        if hasattr(self, "toasts"):
+            self.toasts.layout_all()
+
+    def _reply_target(self, m):
+        """(YouTube link or '' for the main stream, '') when a command reply can be posted, else (None, reason)."""
+        if m.platform == "test":
+            return None, "test"
+        name = PLATFORM_NAMES.get(m.platform, m.platform.title())
+        if m.platform not in ("youtube", "twitch"):
+            return None, "%s replies are not supported" % name
+        if not self.platform_auth.is_connected(m.platform):
+            return None, "sign in to %s on the Connect page" % name
+        if m.stream in ("", m.platform):
+            return "", ""
+        card = self.extra_cards.get(m.stream)
+        if m.platform == "youtube" and card is not None:
+            return card.edit.text().strip(), ""
+        return None, "Twitch replies only go to your own channel"
+
+    def _test_command(self, name):
+        self.on_message(Message("test", "Test", "!" + name, mod=True))
+        self.goto(1)
 
     def on_tip(self, ev):
         msg, note = (ev.get("message") or "").strip(), ""
@@ -1520,11 +2009,13 @@ class MainWindow(QWidget):
 
     def closeEvent(self, e):
         self.links.save()
+        self.tools.save()
+        self.hotkeys.clear()
         self.music.stop()
         self.twitch_events.stop()
         self.yt_subscriber_timer.stop()
         self.overlay.stop()
-        for c in self.cards.values():
+        for c in list(self.cards.values()) + list(self.extra_cards.values()):
             c.source.stop()
         self.speaker.clear()
         super().closeEvent(e)

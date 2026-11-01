@@ -57,5 +57,41 @@ function make(file, cfg) {
   t.music({ title: "First Song", artist: "Aria", playing: false }); await sleep(150);
   ok(!box.classList.contains("on"), "hides again when the music is paused");
   t.dom.window.close();
+  // ---- memes ----
+  t = make(require("path").join(__dirname, "out", "meme.html"), { memeSeconds: 0.3, colors: {} });
+  const d5 = t.dom.window.document; await sleep(120);
+  t.push({ name: "bruh", user: "Fan", image: "/memes/bruh.gif", caption: "bruh moment" });
+  t.push({ name: "evil", user: "<b>x</b>", image: "https://evil.example/x.gif", caption: '<img src=x onerror="window.hacked=1">' });
+  await sleep(150);
+  const first = d5.querySelectorAll("#memebox .meme");
+  ok(first.length === 1 && first[0].querySelector("img").getAttribute("src") === "/memes/bruh.gif"
+     && first[0].querySelector(".cap").textContent === "bruh moment" && first[0].textContent.includes("!bruh") && first[0].textContent.includes("Fan"),
+     "a meme shows its picture, caption and who played it, one at a time");
+  for (let i = 0; i < 40 && !(d5.querySelector("#memebox .meme") && d5.querySelector("#memebox .meme").textContent.includes("evil")); i++) await sleep(50);
+  const second = d5.querySelector("#memebox .meme");
+  ok(second && !second.querySelector("img") && second.querySelector(".cap").textContent.includes("<img") && !t.dom.window.hacked,
+     "pictures from outside the memes folder are not loaded and captions are plain text");
+  for (let i = 0; i < 40 && d5.querySelectorAll("#memebox .meme").length; i++) await sleep(50);
+  ok(d5.querySelectorAll("#memebox .meme").length === 0, "memes clear themselves after the set time");
+  t.dom.window.close();
+  // ---- widgets: counters, poll, giveaway ----
+  t = make(require("path").join(__dirname, "out", "widgets.html"), { colors: {} });
+  const d6 = t.dom.window.document; await sleep(120);
+  ok(!d6.querySelector(".counter") && d6.getElementById("pollbox").hidden && d6.getElementById("givebox").hidden, "widgets stay empty until there is something to show");
+  t.music({ counters: [{ label: "Deaths", value: 2 }], poll: { question: "<b>Next?</b>", active: true, total: 3, endsIn: 40, result: "",
+            options: [{ text: "Valorant", votes: 2 }, { text: "GTA", votes: 1 }] }, giveaway: { keyword: "join", open: true, entries: 5, winner: "" } });
+  await sleep(150);
+  const bars = d6.querySelectorAll("#pollbox .opt .bar");
+  ok(d6.querySelector(".counter .n").textContent === "2" && d6.querySelector(".counter").textContent.includes("Deaths"), "counters show their label and value");
+  ok(d6.querySelector("#pollbox h3").textContent === "<b>Next?</b>" && bars.length === 2 && bars[0].style.width === "67%" && d6.getElementById("pollbox").textContent.includes("40s left"),
+     "the poll shows plain-text question, vote bars and time left");
+  ok(!d6.getElementById("givebox").hidden && d6.getElementById("givebox").textContent.includes("!join") && d6.getElementById("givebox").textContent.includes("5 entered"), "an open giveaway shows how to enter");
+  t.music({ counters: [{ label: "Deaths", value: 3 }], poll: null, giveaway: { keyword: "join", open: false, entries: 5, winner: "Rahul" } });
+  await sleep(150);
+  ok(d6.querySelector(".counter .n").textContent === "3" && d6.querySelector(".counter").classList.contains("bump"), "a counter change bumps on screen");
+  ok(d6.getElementById("pollbox").hidden && d6.querySelector("#givebox .winner").textContent === "Rahul", "the giveaway winner is shown big");
+  t.music({ counters: [], poll: null, giveaway: null }); await sleep(150);
+  ok(!d6.querySelector(".counter") && d6.getElementById("givebox").hidden, "removed counters and cleared giveaways disappear");
+  t.dom.window.close();
   console.log(fails ? fails + " FAILED" : "ALL PASSED"); process.exit(fails ? 1 : 0);
 })();

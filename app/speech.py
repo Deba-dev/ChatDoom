@@ -43,6 +43,7 @@ class Speaker(QObject):
         self.audio = None
         self.tts = None
         self.current_file = None
+        self.current_clip = None
         self.current_spoken = ""
         self._windows_fallback = False
         self._tts_started = False
@@ -62,12 +63,27 @@ class Speaker(QObject):
             return
         if self.s.get("muted"):
             return
-        self.queue.append((author, text, amount, translate))
+        self.queue.append((author, text, amount, translate, ""))
+        self._trim()
+        self._pump()
+
+    def announce(self, text="", sound=""):
+        """Queue a command answer or meme: the sound clip first, then the line in the chat voice (no name, never translated)."""
+        if self.s.get("muted"):
+            return
+        text = hinglish.normalize(text or "").strip()
+        if sound:
+            self.queue.append(("", "", "", False, sound))
+        if text:
+            self.queue.append(("", text, "", False, ""))
+        self._trim()
+        self._pump()
+
+    def _trim(self):
         while len(self.queue) > self.s.get("queue_max"):
             # drop the oldest normal message first; paid messages are kept
             drop = next((i for i, q in enumerate(self.queue) if not q[2]), 0)
             del self.queue[drop]
-        self._pump()
 
     def skip(self):
         """Stop whatever is being spoken and move on."""
@@ -93,13 +109,16 @@ class Speaker(QObject):
     def _pump(self):
         if self.busy or not self.queue:
             return
-        author, text, amount, translate = self.queue.popleft()
+        author, text, amount, translate, sound = self.queue.popleft()
         self.busy = True
         self.busy_changed.emit(True)
         self.token += 1
         self._windows_fallback = False
-        self.current_spoken = self._format_spoken(author, text, amount)
         self.watchdog.start(45000)
+        if sound:
+            self.current_spoken = ""
+            return self._play_clip(sound)
+        self.current_spoken = self._format_spoken(author, text, amount)
         if self.s.get("engine") != "neural" and not translate:
             return self._speak_windows(self.current_spoken)
         threading.Thread(target=self._generate, args=(self.token, author, text, amount, translate),
@@ -111,7 +130,7 @@ class Speaker(QObject):
             text = text[:self.s.get("max_len")] + "..."
         if amount:
             return "%s sent %s. %s" % (author, amount, text)
-        return ("%s: %s" % (author, text)) if self.s.get("read_name") else text
+        return ("%s: %s" % (author, text)) if self.s.get("read_name") and author else text
 
     def _generate(self, token, author, text, amount, translate):
         translated = False
@@ -146,13 +165,7 @@ class Speaker(QObject):
             if err:
                 return self._fallback_to_windows("Neural voice unavailable (%s)" % err)
             return self._speak_windows(self.current_spoken)
-        if self.player is None:
-            self.player = QMediaPlayer(self)
-            self.audio = QAudioOutput(self)
-            self.player.setAudioOutput(self.audio)
-            self.player.mediaStatusChanged.connect(self._on_status)
-            self.player.errorOccurred.connect(self._on_player_error)
-        self.audio.setVolume(self.s.get("volume") / 100.0)
+        self._ensure_player()
         self.current_file = path
         try:
             self.player.setSource(QUrl.fromLocalFile(path))
@@ -160,14 +173,42 @@ class Speaker(QObject):
         except Exception as error:
             self._fallback_to_windows("Neural audio playback failed (%s)" % str(error)[:80])
 
+    def _ensure_player(self):
+        if self.player is None:
+            self.player = QMediaPlayer(self)
+            self.audio = QAudioOutput(self)
+            self.player.setAudioOutput(self.audio)
+            self.player.mediaStatusChanged.connect(self._on_status)
+            self.player.errorOccurred.connect(self._on_player_error)
+        self.audio.setVolume(self.s.get("volume") / 100.0)
+
+    def _play_clip(self, path):
+        """A meme sound: played as it is, and never deleted afterwards (it lives in the memes folder)."""
+        self._ensure_player()
+        self.current_clip = path
+        try:
+            self.player.setSource(QUrl.fromLocalFile(path))
+            self.player.play()
+        except Exception as error:
+            self._clip_failed(str(error))
+
+    def _clip_failed(self, detail):
+        self.note.emit("Meme sound could not be played (%s)" % (detail or "unknown error")[:80])
+        self.current_clip = None
+        self._finish()
+
     def _on_status(self, status):
         if status == QMediaPlayer.MediaStatus.EndOfMedia:
             self._finish()
+        elif status == QMediaPlayer.MediaStatus.InvalidMedia and self.current_clip:
+            self._clip_failed("unsupported file")
         elif status == QMediaPlayer.MediaStatus.InvalidMedia and self.current_file:
             self._fallback_to_windows("Neural audio could not be played")
 
     def _on_player_error(self, error, error_string):
-        if self.current_file:
+        if self.current_clip:
+            self._clip_failed(error_string or self.player.errorString())
+        elif self.current_file:
             detail = error_string or self.player.errorString()
             self._fallback_to_windows("Neural audio playback failed (%s)" % (detail or error))
 
@@ -187,7 +228,7 @@ class Speaker(QObject):
         self._speak_windows(self.current_spoken)
 
     def _on_watchdog(self):
-        if self.s.get("engine") == "neural" and not self._windows_fallback:
+        if self.s.get("engine") == "neural" and not self._windows_fallback and not self.current_clip:
             self.token += 1
             return self._fallback_to_windows("Neural voice timed out")
         self.skip()
@@ -233,6 +274,7 @@ class Speaker(QObject):
         if self.current_file:
             self._remove(self.current_file)
             self.current_file = None
+        self.current_clip = None
         was = self.busy
         self.busy = False
         self.watchdog.stop()

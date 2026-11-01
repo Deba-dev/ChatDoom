@@ -17,16 +17,16 @@ FOR STREAMERS  (CHATDOOM > YouTube mod page shows the same three steps)
 GOOD TO KNOW
 - CHATDOOM reads your chat itself and asks the moderator bot to remove messages, so it works while CHATDOOM is open and connected
   to your YouTube live chat.
-- The bot is hosted on a free service that sleeps when nobody uses it. CHATDOOM wakes it when you open the page and keeps it
-  awake while you stream. The first wake-up can take up to a minute ("Waking up..." badge).
+- The bot runs on CHATDOOM's Cloudflare cloud, which is always on: no waiting for it to wake up.
 - Daily limit: YouTube gives the moderator bot a shared daily allowance. Each removal or time-out costs a part of it,
   so CHATDOOM stops at your daily action limit (default 60, maximum 150).
 - If CHATDOOM says "the bot is not a moderator of your channel yet", repeat step 1.
 - "Remove verification" on the page forgets the proof on this PC. You can verify again any time.
 
 FOR THE PERSON WHO RUNS CHATDOOM
-The bot server is the folder youtube-bot (Node, no packages). Setup, free hosting on Render, the other hosting choices and
-what each costs in YouTube quota are in youtube-bot/README.txt. Put its address in app/config.py (YT_BOT_URL) before building.
+The bot runs inside the Cloudflare Worker (cloud/src/youtube-bot.js, the /v1 API), free and never asleep.
+Moving it there from Render takes about 10 minutes: see HOSTING.txt. YouTube quota notes are in youtube-bot/README.txt;
+that folder is still a working Node version if you ever want to self-host instead.
 
 HONEST LIMITS
 - Tested against a simulated YouTube. Run test mode first on a quiet stream.

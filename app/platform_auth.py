@@ -111,12 +111,13 @@ class PlatformAuth(QObject):
         run_bg(self.bridge, "platform:disconnect:%s" % platform,
                lambda: _request(self._base() + "/platform-auth/account", "DELETE", token=token))
 
-    def send_message(self, platform, text):
+    def send_message(self, platform, text, video="", quiet=False):
+        """video: a YouTube link or ID to post in (the main YouTube stream when empty). quiet: only report failures."""
         self._action(platform, "message", {
             "platform": platform,
             "text": text,
-            "videoId": youtube_id(self.s.get("youtube") or "") if platform == "youtube" else "",
-        })
+            "videoId": youtube_id(video or self.s.get("youtube") or "") if platform == "youtube" else "",
+        }, "platform:reply" if quiet else "platform:action")
 
     def create_poll(self, platform, question, options, duration):
         self._action(platform, "poll", {
@@ -144,7 +145,7 @@ class PlatformAuth(QObject):
         run_bg(self.bridge, "platform:youtube-subscribers",
                lambda: _request(self._base() + "/platform-auth/youtube-subscribers", "POST", {"since": since}, token))
 
-    def _action(self, platform, action, body):
+    def _action(self, platform, action, body, tag="platform:action"):
         if platform not in self.SUPPORTED:
             self.notice.emit("Chat actions are not available for %s." % platform.title())
             return
@@ -155,7 +156,7 @@ class PlatformAuth(QObject):
         if not self._base():
             self.notice.emit("Platform sign-in requires an HTTPS CHATDOOM cloud address.")
             return
-        run_bg(self.bridge, "platform:action", lambda: _request(
+        run_bg(self.bridge, tag, lambda: _request(
             self._base() + "/platform-auth/" + action, "POST", body, token))
 
     def on_done(self, tag, result):
@@ -214,6 +215,11 @@ class PlatformAuth(QObject):
             self.s.set("platform_%s_name" % platform, "")
             self.changed.emit(platform)
             self.notice.emit("Disconnected %s." % platform.title())
+            return
+
+        if tag == "platform:reply":
+            if result.get("error"):
+                self.notice.emit("Command reply failed: %s" % result["error"])
             return
 
         if tag == "platform:action":

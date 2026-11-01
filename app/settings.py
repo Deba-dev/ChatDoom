@@ -2,7 +2,7 @@
 import json
 import os
 
-from .config import CLOUD_URL, YT_BOT_HANDLE, YT_BOT_TITLE, YT_BOT_URL
+from .config import CLOUD_URL, OLD_YT_BOT_URLS, YT_BOT_HANDLE, YT_BOT_TITLE, YT_BOT_URL
 from .secure import protect, unprotect
 
 SECRET_KEYS = ("cloud_token", "g_client_secret", "ov_external_url", "yt_bot_token",
@@ -18,6 +18,15 @@ def data_dir():
 
 DEFAULTS = {
     "youtube": "", "twitch": "", "kick": "", "kick_room": "",
+    "extra_streams": [],                 # added streams: [{"id", "platform", "target", "room", "label"}]
+    "commands_on": True, "memes_on": True, "commands": [], "memes": [], "meme_gap": 5, "meme_seconds": 6,
+    "points_on": True, "points_name": "coins", "points_per_msg": 5, "points_msg_cooldown": 60, "points_bonus": 10,
+    "points_bonus_minutes": 10, "gamble_on": True, "gamble_min": 10, "gamble_cooldown": 60,
+    "poll_numbers": True, "giveaway_keyword": "join", "giveaway_cost": 0, "counters": [],
+    "welcome_on": False, "welcome_mode": "ever", "welcome_text": "Welcome {user}! Thanks for stopping by.", "welcome_speak": True,
+    "welcome_reply": False, "timers_on": True, "timers": [], "sr_on": True, "sr_max": 10, "sr_per_viewer": 1,
+    "summary_post": False, "hk_skip": "Ctrl+Alt+S", "hk_mute": "Ctrl+Alt+M", "hk_counter": "", "hk_music": "",
+    "background": "aurora", "toasts": True,
     "platform_youtube_session": "", "platform_twitch_session": "",
     "platform_youtube_name": "", "platform_twitch_name": "",
     "engine": "neural", "hi_voice": "hi-IN-SwaraNeural", "en_voice": "hi-IN-MadhurNeural",
@@ -65,6 +74,8 @@ class Settings:
             for k, default in (("cloud_url", CLOUD_URL), ("yt_bot_url", YT_BOT_URL)):      # older settings files saved an empty address
                 if not str(self.data.get(k, "")).strip():
                     self.data[k] = default
+            if str(self.data.get("yt_bot_url", "")).strip().rstrip("/") in OLD_YT_BOT_URLS:     # the bot moved off Render
+                self.data["yt_bot_url"] = YT_BOT_URL
         except Exception:
             pass
 

@@ -6,30 +6,39 @@ OBS overlays (alerts and chat on screen) and one-click self-updates.
 
 WHAT IS INSIDE
   main.py, app\           the Windows app (Python + PySide6)
-  cloud\                  the free Cloudflare server (Discord roles, payment webhook)
-  youtube-bot\            the hosted YouTube moderator bot (Node; runs free on Render)
+  cloud\                  the free Cloudflare server (Discord roles, payment webhook, and the YouTube moderator bot /v1)
+  youtube-bot\            the YouTube moderator bot as a separate Node server (optional self-hosting)
+  discord-presence\       optional: keeps the Discord bot's green "online" dot (needs an always-on machine)
   assets\                 CHATDOOM logo, app icon and the Poppins font
   tests\                  automatic checks (node test.mjs for the cloud, python tests\test_app.py for the app)
   CLOUD-SETUP.txt         one-time cloud + Discord setup (you, once)
   PAYMENTS-SETUP.txt      Razorpay payment page and webhook
   YT-MODERATION-SETUP.txt add the bot to your channel and verify it (streamers) + how it is run
   youtube-bot\README.txt  deploy the bot, free hosting, other hosting options
+  HOSTING.txt             free 24/7 hosting for the YouTube bot and the Discord bot (move off Render)
   GITHUB-BUILD-GUIDE.txt  turn the project into CHATDOOM-Setup.exe, free
   UPDATING.txt            publish a new version; users update with one click
   OBS-GUIDE.txt           voice, alerts, chat and now-playing in OBS
   MUSIC-GUIDE.txt         StreamBeats downloads/imports, licenses and OBS music setup
 
 PAGES IN THE APP
-  Connect     paste your YouTube link and channel names, press Connect; optional YouTube/Twitch login enables chat messages and polls
+  Connect     paste your YouTube link and channel names, press Connect; optional YouTube/Twitch login enables chat messages and polls.
+              Add stream reads more chats at once (a second YouTube live such as a vertical stream, another Twitch or Kick channel)
   Live chat   combined feed; grey lines were skipped by moderation
   Voice       voices, speed, volume, multilingual chat translation, all-chat / paid-only reading modes
   Moderation  what gets read aloud: link / command / bot / repeat filters, blocked words
+  Commands    your own !commands (reply in chat and/or read aloud, with {user} {touser} {args} {count}) and memes:
+              viewers type !name to play a sound clip, show a picture/GIF on the /meme overlay and read a line aloud
+  Stream tools  loyalty points (!points !gamble !top, memes and giveaways can cost points), chat polls across every
+              platform (!vote 2), giveaways (!join), counters (!death, !death+), welcome messages for new chatters,
+              timers, song requests from your Music library (!sr, !song), global hotkeys and the end-of-stream summary
   Discord     one click to add the bot, one click to make roles and invite links; the rest is under Advanced
   Payments    payment alerts (Razorpay / Stripe / Cashfree / any tool) plus a shareable quick tip link
   YouTube mod add the CHATDOOM moderator bot to your channel, verify it is yours, choose the rules (like Nightbot)
   OBS overlays  alerts for tips, YouTube public subscribers/members, and Twitch follows/subs/raids, with multiple looks
   Music       browse StreamBeats music and Mixkit sound effects in-app, download/import them, and use local files
-  Sidebar     Theme (4 colour themes) and Lite mode (turns off glow/fade animations for weak PCs or gaming)
+  Sidebar     Theme (4 colour themes), Background (animated aurora, soft gradient or plain) and Lite mode (turns off all
+              motion for weak PCs or gaming). The aurora only moves while CHATDOOM is the active window.
 
 RUN IT (easiest)
 1. Install Python 3.12 from python.org.
@@ -73,7 +82,9 @@ CHATDOOM is a normal window that plays sound on your PC. To put the voice on you
 5. To show the chat on screen: Sources > + > "Window Capture" > CHATDOOM, then open its "Live chat" page.
 
 FILES THE APP KEEPS  (%APPDATA%\ChatVoice; legacy folder name retained for upgrades)
-settings.json, hinglish_words.txt (add short forms: short=how to say it), blocked_words.txt
+settings.json, hinglish_words.txt (add short forms: short=how to say it), blocked_words.txt,
+Memes\ (sound clips and pictures you add on the Commands page), points.json (loyalty points),
+viewers.json (who has chatted before, for welcome messages)
 
 NOTES
 - Neural voices need internet. If they fail, the app falls back to Windows voices.

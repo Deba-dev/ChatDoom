@@ -1,4 +1,4 @@
-"""The two web pages OBS shows (as a Browser Source): payment/Super Chat alerts and chat on screen."""
+"""The web pages OBS shows (as a Browser Source): payment/Super Chat alerts, chat, now playing and memes on screen."""
 
 PAGE = r"""<!doctype html>
 <html><head><meta charset="utf-8"><title>CHATDOOM overlay</title>
@@ -55,10 +55,37 @@ html,body{margin:0;height:100%;background:transparent;overflow:hidden;color:#fff
 .m.style-panel{width:min(100%,560px);padding:10px 14px;border-radius:4px 14px 14px 4px;background:rgba(5,8,18,.88);border-left:4px solid var(--a1)}
 .m.style-sakura{border-radius:22px 22px 22px 5px;background:rgba(48,12,42,.76);box-shadow:0 0 14px rgba(244,114,182,.38);border:1px solid rgba(255,174,218,.42)}
 .m.old{animation:fade .6s ease-in forwards}
+/* ---------- memes ---------- */
+#memebox{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;pointer-events:none}
+.meme{display:flex;flex-direction:column;align-items:center;gap:12px;animation:pop .6s cubic-bezier(.2,1.5,.4,1) both}
+.meme img{max-width:86vw;max-height:72vh;border-radius:18px;box-shadow:0 14px 50px rgba(0,0,0,.55),0 0 34px var(--a1)}
+.meme .cap{max-width:86vw;font-size:34px;font-weight:700;text-align:center;word-break:break-word;
+  text-shadow:0 2px 6px #000,0 0 18px var(--a1)}
+.meme .by{font-size:16px;font-weight:500;opacity:.85;text-shadow:0 1px 3px #000}
+.meme.out{animation:out .5s ease-in both}
+/* ---------- widgets: counters, poll, giveaway ---------- */
+#widgets{position:fixed;inset:18px;display:none;pointer-events:none}
+body[data-mode="widgets"] #widgets{display:block}
+.counters{position:absolute;left:0;top:0;display:flex;flex-direction:column;gap:8px}
+.counter{display:flex;align-items:center;gap:12px;padding:8px 16px;border-radius:16px;background:rgba(12,10,32,.82);
+  box-shadow:0 6px 24px rgba(0,0,0,.45),0 0 18px var(--a1);font-size:22px;font-weight:700;animation:slide .4s both}
+.counter .n{min-width:44px;text-align:center;padding:2px 10px;border-radius:10px;background:linear-gradient(90deg,var(--a1),var(--a2));color:#08080f}
+.counter.bump .n{animation:bump .5s}
+.panel{position:absolute;right:0;width:min(440px,92vw);padding:16px 20px;border-radius:20px;background:rgba(12,10,32,.86);
+  box-shadow:0 10px 36px rgba(0,0,0,.5),0 0 26px var(--a1);animation:pop .6s cubic-bezier(.2,1.5,.4,1) both}
+.panel h3{margin:0 0 10px;font-size:22px;line-height:1.25;word-break:break-word}
+.panel .meta{font-size:15px;opacity:.8;margin-top:8px}
+.opt{position:relative;margin:7px 0;padding:7px 12px;border-radius:12px;background:rgba(255,255,255,.08);overflow:hidden;font-size:18px;font-weight:600}
+.opt .bar{position:absolute;left:0;top:0;bottom:0;background:linear-gradient(90deg,var(--a1),var(--a2));opacity:.55;transition:width .6s ease}
+.opt span{position:relative}
+.opt .v{float:right;position:relative}
+.winner{font-size:30px;font-weight:700;background:linear-gradient(90deg,var(--a3),var(--a2));-webkit-background-clip:text;background-clip:text;color:transparent}
+@keyframes bump{0%{transform:scale(1)}40%{transform:scale(1.35)}100%{transform:scale(1)}}
 @keyframes slide{from{opacity:0;transform:translateX(-40px)}to{opacity:1;transform:none}}
 @keyframes fade{to{opacity:0;transform:translateY(-10px)}}
 </style></head>
-<body data-mode="__MODE__"><div id="alertbox"></div><div id="chatbox"></div>
+<body data-mode="__MODE__"><div id="alertbox"></div><div id="chatbox"></div><div id="memebox"></div>
+<div id="widgets"><div class="counters"></div><div class="panel" id="pollbox" hidden></div><div class="panel" id="givebox" hidden></div></div>
 <div id="musicbox"><div class="eq"><i></i><i></i><i></i><i></i></div><div class="mtxt"><div class="mt"></div><div class="ma"></div></div></div>
 <script>
 (function(){
@@ -109,6 +136,48 @@ function addChat(e){
   while(chatbox.children.length>(cfg.maxLines||8)) chatbox.removeChild(chatbox.firstChild);
   setTimeout(function(){ m.classList.add('old'); setTimeout(function(){ m.remove(); },650); },(cfg.chatSeconds||20)*1000);
 }
+var memebox=document.getElementById('memebox'), memes=[], memeBusy=false;
+function nextMeme(){
+  if(!memes.length){ memeBusy=false; return; }
+  memeBusy=true; var e=memes.shift();
+  var box=document.createElement('div'); box.className='meme';
+  if(e.image && /^\/memes\/[^\/]+$/.test(e.image)){ var img=document.createElement('img'); img.src=e.image; img.alt=''; box.appendChild(img); }
+  if(e.caption){ var cap=document.createElement('div'); cap.className='cap'; cap.textContent=e.caption; box.appendChild(cap); }
+  if(e.user){ var by=document.createElement('div'); by.className='by'; by.textContent='!'+(e.name||'')+' · '+e.user; box.appendChild(by); }
+  memebox.appendChild(box);
+  setTimeout(function(){ box.classList.add('out'); setTimeout(function(){ box.remove(); setTimeout(nextMeme,200); },500); },(cfg.memeSeconds||6)*1000);
+}
+var counterbox=document.querySelector('#widgets .counters'), pollbox=document.getElementById('pollbox'), givebox=document.getElementById('givebox'), lastCounts={};
+function el(tag,cls,text){ var n=document.createElement(tag); if(cls) n.className=cls; if(text!==undefined) n.textContent=text; return n; }
+function showWidgets(st){
+  st=st||{};
+  var seen={};
+  (st.counters||[]).forEach(function(c){
+    seen[c.label]=1; var row=Array.prototype.find.call(counterbox.children,function(r){ return r.dataset.label===c.label; });
+    if(!row){ row=el('div','counter'); row.dataset.label=c.label; row.appendChild(el('span','n')); row.appendChild(el('span','l',c.label)); counterbox.appendChild(row); }
+    var n=row.querySelector('.n'); if(n.textContent!==String(c.value)){ n.textContent=String(c.value);
+      if(c.label in lastCounts){ row.classList.remove('bump'); void row.offsetWidth; row.classList.add('bump'); } }
+    lastCounts[c.label]=c.value;
+  });
+  Array.prototype.slice.call(counterbox.children).forEach(function(row){ if(!seen[row.dataset.label]) row.remove(); });
+  var p=st.poll, top=0;
+  if(p&&(p.active||p.result)){
+    pollbox.hidden=false; pollbox.style.top='0px'; pollbox.textContent='';
+    pollbox.appendChild(el('h3','',p.question));
+    var total=Math.max(1,p.total);
+    p.options.forEach(function(o,i){ var row=el('div','opt'); var bar=el('div','bar'); bar.style.width=Math.round(100*o.votes/total)+'%';
+      row.appendChild(bar); row.appendChild(el('span','',(i+1)+'. '+o.text)); row.appendChild(el('span','v',String(o.votes))); pollbox.appendChild(row); });
+    pollbox.appendChild(el('div','meta',p.active?('Type !vote 1-'+p.options.length+' \u00b7 '+p.endsIn+'s left \u00b7 '+p.total+' votes'):p.result));
+    top=pollbox.offsetHeight+16;
+  } else pollbox.hidden=true;
+  var g=st.giveaway;
+  if(g&&(g.open||g.winner)){
+    givebox.hidden=false; givebox.style.top=top+'px'; givebox.textContent='';
+    givebox.appendChild(el('h3','',g.winner?'Giveaway winner':'Giveaway open'));
+    if(g.winner) givebox.appendChild(el('div','winner',g.winner));
+    givebox.appendChild(el('div','meta',g.open?('Type !'+g.keyword+' to enter \u00b7 '+g.entries+' entered'):(g.entries+' entered')));
+  } else givebox.hidden=true;
+}
 var musicbox=document.getElementById('musicbox');
 function showMusic(st){
   if(!st||!st.title||!st.playing){ musicbox.classList.remove('on'); return; }
@@ -119,6 +188,7 @@ function tick(){
   fetch('/poll?type='+MODE+'&after='+after,{cache:'no-store'}).then(function(r){return r.json();}).then(function(j){
     cfg=j.cfg||{}; applyColors(cfg);
     if(MODE==='music'){ showMusic(j.state); return; }
+    if(MODE==='widgets'){ showWidgets(j.state); return; }
     if(after<0){ after=j.latest; }
     else { j.events.forEach(function(e){ after=Math.max(after,e.id); if(MODE==='alert'){
       var category=e.category||(e.platform==='tip'?'tip':(e.amount?'superchat':'other'));
@@ -128,7 +198,8 @@ function tick(){
          (category==='gift'&&cfg.showSubscriptions===false)||
          (category==='raid'&&cfg.showRaids===false)) return;
       queue.push(e); if(!busy) next();
-    } else addChat(e); }); }
+    } else if(MODE==='meme'){ if(e.image||e.caption){ memes.push(e); if(!memeBusy) nextMeme(); } }
+    else addChat(e); }); }
   }).catch(function(){}).then(function(){ setTimeout(tick,POLL); });
 }
 tick();
@@ -141,7 +212,9 @@ INDEX = """<!doctype html><meta charset="utf-8"><title>CHATDOOM overlays</title>
 <h2>CHATDOOM overlays</h2><p style="opacity:.7">CHATDOOM (BETA) by itsmeblitz</p><p>Add these as <b>Browser sources</b> in OBS:</p>
 <ul><li><a style="color:#8ab4ff" href="/alert">/alert</a> payment, subscription, and channel-event alerts</li>
 <li><a style="color:#8ab4ff" href="/chat">/chat</a> chat on screen</li>
-<li><a style="color:#8ab4ff" href="/music">/music</a> now playing</li></ul></body>"""
+<li><a style="color:#8ab4ff" href="/music">/music</a> now playing</li>
+<li><a style="color:#8ab4ff" href="/meme">/meme</a> meme pictures and GIFs from chat !commands</li>
+<li><a style="color:#8ab4ff" href="/widgets">/widgets</a> counters, chat poll and giveaway</li></ul></body>"""
 
 
 def page(mode):

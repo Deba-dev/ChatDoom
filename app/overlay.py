@@ -9,17 +9,20 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 from .overlay_html import INDEX, page
 
+IMAGE_TYPES = {".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".gif": "image/gif", ".webp": "image/webp"}
+
 
 class Overlay:
-    def __init__(self, settings, fonts_dir, cfg_fn, sounds_dir=""):
-        self.s, self.fonts_dir, self.cfg_fn, self.sounds_dir = settings, fonts_dir, cfg_fn, sounds_dir
+    def __init__(self, settings, fonts_dir, cfg_fn, sounds_dir="", memes_dir=""):
+        self.s, self.fonts_dir, self.cfg_fn, self.sounds_dir, self.memes_dir = settings, fonts_dir, cfg_fn, sounds_dir, memes_dir
         self.port = 0
         self.server = None
         self.error = ""
         self.lock = threading.Lock()
         self.next_id = 1
-        self.events = {"alert": deque(maxlen=60), "chat": deque(maxlen=60)}
-        self.states = {"music": {"title": "", "artist": "", "playing": False}}
+        self.events = {"alert": deque(maxlen=60), "chat": deque(maxlen=60), "meme": deque(maxlen=30)}
+        self.states = {"music": {"title": "", "artist": "", "playing": False},
+                       "widgets": {"counters": [], "poll": None, "giveaway": None}}
 
     # ----- data -----
     def push(self, kind, data):
@@ -67,7 +70,7 @@ class Overlay:
                 u = urllib.parse.urlparse(self.path)
                 if u.path in ("/", ""):
                     return self._send(200, INDEX, "text/html; charset=utf-8")
-                if u.path in ("/alert", "/chat", "/music"):
+                if u.path in ("/alert", "/chat", "/music", "/meme", "/widgets"):
                     return self._send(200, page(u.path[1:]), "text/html; charset=utf-8")
                 if u.path == "/poll":
                     q = urllib.parse.parse_qs(u.query)
@@ -96,6 +99,15 @@ class Overlay:
                     if os.path.basename(f) == name and os.path.commonpath((root, f)) == root and os.path.isfile(f):
                         ctype = {"mp3": "audio/mpeg", "wav": "audio/wav", "ogg": "audio/ogg", "flac": "audio/flac",
                                  "m4a": "audio/mp4", "aac": "audio/aac", "opus": "audio/ogg"}[os.path.splitext(f)[1].lower()[1:]]
+                        with open(f, "rb") as fh:
+                            return self._send(200, fh.read(), ctype)
+                m = re.fullmatch(r"/memes/([^/\\]{1,220})", sound_path)
+                if m and overlay.memes_dir:
+                    name = m.group(1)
+                    ctype = IMAGE_TYPES.get(os.path.splitext(name)[1].lower())
+                    f = os.path.realpath(os.path.join(overlay.memes_dir, name))
+                    root = os.path.realpath(overlay.memes_dir)
+                    if ctype and os.path.basename(f) == name and os.path.commonpath((root, f)) == root and os.path.isfile(f):
                         with open(f, "rb") as fh:
                             return self._send(200, fh.read(), ctype)
                 self._send(404, "not found", "text/plain")

@@ -3,6 +3,7 @@
 // (3) gives roles when the desktop app reports activity.
 import { handlePlatformAuth } from "./platform-auth.js";
 import { handlePublicPage } from "./legal-pages.js";
+import { handleYoutubeBot } from "./youtube-bot.js";
 
 const API = "https://discord.com/api/v10";
 const PLATFORMS = ["youtube", "twitch", "kick"];
@@ -666,6 +667,7 @@ async function route(request, env, url) {
     if (result) return result;
   }
   if (p === "/health") return health(env);
+  if (p.startsWith("/v1/")) return handleYoutubeBot(request, env, url);      // the YouTube moderator bot (its own secrets)
   const missing = missingConfig(env);
   if (missing.length)
     return p.startsWith("/api/")
@@ -696,7 +698,7 @@ export default {
       return await route(request, env, url);   // 'await' is what makes the catch below work
     } catch (e) {
       const msg = String((e && e.message) || e);
-      return url.pathname.startsWith("/api/") || url.pathname.startsWith("/platform-auth/")
+      return url.pathname.startsWith("/api/") || url.pathname.startsWith("/platform-auth/") || url.pathname.startsWith("/v1/")
         ? json({ error: msg }, 500)
         : page("Something went wrong", "<p>" + esc(msg) + "</p>", 500);
     }
