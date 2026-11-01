@@ -37,6 +37,8 @@ def nav_icon(index):
         _nav_yt,
         _nav_obs,
         _nav_music,
+        _nav_commands,
+        _nav_tools,
     )
     if 0 <= index < len(drawers):
         return _pix(drawers[index])
@@ -127,3 +129,15 @@ def _nav_music(p):
     p.drawLine(7, 12, 7, 3)
     p.drawLine(14, 10, 14, 2)
     p.drawLine(7, 3, 14, 2)
+
+
+def _nav_commands(p):
+    p.drawRoundedRect(2, 3, 12, 10, 2, 2)
+    p.drawLine(8, 5, 8, 9)
+    p.drawPoint(8, 11)
+
+
+def _nav_tools(p):
+    for y, x in ((4, 10), (8, 5), (12, 9)):
+        p.drawLine(2, y, 14, y)
+        p.drawEllipse(x - 1, y - 1, 2, 2)

@@ -337,8 +337,8 @@ for name in THEMES:
     ok(THEMES[name]["a1"] in w.styleSheet() and w.s.get("theme") == name, "theme '%s' applied and remembered" % name)
 w.apply_theme("Sunset"); w.goto(0); wait(120); w.grab().save(os.path.join(os.environ["APPDATA"], "sunset_connect.png")); wait(500)
 w.apply_theme("Neon Violet"); w.goto(4); wait(150); w.grab().save(os.path.join(os.environ["APPDATA"], "violet_discord_midanim.png")); wait(600); w.grab().save(os.path.join(os.environ["APPDATA"], "violet_discord.png"))
-for i in range(8): w.goto(i); wait(60); w.grab()
-ok(True, "all 8 pages render without errors")
+for i in range(w.stack.count()): w.goto(i); wait(60); w.grab()
+ok(w.stack.count() == 11, "all 11 pages render without errors")
 n = len(w.fx.items)
 ok(n == 0, "buttons use a quiet hover instead of a glow")
 w._lite(True); wait(100); ok(w.fx.enabled is False, "Lite mode turns motion off")
@@ -585,7 +585,316 @@ ok(st["state"] == {"title": "Second", "artist": "Bo", "playing": True}, "the OBS
 ok(b'data-mode="music"' in urllib.request.urlopen(w.overlay.url("music")).read() and w.musicpage.music_url.text().endswith("/music"), "now-playing overlay page exists and its address is on the Music page")
 w.music.stop(); ok(ov("/poll?type=music&after=-1")["state"]["playing"] is False, "stopping hides it on stream")
 w.goto(8); wait(300); w.grab().save(os.path.join(os.environ["APPDATA"], "music.png")); shutil.rmtree(folder, ignore_errors=True); shutil.rmtree(library, ignore_errors=True)
-ok(len([b for b in w.findChildren(__import__("PySide6.QtWidgets", fromlist=["QPushButton"]).QPushButton) if b.objectName() == "nav"]) == 9 and w.nav.button(8).text().strip() == "Music" and not w.nav.button(8).icon().isNull(), "sidebar has all 9 pages, each with a drawn icon (Music included)")
+ok(len([b for b in w.findChildren(__import__("PySide6.QtWidgets", fromlist=["QPushButton"]).QPushButton) if b.objectName() == "nav"]) == 11 and w.nav.button(8).text().strip() == "Music" and not w.nav.button(8).icon().isNull()
+   and w.nav.button(9).text().strip() == "Commands" and w.nav.button(10).text().strip() == "Stream tools" and not w.nav.button(10).icon().isNull(),
+   "sidebar has all 11 pages, each with a drawn icon (Music, Commands and Stream tools included)")
+
+# ===== L. multi-stream, commands and memes =====
+print("--- L. multi-stream, commands and memes ---")
+from app.platforms import Hub, YouTubeSource, TwitchSource
+from app.commands import import_file
+from app.commands_page import CommandDialog, MemeDialog
+from PySide6.QtWidgets import QDialog
+got_msgs, got_status = [], []
+hub2 = Hub(); hub2.message.connect(got_msgs.append); hub2.status.connect(lambda *a: got_status.append(a))
+src = YouTubeSource(hub2, "extra:9"); src._emit(Message("youtube", "A", "hi")); src._status("Connected", True); wait(50)
+ok(got_msgs and got_msgs[0].stream == "extra:9" and got_status == [("extra:9", "Connected", True)],
+   "an added stream tags its messages and status with its own key")
+for c in list(w.extra_cards.values()): w._remove_stream(c)
+w.s.set("muted", False); w.mod.blocked = []; w.s.set("skip_links", True); w.s.set("user_cooldown", 0); w.s.set("dedupe_secs", 0)
+announced, sent, flagged, announced_dc = [], [], [], []
+w.speaker.announce = lambda *a: announced.append(a)
+w.platform_auth.send_message = lambda *a, **k: sent.append((a, k))
+w.ytmod.flag = lambda m, r: flagged.append((m.stream, r))
+w.discord.auto_announce = lambda *a: announced_dc.append(a)
+c1 = w._add_stream(); c2 = w._add_stream()
+c1.edit.setText("https://youtu.be/VERTICAL123"); c2.platform_box.setCurrentIndex(c2.platform_box.findData("twitch")); c2.edit.setText("friendchan"); c2.edit.editingFinished.emit()
+saved = json.load(open(w.s.path, encoding="utf-8"))["extra_streams"]; wait(450)   # stat chips count up
+ok(w.num_total.text() == "5" and [d["platform"] for d in saved] == ["youtube", "twitch"] and saved[1]["target"] == "friendchan"
+   and isinstance(c2.source, TwitchSource) and c2.source.key == c2.key and c1.key != c2.key,
+   "Add stream makes extra YouTube/Twitch cards that are counted and remembered")
+w.on_status(c1.key, "Connected", True); wait(450)
+ok("Connected" in c1.status.text() and w.num_on.text() == "1" and not w.live.isHidden() and not announced_dc,
+   "an added stream shows its own status, counts as connected, and does not post a Discord announcement")
+before = w.feed.toPlainText()
+w.on_message(Message("youtube", "Vee", "hello from vertical", stream=c1.key))
+w.on_message(Message("twitch", "Tee", "hello from friend", stream=c2.key))
+c1.label.setText("Vertical")
+w.on_message(Message("youtube", "Vee", "labelled now", stream=c1.key))
+new_text = w.feed.toPlainText()[len(before):]
+ok("YT2 Vee" in new_text and "TW2 Tee" in new_text and "YT·Vertical Vee" in new_text,
+   "the chat feed shows which stream each message came from (YT2, TW2, or your label)")
+flagged.clear()
+w.on_message(Message("youtube", "Linker", "see www.spam.com", uid="UC" + "x" * 22, stream=c1.key))
+w.on_message(Message("youtube", "Linker2", "see www.spam2.com", uid="UC" + "y" * 22, stream="youtube"))
+ok(flagged == [("youtube", "link")], "the YouTube mod bot only deletes in your main stream, not in added ones")
+w._remove_stream(c2); w.on_status(c2.key, "Connected", True); wait(450)
+ok(c2.key not in w.extra_cards and c2.key not in w.connected and w.num_total.text() == "4"
+   and len(json.load(open(w.s.path, encoding="utf-8"))["extra_streams"]) == 1,
+   "removing a stream forgets it, even if a late status arrives")
+
+w.s.set("commands", [{"name": "discord", "response": "Join discord.gg/x {user} ({count})", "mode": "reply", "cooldown": 30},
+                     {"name": "hug", "response": "!{user} hugs {touser}", "mode": "speak", "cooldown": 0},
+                     {"name": "secret", "response": "mods only text", "mode": "both", "mods_only": True}])
+w.platform_auth.is_connected = lambda p: False
+before = w.feed.toPlainText(); announced.clear(); spoken.clear()
+w.on_message(Message("youtube", "Viewer", "!discord", stream="youtube"))
+fresh = w.feed.toPlainText()[len(before):]
+ok("Join discord.gg/x Viewer (1)" in fresh and "sign in to YouTube" in fresh and not sent and not spoken and not announced,
+   "a !command answers in the feed, explains that chat replies need a sign-in, and is never read aloud")
+w.on_message(Message("youtube", "Other", "!discord", stream="youtube"))
+ok("!discord not run: cooldown" in w.feed.toPlainText(), "commands have a cooldown for viewers")
+w.platform_auth.is_connected = lambda p: True
+w.on_message(Message("youtube", "Mod", "!discord", mod=True, stream="youtube"))
+w.on_message(Message("youtube", "Mod", "!DISCORD extra words", mod=True, stream=c1.key))
+w.on_message(Message("kick", "Kicker", "!discord", mod=True, stream="kick"))
+ok([a for a, k in sent] == [("youtube", "Join discord.gg/x Mod (2)", ""), ("youtube", "Join discord.gg/x Mod (3)", "https://youtu.be/VERTICAL123")]
+   and all(k == {"quiet": True} for a, k in sent) and "Kick replies are not supported" in w.feed.toPlainText(),
+   "signed in, replies go to the right YouTube stream (main or added); moderators skip cooldowns; Kick explains it cannot reply")
+w.on_message(Message("twitch", "T", "!hug @Friend", stream="twitch"))
+ok(announced and announced[-1] == ("T hugs Friend",), "read-aloud commands use {user}/{touser} and never start with ! (no command loops)")
+w.on_message(Message("twitch", "T", "!secret", stream="twitch"))
+ok("!secret not run: mods only" in w.feed.toPlainText(), "mods-only commands ignore regular viewers")
+sent.clear()
+w.on_message(Message("twitch", "T2", "!commands", stream="twitch"))
+ok(sent and sent[-1][0][1].startswith("Commands: !discord !hug !secret"), "built-in !commands lists your commands")
+w.on_message(Message("youtube", "Nightbot", "!discord", stream="youtube"))
+ok("Nightbot: !discord (skipped: bot)" in w.feed.toPlainText(), "bots cannot run commands")
+w.s.set("commands_on", False)
+w.on_message(Message("youtube", "Viewer3", "!discord", stream="youtube"))
+ok("Viewer3: !discord (skipped: command)" in w.feed.toPlainText(), "with commands off, !messages are skipped like before")
+w.s.set("commands_on", True)
+
+os.makedirs(w.memes_dir, exist_ok=True)
+pick_dir = tempfile.mkdtemp()
+open(os.path.join(pick_dir, "Bruh Sound.mp3"), "wb").write(b"ID3-fake-mp3")
+open(os.path.join(pick_dir, "bruh.gif"), "wb").write(b"GIF89a-fake")
+snd = import_file(os.path.join(pick_dir, "Bruh Sound.mp3"), w.memes_dir); img = import_file(os.path.join(pick_dir, "bruh.gif"), w.memes_dir)
+ok(snd == "Bruh_Sound.mp3" and img == "bruh.gif" and import_file(os.path.join(pick_dir, "bruh.gif"), w.memes_dir) == "bruh_2.gif",
+   "picked meme files are copied into the memes folder with safe, unique names")
+os.remove(os.path.join(w.memes_dir, "bruh_2.gif"))
+w.s.set("memes", [{"name": "bruh", "text": "bruh moment {user}", "sound": snd, "image": img, "cooldown": 0},
+                  {"name": "wow", "text": "wow", "cooldown": 0}, {"name": "gone", "sound": "missing.mp3"}])
+w.s.set("meme_gap", 30); announced.clear()
+m0 = ov("/poll?type=meme&after=-1")["latest"]
+w.on_message(Message("youtube", "Fan", "!bruh", stream="youtube"))
+meme_ev = ov("/poll?type=meme&after=%d" % m0)["events"]
+ok(announced == [("bruh moment Fan", os.path.join(w.memes_dir, snd))] and meme_ev and meme_ev[0]["image"] == "/memes/bruh.gif"
+   and meme_ev[0]["caption"] == "bruh moment Fan" and meme_ev[0]["user"] == "Fan",
+   "!bruh plays the meme sound, reads its line and shows the picture on the meme overlay")
+r = urllib.request.urlopen("http://127.0.0.1:%d/memes/bruh.gif" % w.overlay.port)
+ok(r.read() == b"GIF89a-fake" and r.headers["Content-Type"] == "image/gif", "the overlay serves meme pictures from the memes folder")
+def status_of(path):
+    try: return urllib.request.urlopen("http://127.0.0.1:%d%s" % (w.overlay.port, path)).status
+    except urllib.error.HTTPError as e: return e.code
+ok(status_of("/memes/" + snd) == 404 and status_of("/memes/..%2Fsettings.json") == 404 and status_of("/memes/%2E%2E%5Csettings.json") == 404,
+   "only pictures inside the memes folder can be loaded (no sounds, no other files)")
+w.on_message(Message("youtube", "Fan2", "!wow", stream="youtube"))
+ok("!wow not run: another meme just played" in w.feed.toPlainText(), "the gap between memes stops meme spam")
+w.s.set("meme_gap", 0)
+w.on_message(Message("youtube", "Fan2", "!gone", stream="youtube"))
+ok("!gone not run: meme file missing" in w.feed.toPlainText(), "a meme whose file was deleted says so instead of failing")
+w.s.set("memes_on", False); before = w.feed.toPlainText()
+w.on_message(Message("youtube", "Fan3", "!wow", stream="youtube"))
+ok("(skipped: command)" in w.feed.toPlainText()[len(before):], "with memes off, !meme messages are skipped like other commands")
+w.s.set("memes_on", True)
+ok(b'data-mode="meme"' in urllib.request.urlopen(w.overlay.url("meme")).read() and w.ovpage.meme_url.text().endswith("/meme")
+   and ov("/poll?type=meme&after=-1")["cfg"]["memeSeconds"] == int(w.s.get("meme_seconds")),
+   "the meme overlay page exists, its address is on the OBS overlays page, and it gets the display time")
+
+w.cmdpage.refresh()
+row_names = lambda box: [box.itemAt(i).widget().name for i in range(box.count()) if hasattr(box.itemAt(i).widget(), "name")]
+ok(row_names(w.cmdpage.cmd_list) == ["discord", "hug", "secret"] and row_names(w.cmdpage.meme_list) == ["bruh", "wow", "gone"],
+   "the Commands page lists your commands and memes")
+dlg = CommandDialog(w.cmdpage, None, w.cmdpage._taken(""))
+dlg.name.setText("!Bruh"); dlg.response.setPlainText("x"); dlg._save()
+taken_err = dlg.error.text(); dlg.name.setText("two words"); dlg._save(); bad_err = dlg.error.text()
+dlg.name.setText("!Socials"); dlg.response.setPlainText("insta @me"); dlg._save()
+ok("already used" in taken_err and "no spaces" in bad_err and dlg.result() == QDialog.Accepted and dlg.item["name"] == "socials",
+   "the command editor rejects duplicate or unusable names and saves a clean one")
+w.cmdpage._store("commands", None, dlg.item)
+ok(w.commands.find("commands", "socials")["response"] == "insta @me" and "socials" in row_names(w.cmdpage.cmd_list), "a new command is saved and listed")
+md = MemeDialog(w.cmdpage, None, w.cmdpage._taken(""), w.memes_dir)
+md.name.setText("oof"); md._save(); empty_err = md.error.text()
+md._set_file("image", os.path.join(pick_dir, "bruh.gif")); md._save()
+ok("any one is enough" in empty_err and md.item["image"] == "bruh_2.gif" and os.path.isfile(os.path.join(w.memes_dir, "bruh_2.gif")),
+   "the meme editor needs at least one of sound, picture or line, and copies a picked file in")
+w.cmdpage._store("memes", None, md.item)
+w.cmdpage.delete("memes", "oof")
+ok(not os.path.exists(os.path.join(w.memes_dir, "bruh_2.gif")) and os.path.exists(os.path.join(w.memes_dir, "bruh.gif"))
+   and w.commands.find("memes", "oof") is None, "deleting a meme removes its own copied file but keeps files other memes use")
+tested = []; w.speaker.announce = lambda *a: tested.append(a)
+w._test_command("wow")
+ok(tested == [("wow", "")] and w.stack.currentIndex() == 1, "the Test button runs a meme as a moderator and opens Live chat")
+w.goto(9); wait(200); w.grab().save(os.path.join(os.environ["APPDATA"], "commands.png"))
+
+# ===== M. stream tools, hotkeys and look =====
+print("--- M. stream tools, hotkeys and look ---")
+import random, ctypes
+import app.ui as ui_module
+from app.tools import Points, split_amount
+from app.hotkeys import parse as parse_hotkey, WM_HOTKEY
+w.platform_auth.is_connected = lambda p: True
+sent.clear(); announced.clear(); w.speaker.announce = lambda *a: announced.append(a)
+w.on_status("youtube", "Connected", True)
+T = w.tools
+fan = Message("youtube", "Coin Fan", "hello", uid="UC" + "c" * 22, stream="youtube")
+T.points.reset(); now = time.time()
+T.points.earn(fan, now); T.points.earn(fan, now + 5); T.points.earn(fan, now + 61)
+key = "youtube:" + "UC" + "c" * 22
+ok(T.points.balance(key) == 10, "chatting earns points once per cooldown (spam earns nothing extra)")
+T.points.file.data[key]["bonus"] = 0
+ok(T.points.tick(now + 70) == 1 and T.points.balance(key) == 20, "viewers who chatted recently get the watching bonus")
+w.on_message(Message("youtube", "Coin Fan", "!points", uid="UC" + "c" * 22, stream="youtube"))
+ok(sent and sent[-1][0][1] == "Coin Fan has 20 coins", "!points replies with the viewer's balance")
+random.seed(1); w.on_message(Message("youtube", "Coin Fan", "!gamble 500", uid="UC" + "c" * 22, stream="youtube"))
+ok("only have 20 coins" in sent[-1][0][1], "!gamble refuses bets bigger than the balance")
+w.on_message(Message("youtube", "Coin Fan", "!gamble all", uid="UC" + "c" * 22, stream="youtube"))
+ok(T.points.balance(key) in (0, 40) and ("won 20" in sent[-1][0][1] or "lost 20" in sent[-1][0][1]), "!gamble all is double or nothing")
+w.on_message(Message("youtube", "Coin Fan", "!gamble 10", uid="UC" + "c" * 22, stream="youtube"))
+ok("!gamble not run: cooldown" in w.feed.toPlainText(), "!gamble has a cooldown")
+
+w.s.set("memes", [{"name": "bruh", "text": "bruh", "sound": snd, "image": img, "cooldown": 0, "cost": 50}])
+w.s.set("meme_gap", 0); T.points.file.data[key]["points"] = 30
+w.on_message(Message("youtube", "Coin Fan", "!bruh", uid="UC" + "c" * 22, stream="youtube"))
+ok("!bruh not run: needs 50 coins" in w.feed.toPlainText() and T.points.balance(key) == 30, "a meme with a cost needs enough points")
+T.points.add(key, 40); announced.clear()
+w.on_message(Message("youtube", "Coin Fan", "!bruh", uid="UC" + "c" * 22, stream="youtube"))
+ok(announced and T.points.balance(key) == 20, "with enough points the meme plays and the cost is taken")
+
+sent.clear()
+w.start_poll("Next game?", ["Valorant", "GTA", "", ""], 60)
+ok(T.poll.active and sent and sent[-1][0][1].startswith("Poll: Next game? Vote with !vote 1 = Valorant"), "starting a poll announces it in chat")
+w.on_message(Message("youtube", "V1", "!vote 1", uid="UC" + "1" * 22, stream="youtube"))
+w.on_message(Message("twitch", "V2", "2", uid="t2", stream="twitch"))
+w.on_message(Message("kick", "V3", "!vote 2", uid="k3", stream="kick"))
+w.on_message(Message("kick", "V3", "!vote 1", uid="k3", stream="kick"))
+w.on_message(Message("kick", "V4", "!vote 9", uid="k4", stream="kick"))
+ok(T.poll.tally() == [2, 1] and "(vote counted)" in w.feed.toPlainText() and "pick a number from 1 to 2" in w.feed.toPlainText(),
+   "votes from every platform count (a number alone works, the last vote counts, bad numbers explain)")
+wid = ov("/poll?type=widgets&after=-1")["state"]
+ok(wid["poll"]["question"] == "Next game?" and [o["votes"] for o in wid["poll"]["options"]] == [2, 1] and wid["poll"]["endsIn"] > 0,
+   "the /widgets overlay shows the live poll")
+T.poll.ends = time.time() - 1; announced.clear(); w._tools_tick()
+ok(not T.poll.active and announced == [("Poll ended: Valorant wins with 2 of 3 votes.",)] and sent[-1][0][1] == "Poll ended: Valorant wins with 2 of 3 votes.",
+   "the poll ends by itself and the result is read aloud and posted")
+w.on_message(Message("twitch", "Late", "1", uid="late", stream="twitch"))
+ok(T.poll.tally() == [2, 1], "after the poll ends a plain number is ordinary chat again")
+
+w.open_giveaway("!Join", 0)
+for who, plat, uid in (("A", "youtube", "UC" + "a" * 22), ("B", "twitch", "tb"), ("A", "youtube", "UC" + "a" * 22)):
+    w.on_message(Message(plat, who, "!join", uid=uid, stream=plat))
+ok(T.giveaway.active and len(T.giveaway.entries) == 2 and "!join not run: already entered" in w.feed.toPlainText(), "viewers enter the giveaway once, from any platform")
+random.seed(3); announced.clear(); w.pick_winner(); first = T.giveaway.winners[-1][1]; w.pick_winner(); second = T.giveaway.winners[-1][1]
+ok({first, second} == {"A", "B"} and announced and "giveaway winner" in announced[0][0], "picking winners never repeats a winner and reads the result aloud")
+w.pick_winner(); ok("Nobody (else)" in w.toasts.items[0].label.text(), "with everyone picked, a toast says there is nobody left")
+ok(ov("/poll?type=widgets&after=-1")["state"]["giveaway"]["winner"] == second, "the /widgets overlay shows the winner")
+w.clear_giveaway(); w.s.set("giveaway_cost", 25)
+w.open_giveaway("raffle", 25)
+w.on_message(Message("youtube", "Poor", "!raffle", uid="UC" + "p" * 22, stream="youtube"))
+ok("!raffle not run: needs 25 coins" in w.feed.toPlainText(), "a giveaway with an entry cost needs points")
+w.clear_giveaway()
+
+w.goto(10); wait(150)
+w.toolspage.counter_name.setText("Death"); w.toolspage.counter_label.setText("Deaths"); w.toolspage._add_counter()
+w.on_message(Message("twitch", "Viewer", "!death+", uid="tv", stream="twitch"))
+w.on_message(Message("twitch", "Mod", "!death+", uid="tm", mod=True, stream="twitch"))
+w.on_message(Message("twitch", "Mod", "!death +", uid="tm", mod=True, stream="twitch"))
+w.on_message(Message("twitch", "Viewer", "!death", uid="tv", stream="twitch"))
+ok("!death not run: mods only" in w.feed.toPlainText() and T.counters()[0]["value"] == 2 and sent[-1][0][1] == "Deaths: 2",
+   "counters: anyone can see them, only moderators change them")
+ok(ov("/poll?type=widgets&after=-1")["state"]["counters"] == [{"label": "Deaths", "value": 2}]
+   and any(getattr(w.toolspage.counter_list.itemAt(i).widget(), "name", "") == "death" for i in range(w.toolspage.counter_list.count())),
+   "counters appear on the Stream tools page and the /widgets overlay")
+w._hotkey("hk_counter"); ok(T.counters()[0]["value"] == 3, "the counter hotkey adds one")
+
+w.s.set("welcome_on", True); w.s.set("welcome_mode", "ever"); announced.clear()
+w.on_message(Message("youtube", "Newbie", "hi all", uid="UC" + "n" * 22, stream="youtube"))
+w.on_message(Message("youtube", "Newbie", "second message", uid="UC" + "n" * 22, stream="youtube"))
+ok(announced == [("Welcome Newbie! Thanks for stopping by.",)] and "★ Welcome Newbie" in w.feed.toPlainText(), "a first-time chatter is welcomed once")
+w.s.set("welcome_mode", "stream"); T.seen_stream = set(); announced.clear()
+w.on_message(Message("youtube", "Newbie", "back again", uid="UC" + "n" * 22, stream="youtube"))
+ok(announced == [("Welcome Newbie! Thanks for stopping by.",)], "the each-stream mode welcomes returning viewers on a new stream")
+w.s.set("welcome_on", False)
+
+w.s.set("timers", [{"message": "Join the Discord!", "minutes": 10, "lines": 2, "mode": "reply"}]); T.reset_timers(); sent.clear()
+w._last_timer_tick = 0; w._tools_tick()
+ok(not sent, "a new timer waits its interval first")
+T.timer_last[0] = time.time() - 700; w._last_timer_tick = 0; w._tools_tick()
+ok(not sent, "a timer waits for enough chat messages, so it never talks into an empty chat")
+for i in range(2): w.on_message(Message("youtube", "Chatter%d" % i, "line %d" % i, uid="UC" + str(i) * 22, stream="youtube"))
+w._last_timer_tick = 0; w._tools_tick()
+ok([a for a, k in sent] == [("youtube", "Join the Discord!", "")], "a due timer posts to your connected chats")
+
+w.music.tracks = [{"title": "Desi Beat", "artist": "Aria", "path": "desi.mp3"}, {"title": "Chill Lofi", "artist": "Bo", "path": "lofi.mp3"},
+                  {"title": "Night Drive", "artist": "Cy", "path": "night.mp3"}]
+w.music.requests, w.music.playing = [], False; sent.clear()
+w.on_message(Message("twitch", "S1", "!sr lofi", uid="s1", stream="twitch"))
+ok(w.music.index == 1 and w.music.playing and sent[-1][0][1] == "Playing Chill Lofi now", "!sr plays a matching song at once when nothing is playing")
+w.on_message(Message("twitch", "S2", "!sr desi beat", uid="s2", stream="twitch"))
+w.on_message(Message("twitch", "S2", "!sr night", uid="s2", stream="twitch"))
+ok(w.music.requests == [(0, "twitch:s2")] and sent[-1][0][1] == "Added Desi Beat to the queue (#1)", "a second request is queued")
+ok("!sr not run: cooldown" in w.feed.toPlainText(), "one viewer cannot flood the song queue")
+w.music.next(); ok(w.music.index == 0 and not w.music.requests, "requested songs play before the shuffle")
+w.on_message(Message("twitch", "S3", "!song", uid="s3", stream="twitch"))
+ok(sent[-1][0][1] == "Now playing: Desi Beat — Aria", "!song says what is playing")
+w.music.stop()
+
+ok(split_amount("₹1,200.50") == ("₹", 1200.5) and split_amount("50 bits") == ("bits", 50.0), "amounts are split into currency and value")
+lines = w.summary_text()
+ok("Stream summary" in lines and "Messages:" in lines and "Poll votes" in lines and "Giveaway entries" in lines, "the stream summary counts chat and tools")
+hooks = []; ui_module.post_webhook = lambda url, text: hooks.append((url, text)) or {"ok": True}
+w.s.set("webhook_url", "https://discord.example/hook"); ok(w.post_summary(), "the summary can be posted to Discord")
+wait(300); ok(hooks and hooks[0][0] == "https://discord.example/hook" and "Stream summary" in hooks[0][1], "the Discord webhook receives the summary")
+hooks.clear(); w.s.set("summary_post", True); saved_connected = set(w.connected); w.connected.clear()
+w.tools.stats.started = time.time() - 3600; w.tools.stats.ended = 0; w._stream_over(); wait(300)
+ok(hooks and w.tools.stats.ended, "when the stream ends the summary is shown and posted automatically")
+w.connected.update(saved_connected); w.s.set("summary_post", False)
+w.tools.stats.ended = time.time(); w._stream_started()
+ok(w.tools.stats.started and not w.tools.stats.ended and not w.tools.seen_stream, "the next stream starts a fresh summary")
+
+w.tools.save()
+reloaded = Points(w.s, os.path.join(os.environ["APPDATA"], "ChatVoice", "points.json"))
+ok(reloaded.balance(key) == T.points.balance(key) and os.path.isfile(os.path.join(os.environ["APPDATA"], "ChatVoice", "viewers.json")),
+   "points and known viewers are saved and survive a restart")
+
+ok(parse_hotkey("Ctrl+Alt+S") == (0x4000 | 0x2 | 0x1, ord("S")) and parse_hotkey("F9") == (0x4000, 0x78)
+   and parse_hotkey("Ctrl+Shift+F12") == (0x4000 | 0x2 | 0x4, 0x7B) and parse_hotkey("S") is None and parse_hotkey("") is None,
+   "hotkeys need a modifier unless they are F-keys")
+skipped = []; w.speaker.skip = lambda: skipped.append(1)
+w.hotkeys.ids = {1: "hk_skip"}
+msg = ctypes.wintypes.MSG(); msg.message = WM_HOTKEY; msg.wParam = 1
+handled = w.nativeEvent(b"windows_generic_MSG", ctypes.addressof(msg))
+other = ctypes.wintypes.MSG(); other.message = 0x0100
+ok(handled == (True, 0) and skipped == [1] and w.nativeEvent(b"windows_generic_MSG", ctypes.addressof(other))[0] is False,
+   "a global hotkey message runs its action (Skip) and other messages pass through")
+w.hotkeys.ids = {}
+was = w.s.get("muted"); w._hotkey("hk_mute"); ok(w.s.get("muted") != was, "the mute hotkey toggles the voice"); w._hotkey("hk_mute")
+
+w.s.set("lite_mode", False)
+for mode in ("aurora", "gradient", "plain"):
+    w.s.set("background", mode); w.canvas.sync(); wait(80)
+    ok(not w.canvas.grab().isNull(), "the %s background draws" % mode)
+w.s.set("lite_mode", True); w.canvas.sync(); ok(not w.canvas.timer.isActive(), "Lite mode stops the background motion"); w.s.set("lite_mode", False)
+w.s.set("background", "aurora")
+b0 = w.canvas.blobs(0.0); b1 = w.canvas.blobs(30.0)
+ok(b0[0][1] != b1[0][1] and all(0 <= b[1] <= 1.1 and 0 <= b[2] <= 1.1 for b in b0 + b1), "the aurora lights drift slowly and stay on the canvas")
+w.goto(10); wait(400)
+btn = w.nav.button(10)
+ok(w.nav_glow.isVisible() and abs(w.nav_glow.geometry().center().y() - btn.geometry().center().y()) <= 2, "the sidebar highlight glides to the selected page")
+n0 = len(w.toasts.items); t = w.toasts.show("Hello toast", "good"); wait(400)
+ok(t is not None and w.toasts.items[0] is t and len(w.toasts.items) == min(4, n0 + 1) and t.x() + t.width() <= w.canvas.width(),
+   "a new toast appears on top, inside the window")
+w.toasts.dismiss(t); wait(350); ok(t not in w.toasts.items, "toasts can be dismissed")
+for i in range(6): w.toasts.show("toast %d" % i)
+ok(len(w.toasts.items) <= 4, "no more than four toasts at once")
+w.toolspage.refresh()
+ok("Valorant" in w.toolspage.poll_label.text() and "Coin Fan" in w.toolspage.top_label.text() and "Stream summary" in w.toolspage.summary_label.text(),
+   "the Stream tools page shows the poll, the top viewers and the summary")
+ok(b'data-mode="widgets"' in urllib.request.urlopen(w.overlay.url("widgets")).read() and w.ovpage.widgets_url.text().endswith("/widgets"),
+   "the /widgets overlay page exists and its address is on the OBS overlays page")
+w.goto(10); wait(300); w.grab().save(os.path.join(os.environ["APPDATA"], "tools.png"))
+shutil.rmtree(pick_dir, ignore_errors=True)
 print("\nALL PASSED" if not fails else "\n%d FAILED" % fails)
 w.close()
 shutil.rmtree(os.environ["APPDATA"], ignore_errors=True)

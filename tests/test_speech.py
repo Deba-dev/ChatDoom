@@ -70,5 +70,52 @@ class SpeakerPlaybackTests(unittest.TestCase):
         self.assertIn("timed out", self.notes[-1])
 
 
+class QueueSettings:
+    def get(self, key):
+        return {"engine": "windows", "volume": 100, "queue_max": 6, "max_len": 150, "read_name": True}.get(key)
+
+
+class MemeQueueTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.app = QCoreApplication.instance() or QCoreApplication([])
+
+    def setUp(self):
+        self.speaker = Speaker(QueueSettings())
+        self.clips, self.spoken, self.notes = [], [], []
+        self.speaker._play_clip = lambda path: (self.clips.append(path), setattr(self.speaker, "current_clip", path))
+        self.speaker._speak_windows = self.spoken.append
+        self.speaker.note.connect(self.notes.append)
+
+    def tearDown(self):
+        self.speaker.watchdog.stop()
+        self.speaker.deleteLater()
+        self.app.processEvents()
+
+    def test_meme_plays_clip_then_reads_line_without_a_name(self):
+        with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as clip:
+            path = clip.name
+        self.speaker.announce("bruh moment", path)
+        self.assertEqual(self.clips, [path])
+        self.assertEqual(self.spoken, [])
+
+        self.speaker._finish()
+        self.speaker._pump()
+
+        self.assertEqual(self.spoken, ["bruh moment"])
+        self.assertTrue(os.path.exists(path), "meme clips live in the memes folder and must never be deleted")
+        os.remove(path)
+
+    def test_broken_clip_moves_on_to_the_next_message(self):
+        self.speaker.announce("", "broken.mp3")
+        self.speaker.say("Viewer", "hello")
+        self.speaker.player = Player()
+        self.speaker._on_player_error(QMediaPlayer.Error.FormatError, "decoder unavailable")
+        self.speaker._pump()
+
+        self.assertEqual(self.spoken, ["Viewer: hello"])
+        self.assertIn("Meme sound could not be played", self.notes[-1])
+
+
 if __name__ == "__main__":
     unittest.main()

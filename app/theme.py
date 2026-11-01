@@ -16,6 +16,7 @@ DEFAULT_THEME = "Neon Violet"
 QSS = Template("""
 * { font-family: "Poppins", "Segoe UI", "Noto Sans Devanagari", sans-serif; font-size: 13px; color: $text; }
 QWidget#root { background: $bg; }
+QDialog { background: $bg2; }
 QWidget#canvas { background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 $bg, stop:0.72 $bg, stop:1 $bg2); }
 QWidget#page, QStackedWidget, QScrollArea, QScrollArea > QWidget > QWidget { background: transparent; border: none; }
 QFrame#side { background: rgba(0,0,0,0.45); border-right: 1px solid rgba(255,255,255,0.04); }
@@ -35,7 +36,15 @@ QFrame#stat, QFrame#aside { background: rgba(255,255,255,0.035); border: none; b
 QPushButton#nav { text-align: left; padding: 7px 12px; border: none; margin: 1px 12px; border-radius: 8px;
     background: transparent; color: $mute; font-size: 13px; font-weight: 500; }
 QPushButton#nav:hover { background: rgba(255,255,255,0.05); color: $text; }
-QPushButton#nav:checked { color: #ffffff; font-weight: 600; background: rgba(255,255,255,0.08); }
+QPushButton#nav:checked { color: #ffffff; font-weight: 600; background: transparent; }
+QFrame#navGlow { border-radius: 8px; border: 1px solid rgba(255,255,255,0.08);
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 rgba(255,255,255,0.12), stop:1 rgba(255,255,255,0.03));
+    border-left: 3px solid $a1; }
+QFrame#toast { background: rgba(14,16,26,0.94); border: 1px solid rgba(255,255,255,0.12); border-radius: 12px; }
+QLabel#toastDot { color: $a1; font-size: 11px; }
+QLabel#toastDot[kind="good"] { color: #34d399; }
+QLabel#toastDot[kind="warn"] { color: #fbbf24; }
+QLabel#toastDot[kind="gold"] { color: #ffd24d; }
 QFrame#card, QFrame#tile { background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.045); border-radius: 16px; }
 QListWidget { background: rgba(0,0,0,0.25); border: 1px solid rgba(255,255,255,0.08); border-radius: 10px; padding: 4px; outline: 0; }
 QListWidget::item { padding: 7px 10px; border-radius: 7px; }

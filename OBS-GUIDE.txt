@@ -44,3 +44,12 @@ NOTES
    the song title and artist, and hides when the music is paused. Showing the title also credits artists whose licence asks for it.
    Music and the chat voice share CHATDOOM's audio in OBS (Application Audio Capture). While the voice speaks, the music
    is lowered automatically (Music page > Mix with your voice).
+
+5. MEMES ON SCREEN (from the Commands page)
+   Add memes on the Commands page. CHATDOOM > OBS overlays > copy the address ending in /meme. OBS: Sources > + > Browser,
+   Width 1280, Height 720. When a viewer types !name, the meme's picture or GIF pops up in the middle with its line as a caption.
+   Meme sounds play from CHATDOOM itself, so Application Audio Capture already picks them up together with the voice.
+
+6. COUNTERS, POLL AND GIVEAWAY (from the Stream tools page)
+   CHATDOOM > OBS overlays > copy the address ending in /widgets. OBS: Sources > + > Browser, Width 1280, Height 720.
+   Counters sit in the top-left corner; a running chat poll (with live vote bars) and the giveaway show on the right.

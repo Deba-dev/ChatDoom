@@ -1,5 +1,9 @@
 CHATDOOM YOUTUBE MODERATOR BOT  (for the person who runs CHATDOOM - streamers never see this)
 
+NOW HOSTED ON CLOUDFLARE: the app-driven /v1 API (mode A below) also runs inside the Cloudflare Worker
+(cloud/src/youtube-bot.js), which is free and never sleeps. That is what the app uses now. See HOSTING.txt in the
+project folder for the 10-minute move. This Node folder stays as a self-hosting option and for mode B.
+
 One YouTube channel ("Chat Voice", @ChatVoice-V1) acts as the moderator bot. Each streamer adds that channel as a
 moderator of their own channel (manual step, shown inside the CHATDOOM app). The bot then removes messages.
 

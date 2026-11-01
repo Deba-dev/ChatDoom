@@ -1,0 +1,98 @@
+CHATDOOM HOSTING  -  free, 24/7, nothing that goes to sleep
+For the person who runs CHATDOOM (streamers never do this).
+
+SHORT VERSION
+- YouTube moderator bot: now runs inside the Cloudflare Worker you already have (the "cloud" folder), under /v1.
+  Cloudflare Workers are free and never sleep, so the bot is always online. You can switch Render off.
+- Discord bot: already runs 24/7 on that same Worker (roles, invites, announcements, payment alerts). It looks
+  "offline" in Discord only because Discord shows the green dot just for programs that keep a live connection open.
+  Nothing is broken. If you want the green dot anyway, see PART 3 (needs an always-on machine).
+
+------------------------------------------------------------------------------------------------
+PART 1  -  MOVE THE YOUTUBE BOT FROM RENDER TO CLOUDFLARE  (about 10 minutes)
+------------------------------------------------------------------------------------------------
+You need: Node.js, the "cloud" folder, and the values from Render > your service > Environment.
+
+1. In a Command Prompt inside the "cloud" folder, give the Worker the bot's settings. Each command asks you to paste a value:
+       npx wrangler secret put YT_BOT_KEY             <- paste Render's BOT_ADMIN_KEY (same value!)
+       npx wrangler secret put YT_BOT_CLIENT_ID       <- paste Render's GOOGLE_CLIENT_ID
+       npx wrangler secret put YT_BOT_CLIENT_SECRET   <- paste Render's GOOGLE_CLIENT_SECRET
+       npx wrangler secret put YT_BOT_REFRESH_TOKEN   <- paste Render's BOT_REFRESH_TOKEN
+   Using the SAME BOT_ADMIN_KEY value means every streamer who already verified keeps working; nobody verifies again.
+   (No access to the old values? Use any new long random value for YT_BOT_KEY and get a new refresh token in step 4.)
+
+2. Deploy:
+       npx wrangler deploy
+
+3. Check it: open  https://chatvoice-cloud.YOURNAME.workers.dev/v1/info
+   It must say  "authorized": true  and show the bot's channel name. It answers instantly - no waking up.
+
+4. Only if you need a new refresh token (lost it, or Google expired it):
+   a. Google Cloud > APIs & Services > Credentials > the bot's OAuth client > Authorized redirect URIs, add
+          https://chatvoice-cloud.YOURNAME.workers.dev/v1/oauth/callback
+   b. Open https://chatvoice-cloud.YOURNAME.workers.dev/v1/admin , type YT_BOT_KEY, press "Authorize bot Google account"
+      and sign in as the BOT's Google account. The page shows the refresh token once.
+   c. npx wrangler secret put YT_BOT_REFRESH_TOKEN   and paste it. Then  npx wrangler deploy.
+   Keep the OAuth consent screen "In production" (Publish app), or Google expires the login after about 7 days.
+
+5. The app: app/config.py already points YT_BOT_URL at the cloud address, and installed apps that still have the old
+   Render address saved are moved over automatically when they update. Build and publish the new version (UPDATING.txt).
+
+6. When /v1/info looks right and a test stream works, delete the Render service (or just leave it; nothing uses it).
+
+What it costs: nothing. The free Workers plan allows 100,000 requests a day; the bot uses a handful per stream.
+KV (the Worker's small storage) keeps the 15-minute verification codes, each channel's daily action count and the
+Google access token. YouTube's own daily quota (10,000 units for your Google project) is still the real limit.
+
+------------------------------------------------------------------------------------------------
+PART 2  -  THE DISCORD BOT
+------------------------------------------------------------------------------------------------
+Everything the Discord bot does already runs on the Worker, 24/7, for free:
+- one-click roles and invite links, giving roles to people who joined through your links (checked every 2 minutes),
+- live announcements, payment/tip alerts, viewer linking.
+These use Discord's normal web API with the bot token, which does not need the bot to be "online".
+So: nothing to host. Make sure the Worker has DISCORD_BOT_TOKEN (CLOUD-SETUP.txt) and the bot is in your server.
+
+------------------------------------------------------------------------------------------------
+PART 3  -  OPTIONAL: THE GREEN "ONLINE" DOT FOR THE DISCORD BOT
+------------------------------------------------------------------------------------------------
+Discord only shows a bot as online while a program holds a gateway connection open all the time. Cloudflare Workers
+cannot do that, and free hosts that sleep (like Render free) drop it. The small script discord-presence/presence.mjs
+does only this (no packages, Node 22+). Run it on something that is always on:
+
+A) A free always-on cloud machine  (best for real 24/7)
+   - Oracle Cloud "Always Free": small virtual machines that do not expire. Signing up asks for a card to prove you are a
+     person; Always Free machines are not charged. Pick an "Always Free eligible" shape when creating the instance.
+   - Google Cloud free tier: one e2-micro machine in some US regions, also needs a card.
+   Offers change - check the provider's current free-tier page before you sign up.
+   On the machine (Ubuntu):
+       sudo apt update && sudo apt install -y curl
+       curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash - && sudo apt install -y nodejs
+       mkdir -p ~/chatdoom && cd ~/chatdoom      (copy presence.mjs here)
+   Make it start by itself and restart if it stops - create /etc/systemd/system/chatdoom-presence.service :
+       [Unit]
+       Description=CHATDOOM Discord presence
+       After=network-online.target
+       [Service]
+       Environment=DISCORD_BOT_TOKEN=PASTE_THE_BOT_TOKEN
+       ExecStart=/usr/bin/node /home/ubuntu/chatdoom/presence.mjs
+       Restart=always
+       RestartSec=10
+       [Install]
+       WantedBy=multi-user.target
+   then:  sudo systemctl daemon-reload && sudo systemctl enable --now chatdoom-presence
+   Check: sudo journalctl -u chatdoom-presence -f   (should print "online as ...")
+
+B) A PC or Raspberry Pi at home that stays on:   set DISCORD_BOT_TOKEN=...   then   node presence.mjs
+   (Windows: run it from Task Scheduler "At startup" so it comes back after a restart.)
+
+The token in that file/service is the same secret as the Worker's DISCORD_BOT_TOKEN: never share or upload it.
+If the token is ever leaked, reset it in the Discord developer portal and update both places.
+
+------------------------------------------------------------------------------------------------
+WHY NOT KEEP RENDER?
+------------------------------------------------------------------------------------------------
+Render's free web services sleep after about 15 minutes without visits and take up to a minute to wake, which is why the
+bot looked offline. Their always-on plans are paid. Railway, Koyeb and Fly.io change their free offers often (trials,
+credits, or a card). The Worker is already set up, free, and always on - so the bot lives there now.
+The youtube-bot folder still works as a Node server if you ever want to self-host it (youtube-bot/README.txt).

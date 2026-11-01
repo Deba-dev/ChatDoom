@@ -53,6 +53,25 @@ class OverlayPage(FormScrollArea):
         cl.addWidget(wrap)
         lay.addWidget(c)
 
+        c, cl = section_card("Memes on screen",
+                             "Shows the picture or GIF (and the line) of a meme when a viewer types its !command. Add memes on the Commands page. "
+                             "In OBS: Sources > + > Browser. Width 1280, Height 720. Meme sounds play from the app, like the voice.")
+        wrap, self.meme_url = copy_row(overlay.url("meme"))
+        cl.addWidget(wrap)
+        sp = QSpinBox()
+        sp.setRange(2, 30)
+        sp.setValue(int(self.s.get("meme_seconds")))
+        sp.valueChanged.connect(lambda v: self.s.set("meme_seconds", v))
+        cl.addWidget(field_row("Meme stays on screen", "Seconds before the meme picture clears.", sp))
+        lay.addWidget(c)
+
+        c, cl = section_card("Counters, poll and giveaway",
+                             "Shows your counters in the top-left corner and the live chat poll or giveaway on the right. Set them up on the "
+                             "Stream tools page. In OBS: Sources > + > Browser. Width 1280, Height 720.")
+        wrap, self.widgets_url = copy_row(overlay.url("widgets"))
+        cl.addWidget(wrap)
+        lay.addWidget(c)
+
         c, cl = section_card("Overlay options", "Changes apply to OBS within a second. Only this PC can open these addresses.")
         for label, key, lo, hi in (("Alert stays on screen", "ov_seconds", 3, 30), ("Chat lines stay", "ov_chat_seconds", 5, 120)):
             sp = QSpinBox()

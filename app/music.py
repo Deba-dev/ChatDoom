@@ -154,6 +154,7 @@ class MusicPlayer(QObject):
         self.s, self.push = settings, push
         self.tracks, self.index, self.playing, self.ducked = [], -1, False, False
         self.history, self.order, self._fails = [], [], 0
+        self.requests = []                    # (track index, viewer key) asked for in chat with !sr; played before the shuffle
         self.backend = backend or QtBackend()
         self.backend.ended.connect(self._ended)
         self.backend.failed.connect(self._failed)
@@ -166,7 +167,7 @@ class MusicPlayer(QObject):
         self.s.set("music_folder", folder)
         self.stop()
         self.tracks = scan(folder)
-        self.index, self.history = -1, []
+        self.index, self.history, self.requests = -1, [], []
         self._reshuffle()
         self.changed.emit()
         return len(self.tracks)
@@ -216,9 +217,22 @@ class MusicPlayer(QObject):
         self.playing = False
         self._publish()
 
+    def request(self, i, who=""):
+        """Queue a viewer's song. Returns 0 when it starts at once, else its place in the queue."""
+        if not self.playing:
+            self.play_index(i)
+            return 0
+        self.requests.append((i, who))
+        self.changed.emit()
+        return len(self.requests)
+
     def next(self):
         if not self.tracks:
             return
+        while self.requests:
+            i, _ = self.requests.pop(0)
+            if 0 <= i < len(self.tracks):
+                return self.play_index(i)
         if len(self.order) != len(self.tracks):
             self._reshuffle()
         pos = self.order.index(self.index) if self.index in self.order else -1

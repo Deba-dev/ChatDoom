@@ -151,6 +151,7 @@ def field_row(title, note, widget):
         widget.setMaximumWidth(420)
     lay.addWidget(name)
     lay.addWidget(detail)
+    detail.setVisible(bool(note))
     lay.addWidget(widget)
     return wrap
 
@@ -169,6 +170,7 @@ def option_switch_row(title, note, switch):
     detail.setWordWrap(True)
     text.addWidget(name)
     text.addWidget(detail)
+    detail.setVisible(bool(note))
     lay.addLayout(text, 1)
     lay.addWidget(switch, 0, Qt.AlignTop)
     return row

@@ -73,14 +73,15 @@ def youtube_id(s):
 # ---------- sources ----------
 class Hub(QObject):
     message = Signal(object)            # Message
-    status = Signal(str, str, bool)     # platform, text, connected
+    status = Signal(str, str, bool)     # stream key ("youtube", or "extra:N" for an added stream), text, connected
 
 
 class Source:
     name = "?"
 
-    def __init__(self, hub):
+    def __init__(self, hub, key=None):
         self.hub = hub
+        self.key = key or self.name     # status and messages are tagged with this, so several streams of one platform can run
         self.stop_evt = threading.Event()
         self.thread = None
 
@@ -99,7 +100,11 @@ class Source:
         self.stop_evt.set()
 
     def _status(self, text, ok=False):
-        self.hub.status.emit(self.name, text, ok)
+        self.hub.status.emit(self.key, text, ok)
+
+    def _emit(self, m):
+        m.stream = self.key
+        self.hub.message.emit(m)
 
     def _safe(self, *args):
         try:
@@ -153,7 +158,7 @@ class YouTubeSource(Source):
                                                     "giftMembershipReceivedEvent")
                                 paid = c.type in ("superChat", "superSticker")
                                 a = c.author
-                                self.hub.message.emit(Message(
+                                self._emit(Message(
                                     "youtube", a.name, c.message or ("became a channel member" if member else ""),
                                     "member" if member else ("super" if paid else "chat"),
                                     getattr(c, "amountString", "") if paid else "",
@@ -219,7 +224,7 @@ class TwitchSource(_AsyncSource):
                             else:
                                 m = parse_twitch_line(line)
                                 if m:
-                                    self.hub.message.emit(m)
+                                    self._emit(m)
             except Exception as e:
                 self._status("Reconnecting... (%s)" % str(e)[:40])
             await self._sleep(3)
@@ -269,7 +274,10 @@ class KickSource(_AsyncSource):
                         else:
                             m = parse_kick_event(ev, msg.get("data", "{}"))
                             if m:
-                                self.hub.message.emit(m)
+                                self._emit(m)
             except Exception as e:
                 self._status("Reconnecting... (%s)" % str(e)[:40])
             await self._sleep(3)
+
+
+SOURCES = {"youtube": YouTubeSource, "twitch": TwitchSource, "kick": KickSource}
