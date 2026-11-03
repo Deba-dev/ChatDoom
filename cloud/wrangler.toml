@@ -2,6 +2,9 @@ name = "chatvoice-cloud"
 main = "src/index.js"
 compatibility_date = "2024-11-01"
 
+# Own address. The ZunimiLabs website (separate Worker, not in this repo) serves zunimilabs.online itself.
+routes = [{ pattern = "cloud.zunimilabs.online", custom_domain = true }]
+
 # Checks every 2 minutes which invite new Discord members used (free plan)
 [triggers]
 crons = ["*/2 * * * *"]
