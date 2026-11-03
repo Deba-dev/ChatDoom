@@ -276,9 +276,14 @@ w.s.set("yt_bot_url", "http://127.0.0.1:8812"); w.s.set("youtube", "https://www.
 from app.settings import Settings as _Settings
 _fresh = os.path.join(os.environ["APPDATA"], "fresh_settings.json"); open(_fresh, "w").write('{"cloud_url": "", "yt_bot_url": "   ", "update_repo": "Deba-dev/ChatVoice"}')
 _fs = _Settings(_fresh)
-ok(_fs.get("cloud_url").startswith("https://") and "workers.dev" in _fs.get("cloud_url") and _fs.get("yt_bot_url").startswith("https://")
+ok(_fs.get("cloud_url") == "https://cloud.zunimilabs.online" and _fs.get("yt_bot_url") == "https://cloud.zunimilabs.online"
    and _fs.get("update_repo") == "Deba-dev/ChatDoom",
    "built-in service URLs remain available and old update settings migrate to the renamed GitHub repository")
+_moved = os.path.join(os.environ["APPDATA"], "moved_settings.json")
+open(_moved, "w").write('{"cloud_url": "https://chatvoice-cloud.debarshiparasar7.workers.dev/", "yt_bot_url": "https://chatvoice-cloud.debarshiparasar7.workers.dev"}')
+_ms = _Settings(_moved)
+ok(_ms.get("cloud_url") == "https://cloud.zunimilabs.online" and _ms.get("yt_bot_url") == "https://cloud.zunimilabs.online",
+   "saved workers.dev addresses move to the Worker's own domain")
 w.ytmod.refresh_info(); wait(600)
 ok(w.ytmod.bot_state == "online" and w.s.get("yt_bot_handle") == "@ChatVoice-V1" and "Bot online" in w.ytpage.bot_badge.text(), "page shows the bot online with its name")
 ok("@ChatVoice-V1" in w.ytpage.step2.body.text() and w.ytpage.handle.text() == "@ChatVoice-V1", "instructions name the bot to add as moderator")

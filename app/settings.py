@@ -2,7 +2,7 @@
 import json
 import os
 
-from .config import CLOUD_URL, OLD_YT_BOT_URLS, YT_BOT_HANDLE, YT_BOT_TITLE, YT_BOT_URL
+from .config import CLOUD_URL, OLD_CLOUD_URLS, OLD_YT_BOT_URLS, YT_BOT_HANDLE, YT_BOT_TITLE, YT_BOT_URL
 from .secure import protect, unprotect
 
 SECRET_KEYS = ("cloud_token", "g_client_secret", "ov_external_url", "yt_bot_token",
@@ -76,6 +76,9 @@ class Settings:
                     self.data[k] = default
             if str(self.data.get("yt_bot_url", "")).strip().rstrip("/") in OLD_YT_BOT_URLS:     # the bot moved off Render
                 self.data["yt_bot_url"] = YT_BOT_URL
+            for k, default in (("cloud_url", CLOUD_URL), ("yt_bot_url", YT_BOT_URL)):      # the Worker moved to its own domain
+                if str(self.data.get(k, "")).strip().rstrip("/") in OLD_CLOUD_URLS:
+                    self.data[k] = default
         except Exception:
             pass
 

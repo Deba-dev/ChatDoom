@@ -168,7 +168,7 @@ class DiscordPage(FormScrollArea):
         c, cl = section_card("Connection details",
                              "Only needed if the one-click connection does not work. Paste the server key shown on the Discord approval page.")
         self.url = QLineEdit(self.s.get("cloud_url"))
-        self.url.setPlaceholderText("https://chatvoice-cloud.something.workers.dev")
+        self.url.setPlaceholderText("https://cloud.zunimilabs.online")
         self.url.editingFinished.connect(lambda: self.s.set("cloud_url", self.url.text().strip()))
         self.key = QLineEdit(self.s.get("cloud_token"))
         self.key.setEchoMode(QLineEdit.Password)

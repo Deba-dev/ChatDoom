@@ -80,19 +80,11 @@ const ok = (c, msg) => { console.log((c ? "PASS " : "FAIL ") + msg); if (!c) fai
 const call = (path, opts) => worker.fetch(new Request("https://cv.example" + path, opts), env);
 const stateFrom = (res) => new URL(res.headers.get("location")).searchParams.get("state");
 
-// Public site and policy pages work without service secrets.
-let publicPage = await worker.fetch(new Request("https://cv.example/"), {});
-let publicHtml = await publicPage.text();
-ok(publicPage.status === 200 && publicHtml.includes("Make your stream chat easier to follow.")
-  && publicHtml.includes('href="/privacy"') && publicHtml.includes('href="/terms"'), "home page links to both legal pages");
-publicPage = await worker.fetch(new Request("https://cv.example/privacy"), {});
-publicHtml = await publicPage.text();
-ok(publicPage.status === 200 && publicHtml.includes("debarshiparasar.business@gmail.com")
-  && publicHtml.includes("three days") && publicHtml.includes("encrypted"), "privacy page identifies contact and describes data handling");
-publicPage = await worker.fetch(new Request("https://cv.example/terms"), {});
-publicHtml = await publicPage.text();
-ok(publicPage.status === 200 && publicHtml.includes("Terms of service")
-  && publicHtml.includes("third-party platform"), "terms page is publicly available");
+// Public pages moved to the ZunimiLabs website; the cloud redirects there without needing service secrets.
+for (const [path, to] of [["/", "/chatdoom/"], ["/privacy", "/chatdoom/privacy/"], ["/terms", "/chatdoom/terms/"]]) {
+  const publicPage = await worker.fetch(new Request("https://cv.example" + path), {});
+  ok(publicPage.status === 301 && publicPage.headers.get("location") === "https://zunimilabs.online" + to, path + " redirects to the website");
+}
 
 // 1. bot setup
 let r = await call("/setup");

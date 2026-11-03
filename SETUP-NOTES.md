@@ -3,7 +3,8 @@
 Notes from the 2026-11-02 session: hosting, YouTube login, the bot account, the VPS, and what is still open.
 For the person who runs CHATDOOM (streamers never do any of this).
 
-`YOUR-CLOUD` = `https://chatvoice-cloud.debarshiparasar7.workers.dev` today, `https://yourdomain.com` once a custom domain is attached to the Worker.
+`YOUR-CLOUD` = `https://cloud.zunimilabs.online` (custom domain on the Worker since 2026-11-04; the old `chatvoice-cloud.debarshiparasar7.workers.dev` address still works).
+The ZunimiLabs website (`https://zunimilabs.online`, with the CHATDOOM and NOVA pages and their privacy/terms) is a separate Worker in `D:\github repo\zunimilabs-site`, kept out of this repo. Rebuild + deploy it with `node build.mjs && npx wrangler deploy` in that folder.
 
 ---
 
