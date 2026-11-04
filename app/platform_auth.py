@@ -40,6 +40,7 @@ class PlatformAuth(QObject):
     changed = Signal(str)
     notice = Signal(str)
     subscribers = Signal(object)
+    broadcasts = Signal(object, bool)     # the channel's live and scheduled streams; True when the streamer asked
 
     SUPPORTED = ("youtube", "twitch")
 
@@ -145,6 +146,14 @@ class PlatformAuth(QObject):
         run_bg(self.bridge, "platform:youtube-subscribers",
                lambda: _request(self._base() + "/platform-auth/youtube-subscribers", "POST", {"since": since}, token))
 
+    def find_youtube_streams(self, picked=False):
+        """Live and scheduled streams of the signed-in channel. picked: the streamer asked, so show the choices."""
+        token = self.s.get(self._session_key("youtube"))
+        if not token or not self._base():
+            return
+        run_bg(self.bridge, "platform:youtube-broadcasts:%s" % ("pick" if picked else "auto"),
+               lambda: _request(self._base() + "/platform-auth/youtube-broadcasts", token=token))
+
     def _action(self, platform, action, body, tag="platform:action"):
         if platform not in self.SUPPORTED:
             self.notice.emit("Chat actions are not available for %s." % platform.title())
@@ -191,6 +200,17 @@ class PlatformAuth(QObject):
             self.s.set("platform_%s_name" % platform, result.get("displayName", ""))
             self.changed.emit(platform)
             self.notice.emit("Connected %s as %s." % (platform.title(), result.get("displayName", "your account")))
+            if platform == "youtube":
+                self.find_youtube_streams()
+            return
+
+        if tag.startswith("platform:youtube-broadcasts:"):
+            picked = tag.endswith(":pick")
+            if result.get("error"):
+                if picked:
+                    self.notice.emit("Could not look up your streams: %s" % result["error"])
+                return
+            self.broadcasts.emit(result.get("broadcasts") or [], picked)
             return
 
         if tag.startswith("platform:account:"):

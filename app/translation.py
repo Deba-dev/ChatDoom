@@ -1,10 +1,13 @@
 """Language detection and authenticated CHATDOOM cloud translation."""
 import json
+import re
 import urllib.error
 import urllib.parse
 import urllib.request
 
-from langdetect import DetectorFactory, detect
+from langdetect import DetectorFactory, detect, detect_langs
+
+from . import hinglish
 
 DetectorFactory.seed = 0
 
@@ -23,11 +26,28 @@ LANGUAGE_CODES = {
 }
 
 
+MIN_LATIN_WORDS = 4
+MIN_LATIN_CONFIDENCE = 0.9
+
+
 def detect_source_language(text):
     return detect(text)
 
 
+def worth_translating(text):
+    """Short Latin-script chat fools langdetect with full confidence ("HELLO" is "Vietnamese"), and Hinglish has no
+    language code at all, so only clear cases go to the cloud. Other scripts are safe to detect."""
+    if any(c.isalpha() and ord(c) > 0x24F for c in text):
+        return True
+    words = re.findall(r"[^\W\d_]+", text.lower())
+    if len(words) < MIN_LATIN_WORDS or 3 * sum(w in hinglish.word_map for w in words) >= len(words):
+        return False
+    return detect_langs(text)[0].prob >= MIN_LATIN_CONFIDENCE
+
+
 def translate_to_english(text, settings):
+    if not worth_translating(text):
+        return text, False
     source = LANGUAGE_CODES.get(detect_source_language(text))
     if not source:
         raise ValueError("the detected language is not supported by the translation model")

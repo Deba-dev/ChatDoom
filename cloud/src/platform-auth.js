@@ -125,7 +125,7 @@ function returnAddress(value) {
 async function tokenResponse(response, provider, stage) {
   const data = await response.json().catch(() => ({}));
   if (!response.ok) {
-    const detail = clean(data.error_description || data.message || data.error || "", 100);
+    const detail = clean(data.error_description || data.message || data.error?.message || data.error || "", 100);
     const error = new Error(`${provider} ${stage} failed (${response.status})${detail ? ": " + detail : ""}`);
     error.status = response.status;
     throw error;
@@ -408,12 +408,46 @@ async function youtubeChatId(env, account, videoId) {
   if (!/^[\w-]{11}$/.test(videoId)) throw new Error("Enter a valid YouTube live video ID");
   await reserveYouTubeQuota(env, 1);
   const url = new URL("https://www.googleapis.com/youtube/v3/liveBroadcasts");
-  url.search = new URLSearchParams({ part: "id,snippet", broadcastStatus: "active", mine: "true" });
+  url.search = new URLSearchParams({ part: "id,snippet", broadcastStatus: "active", broadcastType: "all", maxResults: "50" });
   const response = await fetch(url, { headers: { Authorization: "Bearer " + account.accessToken } });
   const data = await tokenResponse(response, "YouTube", "live stream lookup");
   const live = (data.items || []).find((item) => item.id === videoId && item.snippet && item.snippet.liveChatId);
   if (!live) throw new Error("That video is not an active live stream on the signed-in YouTube channel");
   return live.snippet.liveChatId;
+}
+
+// The signed-in channel's own live and scheduled streams. Unlisted ones are included, which no public page can show.
+async function youtubeBroadcasts(request, env) {
+  let account;
+  try { account = await accountFor(request, env); }
+  catch (error) { return json({ error: clean(error.message, 140) }, error.status === 400 || error.status === 401 ? 401 : 502); }
+  if (!account) return json({ error: "Platform login expired or disconnected. Sign in again." }, 401);
+  if (account.platform !== "youtube") return json({ error: "Sign in to YouTube to find your streams" }, 400);
+  try {
+    const now = Date.now();
+    const broadcasts = [];
+    for (const broadcastStatus of ["active", "upcoming"]) {
+      await reserveYouTubeQuota(env, 1);
+      const url = new URL("https://www.googleapis.com/youtube/v3/liveBroadcasts");
+      url.search = new URLSearchParams({ part: "id,snippet,status", broadcastStatus, broadcastType: "all", maxResults: "50" });
+      const response = await fetch(url, { headers: { Authorization: "Bearer " + account.accessToken } });
+      const data = await tokenResponse(response, "YouTube", "stream lookup");
+      for (const item of data.items || []) {
+        const start = Date.parse(item.snippet && item.snippet.scheduledStartTime || "");
+        broadcasts.push({
+          id: clean(item.id, 20), title: clean(item.snippet && item.snippet.title || "Untitled stream", 100),
+          live: broadcastStatus === "active", privacy: clean(item.status && item.status.privacyStatus || "", 20),
+          start: Number.isFinite(start) ? start : 0,
+          stale: broadcastStatus === "upcoming" && !(start > now - 86_400_000),   // a date long past: the channel's old default entry
+        });
+      }
+    }
+    broadcasts.sort((a, b) => b.live - a.live || a.stale - b.stale || a.start - b.start);
+    return json({ broadcasts });
+  } catch (error) {
+    return json({ error: clean(error.message || "Could not look up your streams", 160) },
+      error.status === 429 ? 429 : error.status === 400 || error.status === 401 ? error.status : 502);
+  }
 }
 
 async function action(request, env, kind) {
@@ -440,7 +474,7 @@ async function action(request, env, kind) {
       }
       const chatId = await youtubeChatId(env, account, String(body.videoId || ""));
       await reserveYouTubeQuota(env, 50);
-      const response = await fetch("https://www.googleapis.com/youtube/v3/liveChatMessages?part=snippet", {
+      const response = await fetch("https://www.googleapis.com/youtube/v3/liveChat/messages?part=snippet", {
         method: "POST",
         headers: { Authorization: "Bearer " + account.accessToken, "content-type": "application/json" },
         body: JSON.stringify({ snippet: { liveChatId: chatId, ...snippet } }),
@@ -517,6 +551,7 @@ export async function handlePlatformAuth(request, env, url) {
   if (request.method === "GET" && path === "/platform-auth/account") return accountInfo(request, env);
   if (request.method === "POST" && path === "/platform-auth/eventsub") return twitchEventSub(request, env);
   if (request.method === "POST" && path === "/platform-auth/youtube-subscribers") return youtubeSubscribers(request, env);
+  if (request.method === "GET" && path === "/platform-auth/youtube-broadcasts") return youtubeBroadcasts(request, env);
   if (request.method === "POST" && path === "/platform-auth/message") return action(request, env, "message");
   if (request.method === "POST" && path === "/platform-auth/poll") return action(request, env, "poll");
   if (request.method === "DELETE" && path === "/platform-auth/account") return disconnect(request, env);

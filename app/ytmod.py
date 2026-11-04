@@ -4,6 +4,7 @@ CHATDOOM keeps reading your chat itself (free, no sign-in). When a message break
 moderator bot, which you added as a moderator of your channel, to remove it. You never sign in to Google.
 """
 import json
+import os
 import re
 import time
 import urllib.error
@@ -15,9 +16,13 @@ from PySide6.QtCore import QObject, QTimer, Signal
 
 from .discord import run_bg
 from .platforms import youtube_id
+from .settings import data_dir
 
 RULES = {"blocked word": "mod_del_blocked", "link": "mod_del_links", "spam": "mod_del_spam", "repeat": "mod_del_spam"}
 UC = re.compile(r"^UC[\w-]{20,30}$")
+LOG_MAX = 200
+OUTCOMES = {"done": "Removed", "test": "Test mode, not removed", "missing": "Not found, it may be too old",
+            "protected": "Kept, moderator", "limit": "Not removed, daily limit reached", "failed": "Failed"}
 
 
 def bot_call(settings, method, path, body=None, token=None, timeout=75):
@@ -65,6 +70,9 @@ class YtModerator(QObject):
         self.code_exp = 0.0
         self.message = ""                 # last short status line for the page
         self._last_error_note = 0.0
+        self.in_flight = []               # the items of the request the bot is working on
+        self.log_path = os.path.join(data_dir(), "moderation_log.json")
+        self.log = self._load_log()       # what the bot did, newest last
         self.timer = QTimer(self)
         self.timer.setSingleShot(True)
         self.timer.setInterval(1500)
@@ -88,6 +96,56 @@ class YtModerator(QObject):
         self.s.set("yt_channel_title", "")
         self.code, self.message = "", ""
         self.changed.emit()
+
+    def is_bot(self, m):
+        """The bot's own chat lines (the reasons it posts) must not be read aloud or moderated."""
+        if m.platform != "youtube":
+            return False
+        channel = ((self.bot or {}).get("bot") or {}).get("channelId")
+        handle = str(self.s.get("yt_bot_handle") or "").lstrip("@").lower()
+        return bool(m.uid and m.uid == channel) or bool(handle and m.author.lstrip("@").lower() == handle)
+
+    # ----- what was removed -----
+    def _load_log(self):
+        try:
+            with open(self.log_path, encoding="utf-8") as f:
+                entries = json.load(f)
+            return entries[-LOG_MAX:] if isinstance(entries, list) else []
+        except Exception:
+            return []
+
+    def _save_log(self):
+        try:
+            with open(self.log_path, "w", encoding="utf-8") as f:
+                json.dump(self.log, f, ensure_ascii=False)
+        except Exception:
+            pass
+
+    def clear_log(self):
+        self.log = []
+        self._save_log()
+        self.changed.emit()
+
+    def _record(self, items, res):
+        """Keep the bot's real result for each item. An older cloud sends no per-item results."""
+        results = {r.get("i"): r for r in res.get("results") or [] if isinstance(r, dict)}
+        for i, it in enumerate(items):
+            r = results.get(i, {})
+            if not res.get("ok"):
+                outcome = "Failed: %s" % str(res.get("error") or "unknown error")[:80]
+            elif "results" not in res:
+                outcome = "Sent to the bot"
+            elif not r:
+                outcome = "Not processed"
+            else:
+                outcome = OUTCOMES.get(r.get("outcome"), "Unknown")
+                if r.get("detail"):
+                    outcome += ": %s" % r["detail"]
+            self.log.append({"at": time.time(), "author": it.get("author", ""), "text": it.get("text", ""),
+                             "reason": it.get("reason", ""), "action": it.get("action", "delete"),
+                             "seconds": it.get("seconds", 0), "outcome": outcome, "told": bool(r.get("told"))})
+        self.log = self.log[-LOG_MAX:]
+        self._save_log()
 
     # ----- talking to the bot -----
     def refresh_info(self):
@@ -145,7 +203,9 @@ class YtModerator(QObject):
                 secs = int(self.s.get("mod_timeout_secs"))
                 self.timed_out[ch] = now + secs
                 items.append({"action": "timeout", "channelId": ch, "author": it["author"], "seconds": secs})
-        body = {"videoId": vid, "items": items, "dryRun": bool(self.s.get("mod_dry_run")), "limit": int(self.s.get("mod_budget"))}
+        body = {"videoId": vid, "items": items, "dryRun": bool(self.s.get("mod_dry_run")), "limit": int(self.s.get("mod_budget")),
+                "explain": bool(self.s.get("mod_explain"))}
+        self.in_flight = items
         token = self.s.get("yt_bot_token")
         self.busy = True
         run_bg(self.bridge, "yt:sweep", lambda: bot_call(self.s, "POST", "/v1/moderate", body, token))
@@ -190,6 +250,8 @@ class YtModerator(QObject):
             self.changed.emit()
         elif tag == "yt:sweep":
             self.busy = False
+            self._record(self.in_flight, res)
+            self.in_flight = []
             if status == 401:
                 self.forget()
                 self.notice.emit("Your channel verification expired. Verify it again on the YouTube mod page.")
@@ -202,5 +264,6 @@ class YtModerator(QObject):
             elif time.time() - self._last_error_note > 60:
                 self._last_error_note = time.time()
                 self.notice.emit("YouTube moderation problem: %s" % res.get("error", "unknown error"))
+            self.changed.emit()
             if self.pending:
                 self.timer.start()

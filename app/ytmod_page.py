@@ -3,7 +3,7 @@ import time
 
 from PySide6.QtCore import Qt, QTimer, QUrl
 from PySide6.QtGui import QDesktopServices
-from PySide6.QtWidgets import QLabel, QPushButton, QSpinBox, QVBoxLayout, QWidget
+from PySide6.QtWidgets import QLabel, QListWidget, QPushButton, QSpinBox, QVBoxLayout, QWidget
 
 from .theme import DEFAULT_THEME, THEMES
 from .ui_kit import (FormScrollArea, bind_switch, copy_row, field_row, hrow, info_box, make_badge, option_switch_row,
@@ -11,6 +11,18 @@ from .ui_kit import (FormScrollArea, bind_switch, copy_row, field_row, hrow, inf
 
 BOT_STATES = {"online": ("pillOn", "\u25cf  Bot online"), "waking": ("pillWait", "\u25cf  Waking up..."),
               "offline": ("pillBad", "\u25cf  Bot offline"), "unknown": ("pill", "\u25cf  Checking...")}
+
+
+def log_line(entry):
+    """Two lines for the Removed messages list: what happened, then the viewer's message."""
+    when = time.strftime("%d %b %H:%M", time.localtime(entry.get("at", 0)))
+    if entry.get("action") == "timeout":
+        what = "Time-out, %d s" % int(entry.get("seconds") or 0)
+    else:
+        what = "Message, %s" % (entry.get("reason") or "rule")
+    told = ", viewer told why" if entry.get("told") else ""
+    head = "%s   %s   %s: %s%s" % (when, entry.get("author") or "viewer", what, entry.get("outcome") or "", told)
+    return head + ("\n" + entry["text"] if entry.get("text") else "")
 
 
 class YtModPage(FormScrollArea):
@@ -91,6 +103,8 @@ class YtModPage(FormScrollArea):
         for title, note, key in (("Messages with blocked words", "The list on the Moderation page.", "mod_del_blocked"),
                                  ("Messages with links", "Links from viewers who are not moderators.", "mod_del_links"),
                                  ("Spam and repeated messages", "Walls of the same letter, copy-pasted spam.", "mod_del_spam"),
+                                 ("Tell viewers why", "The bot posts a short reason in chat after a removal or time-out, once a minute per viewer at most. "
+                                  "Each post counts toward the daily limit.", "mod_explain"),
                                  ("Test mode", "Only show what would be removed. Turn off to really remove.", "mod_dry_run")):
             cl.addWidget(option_switch_row(title, note, bind_switch(self.s, key, accent)))
         for title, note, key, lo, hi, suffix in (("Daily action limit", "Most removals or time-outs per day. Keeps your share of YouTube's daily allowance safe.", "mod_budget", 1, 150, ""),
@@ -105,6 +119,25 @@ class YtModPage(FormScrollArea):
         self.used = QLabel("")
         self.used.setObjectName("settingNote")
         cl.addWidget(self.used)
+        lay.addWidget(c)
+
+        # ---------- what was removed ----------
+        c, cl = section_card("Removed messages",
+                             "Everything the bot removed or timed out, newest first, with what the viewer wrote. "
+                             "The last %d are kept on this PC only." % 200)
+        self.log_list = QListWidget()
+        self.log_list.setWordWrap(True)
+        self.log_list.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self.log_list.setMinimumHeight(260)
+        cl.addWidget(self.log_list)
+        self.log_empty = QLabel("Nothing removed yet.")
+        self.log_empty.setObjectName("settingNote")
+        cl.addWidget(self.log_empty)
+        self.log_clear = QPushButton("Clear list")
+        self.log_clear.setObjectName("quiet")
+        self.log_clear.setCursor(Qt.PointingHandCursor)
+        self.log_clear.clicked.connect(self.mod.clear_log)
+        cl.addWidget(hrow(self.log_clear))
         lay.addWidget(c)
 
         lay.addWidget(info_box("CHATDOOM reads your chat itself and asks the bot to remove messages, so it only works while CHATDOOM is open "
@@ -170,3 +203,7 @@ class YtModPage(FormScrollArea):
         else:
             set_badge(self.status, "\u25cf  Active", "pillOn")
         self.used.setText("Actions used today: %d of %d" % (self.mod.used_today(), int(self.s.get("mod_budget"))))
+        self.log_list.clear()
+        self.log_list.addItems([log_line(e) for e in reversed(self.mod.log)])
+        self.log_empty.setVisible(not self.mod.log)
+        self.log_clear.setEnabled(bool(self.mod.log))

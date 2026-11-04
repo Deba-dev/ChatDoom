@@ -50,7 +50,7 @@ DEFAULTS = {
     "yt_bot_title": YT_BOT_TITLE, "yt_used": 0, "yt_used_day": "", "yt_limit": 60, "yt_mod_on": True,
     "music_folder": "", "music_volume": 40, "music_shuffle": True, "music_duck": True, "music_duck_pct": 30, "music_autoplay": False,
     "update_repo": "Deba-dev/ChatDoom", "auto_update_check": True, "update_last": 0, "update_pending": "", "tips_on": False, "tip_min": 20, "tip_cursor": None, "g_client_id": "", "g_client_secret": "",
-    "mod_del_blocked": True, "mod_del_links": True, "mod_del_spam": False, "mod_dry_run": True, "mod_budget": 60,
+    "mod_del_blocked": True, "mod_del_links": True, "mod_del_spam": False, "mod_dry_run": True, "mod_budget": 60, "mod_explain": True,
     "mod_timeout_after": 3, "mod_timeout_secs": 300, "yt_actions_date": "", "yt_actions_count": 0,
     "role_verified": "", "role_regular": "", "role_supporter": "", "regular_msgs": 50, "dedupe_secs": 20, "user_cooldown": 4, "queue_max": 6,
     "chat_font": "", "chat_size": 13, "chat_weight": 400, "chat_color": "#f4f4f8",
