@@ -40,6 +40,10 @@ globalThis.fetch = async (url, init = {}) => {
     if (Y.deleteStatus !== 204) return j({ error: { message: "nope", errors: [{ reason: Y.deleteReason }] } }, Y.deleteStatus);
     Y.deleted.push(u.searchParams.get("id")); return new Response(null, { status: 204 });
   }
+  if (u.pathname.endsWith("/liveChat/messages") && m === "POST") {
+    if (Y.postStatus) return j({ error: { message: "cannot post" } }, Y.postStatus);
+    Y.posted.push(JSON.parse(init.body)); return j({ id: "POSTED" });
+  }
   if (u.pathname.endsWith("/liveChat/bans")) { Y.bans.push(JSON.parse(init.body)); return j({}); }
   return j({ error: { message: "unexpected " + u.pathname } }, 404);
 };
@@ -116,6 +120,26 @@ Y.deleteReason = "forbidden";
 await new Promise((done) => setTimeout(done, 1600));
 r = await post("/v1/moderate", { videoId: VIDEO, items: [{ channelId: VIEWER, author: "S", text: "again spam" }] }, H);
 ok(r.data.notes[0].includes("not a moderator"), "a real permission error tells the streamer to add the bot as moderator");
+
+// ---- telling viewers why ----
+Y.posted = Y.posted || [];
+ok(Y.posted.length === 0, "nothing is posted in chat unless the streamer turned reasons on");
+const named = (id, text) => { const c = msg(id, VIEWER, text); return { ...c, authorDetails: { ...c.authorDetails, displayName: "@Spam Guy" } }; };
+Y.deleteStatus = 204; Y.chat.push(named("a4", "told www.x.com"));
+await new Promise((done) => setTimeout(done, 1600));
+let before = r.data.usedToday;
+r = await post("/v1/moderate", { videoId: VIDEO, explain: true, limit: 100, items: [{ channelId: VIEWER, author: "made up name", text: "told www.x.com", reason: "link" }] }, H);
+ok(Y.posted[0]?.snippet.textMessageDetails.messageText === "@Spam Guy your message was removed because links are not allowed here."
+   && Y.posted[0].snippet.liveChatId === "CHAT1", "the viewer is told why, under the name YouTube reports");
+ok(r.data.results[0].outcome === "done" && r.data.results[0].told === true && r.data.usedToday === before + 2, "the reason counts toward the daily limit and the app gets the result");
+Y.chat.push(named("a5", "more www.y.com"));
+await new Promise((done) => setTimeout(done, 1600));
+r = await post("/v1/moderate", { videoId: VIDEO, explain: true, limit: 100, items: [{ channelId: VIEWER, author: "S", text: "more www.y.com", reason: "made up reason" }] }, H);
+ok(Y.deleted.includes("a5") && Y.posted.length === 1 && r.data.results[0].told === false, "a viewer is told at most once a minute, but the message is still removed");
+Y.postStatus = 403;
+r = await post("/v1/moderate", { videoId: VIDEO, explain: true, limit: 100, items: [{ channelId: "UC" + "z".repeat(22), author: "S", action: "timeout", seconds: 300 }] }, H);
+ok(r.data.results[0].outcome === "done", "a timeout of someone not in the recent chat still works");
+Y.postStatus = 0;
 
 // ---- admin login ----
 r = await call("/v1/admin");

@@ -18,6 +18,12 @@ const CODE_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
 const TOKEN_DAYS = 90;
 const MAX_ITEMS = 20;
 const MAX_DAILY_ACTIONS = 150;
+// What viewers are told. A fixed list, so the bot never posts text the app sent it.
+const REASONS = { "blocked word": "it had a blocked word", link: "links are not allowed here",
+                  spam: "it looked like spam", repeat: "it repeated the same message" };
+const reasonLine = (name, reason) => `@${name} your message was removed because ${REASONS[reason] || "it broke the chat rules"}.`;
+const timeoutLine = (name, secs) => `@${name} you are timed out for ${secs >= 120 ? Math.round(secs / 60) + " minutes" : secs + " seconds"} for breaking the chat rules repeatedly.`;
+const chatName = (m) => String(m?.name || "").replace(/^@+/, "").slice(0, 40);
 
 const enc = new TextEncoder();
 const json = (data, status = 200) =>
@@ -154,7 +160,7 @@ async function pull(env, chatId) {
     if (b.pageToken) q.set("pageToken", b.pageToken);
     const d = await api(env, `${API}/liveChat/messages?${q}`);
     for (const m of d.items || []) {
-      b.items.push({ id: m.id, channelId: m.authorDetails?.channelId, text: m.snippet?.displayMessage || "",
+      b.items.push({ id: m.id, channelId: m.authorDetails?.channelId, name: m.authorDetails?.displayName || "", text: m.snippet?.displayMessage || "",
                      mod: Boolean(m.authorDetails?.isChatModerator || m.authorDetails?.isChatOwner) });
     }
     b.pageToken = d.nextPageToken || b.pageToken;
@@ -233,41 +239,63 @@ async function moderate(request, env) {
   if (!meta.chatId) return fail(409, "The stream is not live.");
   const limit = Math.min(MAX_DAILY_ACTIONS, Math.max(1, Math.floor(Number(body.limit) || 60)));
   const dry = body.dryRun === true;
-  const notes = [];
+  const explain = body.explain === true;
+  const notes = [], results = [];
   let used = await actionsUsed(env, tok.ch);
   const b = await pull(env, meta.chatId);
-  for (const it of items) {
+  // Tells the viewer why, at most once a minute each. A failure here never undoes or stops the moderation itself.
+  const tell = async (channelId, kind, name, messageText) => {
+    if (!explain || !name || used >= limit || limited(`tell:${meta.chatId}:${channelId}:${kind}`, 1)) return false;
+    try {
+      await api(env, `${API}/liveChat/messages?part=snippet`, {
+        method: "POST", headers: { "content-type": "application/json" },
+        body: JSON.stringify({ snippet: { liveChatId: meta.chatId, type: "textMessageEvent", textMessageDetails: { messageText } } }),
+      });
+      used = await addAction(env, tok.ch);
+      return true;
+    } catch (error) {
+      notes.push(`Could not post the reason in chat: ${String(error.message).slice(0, 80)}`);
+      return false;
+    }
+  };
+  for (let i = 0; i < items.length; i++) {
+    const it = items[i];
     const who = String(it.author || "viewer").slice(0, 40);
     try {
       if (!/^UC[\w-]{20,30}$/.test(String(it.channelId || ""))) continue;
       if (it.action === "timeout") {
         const secs = Math.min(3600, Math.max(10, Math.floor(Number(it.seconds) || 300)));
-        if (dry) { notes.push(`TEST MODE: would time out ${who} for ${secs} seconds`); continue; }
-        if (used >= limit) { notes.push("Daily moderation limit reached - no more actions today"); break; }
+        if (dry) { notes.push(`TEST MODE: would time out ${who} for ${secs} seconds`); results.push({ i, outcome: "test" }); continue; }
+        if (used >= limit) { notes.push("Daily moderation limit reached - no more actions today"); results.push({ i, outcome: "limit" }); break; }
         await api(env, `${API}/liveChat/bans?part=snippet`, {
           method: "POST", headers: { "content-type": "application/json" },
           body: JSON.stringify({ snippet: { liveChatId: meta.chatId, type: "temporary", banDurationSeconds: secs, bannedUserInfo: { channelId: it.channelId } } }),
         });
         used = await addAction(env, tok.ch);
         notes.push(`Timed out ${who} for ${secs} seconds`);
+        const name = chatName(b.items.findLast((m) => m.channelId === it.channelId));
+        results.push({ i, outcome: "done", told: await tell(it.channelId, "timeout", name, timeoutLine(name, secs)) });
         continue;
       }
       const m = findMessage(b, it);
-      if (!m) { notes.push(`Could not find ${who}'s message (it may be too old)`); continue; }
-      if (m.mod) continue;                                                     // never touch moderators or the streamer
-      if (dry) { notes.push(`TEST MODE: would delete ${who}'s message (${String(it.reason || "rule").slice(0, 30)})`); continue; }
-      if (used >= limit) { notes.push("Daily moderation limit reached - no more actions today"); break; }
+      if (!m) { notes.push(`Could not find ${who}'s message (it may be too old)`); results.push({ i, outcome: "missing" }); continue; }
+      if (m.mod) { results.push({ i, outcome: "protected" }); continue; }      // never touch moderators or the streamer
+      if (dry) { notes.push(`TEST MODE: would delete ${who}'s message (${String(it.reason || "rule").slice(0, 30)})`); results.push({ i, outcome: "test" }); continue; }
+      if (used >= limit) { notes.push("Daily moderation limit reached - no more actions today"); results.push({ i, outcome: "limit" }); break; }
       await api(env, `${API}/liveChat/messages?id=${encodeURIComponent(m.id)}`, { method: "DELETE" });
       b.done.add(m.id);
       used = await addAction(env, tok.ch);
       notes.push(`Deleted ${who}'s message (${String(it.reason || "rule").slice(0, 30)})`);
+      const name = chatName(m);
+      results.push({ i, outcome: "done", told: await tell(it.channelId, "delete", name, reasonLine(name, it.reason)) });
     } catch (error) {
+      results.push({ i, outcome: "failed", detail: String(error.message).slice(0, 80) });
       if (error.status === 429) { notes.push("The shared YouTube budget for today is used up. Moderation resumes tomorrow."); break; }
       if (error.status === 403) { notes.push("YouTube refused: the moderator bot is not a moderator of your channel yet. Add it in YouTube Studio."); break; }
       notes.push(`Could not act on ${who}'s message: ${String(error.message).slice(0, 80)}`);
     }
   }
-  return json({ ok: true, notes, usedToday: used, limit });
+  return json({ ok: true, notes, results, usedToday: used, limit });
 }
 
 // ---------- one-time bot login (only needed if you do not have the refresh token from Render any more) ----------

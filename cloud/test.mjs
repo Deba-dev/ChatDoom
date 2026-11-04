@@ -7,7 +7,7 @@ const env = { KV, DISCORD_CLIENT_ID: "CID", DISCORD_CLIENT_SECRET: "SEC", DISCOR
 const translatedInputs = [];
 env.AI = { async run(model, input) {
   translatedInputs.push({ model, input });
-  return { translation: "Hello from the stream!" };
+  return { translated_text: "Hello from the stream!" };
 } };
 const puts = [];
 const platformCalls = [];
@@ -39,9 +39,16 @@ globalThis.fetch = async (url, init = {}) => {
     return j({ items: youtubeSubscribers });
   }
   if (u.hostname === "www.googleapis.com" && p === "/youtube/v3/liveBroadcasts") {
+    if (u.searchParams.has("mine") === u.searchParams.has("broadcastStatus"))   // Google allows exactly one filter
+      return j({ error: { code: 400, message: "Incompatible parameters specified in the request" } }, 400);
+    if (globalThis.youtubeLookupFails) return j({ error: { code: 400, message: "Google said no" } }, 400);
+    if (u.searchParams.get("broadcastStatus") === "upcoming") return j({ items: [
+      { id: "oldstream01", snippet: { title: "Old default", scheduledStartTime: "2020-01-01T00:00:00Z" }, status: { privacyStatus: "public" } },
+      { id: "scheduled01", snippet: { title: "Friday stream", scheduledStartTime: new Date(Date.now() + 3600000).toISOString() }, status: { privacyStatus: "unlisted" } },
+    ] });
     return j({ items: [{ id: "abcdefghijk", snippet: { liveChatId: "CHAT_ID" } }] });
   }
-  if (u.hostname === "www.googleapis.com" && p === "/youtube/v3/liveChatMessages") {
+  if (u.hostname === "www.googleapis.com" && p === "/youtube/v3/liveChat/messages") {
     platformCalls.push({ platform: "youtube", method: m, body: init.body && JSON.parse(init.body) });
     return j({ id: "YT_ACTION" });
   }
@@ -282,6 +289,16 @@ ytRow.expires_at = Math.floor(Date.now() / 1000) - 1;
 r = await call("/platform-auth/account", { headers: ytHeaders });
 ok(r.status === 200 && ytRow.expires_at > Math.floor(Date.now() / 1000) && !ytRow.access_token.includes("YT_ACCESS_2"),
   "expired YouTube access tokens refresh and remain encrypted in D1");
+globalThis.youtubeLookupFails = true;
+r = await call("/platform-auth/message", { method: "POST", headers: ytHeaders, body: JSON.stringify({ platform: "youtube", videoId: "abcdefghijk", text: "Hello chat" }) });
+res = await r.json();
+ok(res.error.includes("Google said no") && !res.error.includes("[object Object]"), "Google's error text reaches the streamer");
+globalThis.youtubeLookupFails = false;
+r = await call("/platform-auth/youtube-broadcasts", { headers: ytHeaders });
+res = await r.json();
+ok(r.status === 200 && res.broadcasts.map((b) => b.id).join() === "abcdefghijk,scheduled01,oldstream01"
+  && res.broadcasts[0].live && res.broadcasts[1].privacy === "unlisted" && !res.broadcasts[1].stale && res.broadcasts[2].stale,
+  "sign-in finds live, then scheduled (unlisted included), then old entries");
 r = await call("/platform-auth/message", { method: "POST", headers: ytHeaders, body: JSON.stringify({ platform: "youtube", videoId: "abcdefghijk", text: "Hello chat" }) });
 ok(r.status === 200 && platformCalls.some((x) => x.platform === "youtube" && x.body.snippet.textMessageDetails.messageText === "Hello chat"),
   "YouTube message is sent to the signed-in channel's active live chat");

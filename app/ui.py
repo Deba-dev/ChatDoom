@@ -7,7 +7,7 @@ import urllib.parse
 
 from PySide6.QtCore import Property, QEasingCurve, QEvent, QParallelAnimationGroup, QPoint, QPropertyAnimation, QSize, Qt, QTimer, QUrl, QVariantAnimation
 from PySide6.QtGui import QColor, QDesktopServices, QFont, QFontDatabase, QIcon, QPainter, QPalette, QPen, QPixmap, QTextBlockFormat, QTextCursor, QTextOption
-from PySide6.QtWidgets import (QApplication, QButtonGroup, QCheckBox, QColorDialog, QComboBox, QDialog, QDialogButtonBox, QFrame, QGraphicsDropShadowEffect, QGraphicsOpacityEffect, QGridLayout, QHBoxLayout,
+from PySide6.QtWidgets import (QApplication, QButtonGroup, QCheckBox, QColorDialog, QComboBox, QDialog, QDialogButtonBox, QFrame, QGraphicsDropShadowEffect, QGraphicsOpacityEffect, QGridLayout, QHBoxLayout, QMenu,
                                QLabel, QLineEdit, QPlainTextEdit, QPushButton, QScrollArea, QSlider, QSpinBox, QStackedWidget,
                                QTextEdit, QVBoxLayout, QWidget)
 
@@ -31,7 +31,7 @@ from .ytmod_page import YtModPage
 from PySide6.QtCore import QSize
 from .models import Message
 from .moderation import KNOWN_BOTS, Moderator
-from .platforms import SOURCES, Hub, KickSource, TwitchSource, YouTubeSource
+from .platforms import SOURCES, Hub, KickSource, TwitchSource, YouTubeSource, youtube_id
 from .settings import Settings, data_dir
 from .speech import VOICES, Speaker
 from .theme import DEFAULT_THEME, FX, THEMES, build_qss
@@ -265,6 +265,18 @@ def labeled(text, widget, hint=""):
     return w
 
 
+def stream_label(b):
+    """One menu line for a live or scheduled YouTube stream."""
+    if b.get("live"):
+        when = "LIVE"
+    elif b.get("start"):
+        when = time.strftime("%d %b %H:%M", time.localtime(b["start"] / 1000))
+    else:
+        when = "Not scheduled"
+    privacy = " (%s)" % b["privacy"] if b.get("privacy") in ("unlisted", "private") else ""
+    return "%s: %s%s" % (when, b.get("title") or "Untitled stream", privacy)
+
+
 class PlatformCard(QFrame):
     def __init__(self, key, title, placeholder, source, settings, extra=None, hint="", field="", platform_auth=None):
         super().__init__()
@@ -325,6 +337,14 @@ class PlatformCard(QFrame):
             self.auth_label = QLabel("Account not connected")
             self.auth_label.setObjectName("hint")
             auth_row.addWidget(self.auth_label, 1)
+            self.find_btn = None
+            if key == "youtube":
+                self.find_btn = QPushButton("Find my stream")
+                self.find_btn.setObjectName("quiet")
+                self.find_btn.setCursor(Qt.PointingHandCursor)
+                self.find_btn.clicked.connect(lambda: self.platform_auth.find_youtube_streams(picked=True))
+                auth_row.addWidget(self.find_btn)
+                platform_auth.broadcasts.connect(self._on_broadcasts)
             self.auth_btn = QPushButton()
             self.auth_btn.setObjectName("quiet")
             self.auth_btn.setCursor(Qt.PointingHandCursor)
@@ -340,9 +360,48 @@ class PlatformCard(QFrame):
         else:
             self.platform_auth.login(self.key)
 
+    def _on_broadcasts(self, items, picked):
+        if picked:
+            return self._choose_stream(items)
+        ready = [b for b in items if not b.get("stale")]
+        if not ready:
+            return
+        best = ready[0]
+        current = youtube_id(self.edit.text())
+        if self.source.running or current == best["id"]:
+            return
+        if self.edit.text().strip():              # never replace a link the streamer pasted: it may be another channel
+            self.platform_auth.notice.emit("Found your stream \"%s\". Press Find my stream to use it." % best.get("title", ""))
+        else:
+            self._use_stream(best)
+
+    def _choose_stream(self, items):
+        if not items:
+            self.platform_auth.notice.emit("No live or scheduled streams found on this YouTube account.")
+            return
+        self.stream_menu = QMenu(self)
+        for b in items:
+            action = self.stream_menu.addAction(stream_label(b).replace("&", "&&"))
+            action.triggered.connect(lambda _=False, b=b: self._use_stream(b))
+        self.stream_menu.popup(self.find_btn.mapToGlobal(self.find_btn.rect().bottomLeft()))
+
+    def _use_stream(self, b):
+        if self.source.running:
+            self.platform_auth.notice.emit("Disconnect from the current stream first, then choose another.")
+            return
+        link = "https://www.youtube.com/watch?v=" + b["id"]
+        self.edit.setText(link)
+        self.s.set(self.key, link)
+        if b.get("live"):
+            self.platform_auth.notice.emit("Using your live stream \"%s\". Press Connect." % b.get("title", ""))
+        else:
+            self.platform_auth.notice.emit("Using your scheduled stream \"%s\". Press Connect once it is live." % b.get("title", ""))
+
     def _auth_changed(self, platform):
         if platform != self.key or self.auth_label is None:
             return
+        if self.find_btn is not None:
+            self.find_btn.setVisible(self.platform_auth.is_connected(platform))
         if self.platform_auth.is_connected(platform):
             self.auth_label.setText("Signed in as %s" % (self.platform_auth.display_name(platform) or "account"))
             self.auth_btn.setText("Disconnect account")
@@ -603,6 +662,7 @@ class MainWindow(QWidget):
         self.twitch_events.notice.connect(lambda t: self.feed.append("<span style='color:#9146ff'>Twitch alerts: %s</span>" % esc(t)))
         self.platform_auth.refresh("youtube")
         self.platform_auth.refresh("twitch")
+        self.platform_auth.find_youtube_streams()
         self.speaker.note.connect(lambda t: self.feed.append("<span style='color:#ffb020'>%s</span>" % esc(t)))
         self.links.notice.connect(lambda t: self.feed.append("<span style='color:#7c9cff'>Discord: %s</span>" % esc(t)))
         self.sync = QTimer(self)                      # report activity to Discord once a minute
@@ -1803,6 +1863,9 @@ class MainWindow(QWidget):
             self.live.hide()
 
     def on_message(self, m):
+        if self.ytmod.is_bot(m):                  # its reasons stay out of speech, stats and moderation
+            self.feed.append("<span style='color:#5d667d'>%s %s: %s</span>" % (esc(self._tag(m)), esc(m.author), esc(m.text)))
+            return
         self.tools.stats.add_message(m)
         is_link = self.links.handle(m)
         if not is_link and self._run_command(m):

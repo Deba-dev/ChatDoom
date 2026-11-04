@@ -552,7 +552,7 @@ async function api(request, env, url) {
     const result = await env.AI.run("@cf/meta/m2m100-1.2b", {
       text, source_lang: sourceLang, target_lang: "en",
     });
-    const translated = typeof result?.translation === "string" ? result.translation.trim() : "";
+    const translated = typeof result?.translated_text === "string" ? result.translated_text.trim() : "";
     if (!translated) return json({ error: "Cloudflare AI did not return a translation." }, 502);
     return json({ translation: translated });
   }

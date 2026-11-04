@@ -139,6 +139,11 @@ ok(detect_source_language("こんにちは、配信を見ています") == "ja"
    and detect_source_language("Hola, me encanta este directo") == "es"
    and detect_source_language("مرحبا، أحب مشاهدة البث") == "ar",
    "language detection recognizes Japanese, Spanish, and Arabic chat")
+from app.translation import worth_translating
+for chat_text in ("HELLO", "hi", "CV-ZVSQPS", "nice stream bro", "ok bro nice stream", "bhai kya kar rahe ho aaj", "\U0001F600\U0001F600", ""):
+    ok(not worth_translating(chat_text), "not sent for translation: %s" % ascii(chat_text))
+for chat_text in ("Hola, me encanta este directo", "Ich liebe diesen Stream", "\u3053\u3093\u306b\u3061\u306f", "\u043f\u0440\u0438\u0432\u0435\u0442"):
+    ok(worth_translating(chat_text), "sent for translation: %s" % ascii(chat_text))
 translation_request = {}
 old_urlopen = translation_module.urllib.request.urlopen
 translation_module.urllib.request.urlopen = lambda request, timeout: (
@@ -316,6 +321,35 @@ w.s.set("yt_mod_on", True); post("Fan", UCB, "I love badword"); wait(700); ok(le
 G["fail_token"] = True; post("Late", UCB, "late www.late.com"); wait(700)
 ok(not w.ytmod.verified and "verification expired" in w.feed.toPlainText(), "an expired verification is cleared and the streamer is told to verify again")
 G["fail_token"] = False
+w.ytmod.clear_log(); w.ytmod.in_flight = [{"channelId": UCA, "author": "Spammer", "text": "buy www.x.com", "reason": "link", "action": "delete"},
+                                          {"channelId": UCB, "author": "Mod", "text": "www.y.com", "reason": "link", "action": "delete"},
+                                          {"action": "timeout", "channelId": UCA, "author": "Spammer", "seconds": 300}]
+w.ytmod.on_done("yt:sweep", {"status": 200, "ok": True, "notes": [], "usedToday": 3, "results": [
+    {"i": 0, "outcome": "done", "told": True}, {"i": 1, "outcome": "protected"}, {"i": 2, "outcome": "failed", "detail": "nope"}]})
+log_text = [w.ytpage.log_list.item(i).text() for i in range(w.ytpage.log_list.count())]
+ok(len(log_text) == 3 and "Removed, viewer told why" in log_text[2] and "buy www.x.com" in log_text[2]
+   and "Kept, moderator" in log_text[1] and "Time-out, 300 s: Failed: nope" in log_text[0], "the Removed messages list shows each action's real result, newest first")
+ok(len(json.load(open(w.ytmod.log_path, encoding="utf-8"))) == 3 and w.ytmod._load_log() == w.ytmod.log, "the list survives a restart")
+w.ytmod.in_flight = [{"channelId": UCA, "author": "Late", "text": "x", "reason": "link", "action": "delete"}]
+w.ytmod.on_done("yt:sweep", {"status": 502, "ok": False, "error": "bot down"})
+ok("Failed: bot down" in w.ytpage.log_list.item(0).text(), "a failed request is listed as failed, never as removed")
+w.ytmod.clear_log(); ok(w.ytpage.log_list.count() == 0 and not w.ytpage.log_clear.isEnabled(), "the list can be cleared")
+spoken_before = len(spoken); seen_before = w.msg_seen
+w.on_message(Message("youtube", "@ChatDoom", "@Spammer your message was removed because links are not allowed here.", uid=UCB))
+ok(len(spoken) == spoken_before and w.msg_seen == seen_before, "the bot's own reason lines are not read aloud")
+yt_card = w.cards["youtube"]; yt_card.edit.setText(""); yt_notes = []; w.platform_auth.notice.connect(yt_notes.append)
+scheduled = {"id": "scheduled01", "title": "Friday & chill", "live": False, "privacy": "unlisted", "start": 1893456000000, "stale": False}
+old = {"id": "oldstream01", "title": "Old", "live": False, "privacy": "public", "start": 1, "stale": True}
+yt_card._on_broadcasts([old], False); ok(yt_card.edit.text() == "", "an old default entry is never filled in by itself")
+yt_card._on_broadcasts([scheduled, old], False)
+ok(yt_card.edit.text().endswith("v=scheduled01") and w.s.get("youtube").endswith("v=scheduled01") and "once it is live" in yt_notes[-1], "a scheduled unlisted stream fills an empty link after sign-in")
+yt_card.edit.setText("https://www.youtube.com/watch?v=someoneelse")
+yt_card._on_broadcasts([scheduled], False)
+ok(yt_card.edit.text().endswith("someoneelse") and "Find my stream" in yt_notes[-1], "a pasted link is never replaced by itself")
+yt_card.find_btn.show(); yt_card._on_broadcasts([scheduled, old], True)
+acts = yt_card.stream_menu.actions(); ok(len(acts) == 2 and "(unlisted)" in acts[0].text() and "&&" in acts[0].text(), "Find my stream lists the streams to choose from")
+acts[0].trigger(); ok(yt_card.edit.text().endswith("v=scheduled01"), "choosing one fills the link"); yt_card.stream_menu.close()
+yt_card.edit.setText(""); w.s.set("youtube", "https://www.youtube.com/watch?v=7NlbmyxncOk"); w.platform_auth.notice.disconnect(yt_notes.append)
 w.on_status("youtube", "Connected", True); ok(not w.yt_beat.isActive(), "no wake-up pings until the channel is verified")
 w.s.set("yt_bot_token", "TOKEN123"); w.on_status("youtube", "Connected", True); ok(w.yt_beat.isActive(), "while connected to YouTube the app keeps the free-hosted bot awake")
 w.on_status("youtube", "Disconnected", False); ok(not w.yt_beat.isActive(), "pings stop when you disconnect")
