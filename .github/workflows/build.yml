@@ -42,10 +42,32 @@ jobs:
           info.write_text(body, encoding="utf-8")
         env:
           GITHUB_REF_NAME: ${{ github.ref_name }}
-      - run: pip install -r requirements.txt pyinstaller
+      - run: pip install -r requirements.txt pyinstaller==6.22.3
+      - name: Check the logo files match the source picture
+        shell: python
+        run: |
+          import hashlib, pathlib
+          source = hashlib.sha256(pathlib.Path("branding/chatdoom-logo-source.png").read_bytes()).hexdigest()
+          if pathlib.Path("branding/source.sha256").read_text().strip() != source:
+              raise SystemExit("The logo changed but the icons were not remade. Run: py -3.12 tools/make_icons.py")
       - run: pyinstaller --noconfirm --windowed --noupx --name CHATDOOM --icon assets/icon.ico --version-file version_info.txt --add-data "assets;assets" --exclude-module numpy --exclude-module PIL --exclude-module tkinter --exclude-module matplotlib --collect-submodules pytchat --collect-submodules edge_tts --collect-all PySide6.QtWebEngineCore --collect-all PySide6.QtWebEngineWidgets main.py
+      - name: Start the built app once, so a broken build never reaches users
+        shell: pwsh
+        run: |
+          $env:QT_QPA_PLATFORM = "offscreen"
+          $env:APPDATA = "$env:RUNNER_TEMP\selftest"
+          New-Item -ItemType Directory -Force $env:APPDATA | Out-Null
+          $app = Start-Process dist\CHATDOOM\CHATDOOM.exe -ArgumentList "--selftest" -PassThru
+          if (-not $app.WaitForExit(90000)) { $app.Kill(); throw "The app did not finish starting" }
+          if ($app.ExitCode -ne 0) { Get-Content "$env:APPDATA\ChatVoice\crash.log" -ErrorAction SilentlyContinue; throw "The app failed to start ($($app.ExitCode))" }
       - run: choco install innosetup -y --no-progress
-      - run: '& "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" installer.iss'
+      - name: Make the installer
+        shell: pwsh
+        run: |
+          $iscc = (Resolve-Path "$env:SystemDrive\Program Files*\Inno Setup *\ISCC.exe" | Select-Object -First 1).Path
+          if (-not $iscc) { throw "Inno Setup was not found" }
+          & $iscc installer.iss
+          if ($LASTEXITCODE -ne 0) { throw "The installer could not be made" }
       - uses: actions/upload-artifact@v4
         with:
           name: CHATDOOM-Setup

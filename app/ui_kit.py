@@ -224,15 +224,15 @@ def hrow(*widgets):
 from PySide6.QtGui import QGuiApplication          # noqa: E402
 from PySide6.QtWidgets import QLineEdit, QPushButton   # noqa: E402
 
-MARKS = {"youtube": ("YT", "#ff4d4d"), "twitch": ("TW", "#9146ff"), "kick": ("KK", "#53fc18")}
+from .icons import platform_tile                       # noqa: E402
 
 
 def platform_mark(key, size=36):
-    letter, color = MARKS.get(key, ("\u2022", "#888888"))
-    mark = QLabel(letter)
+    mark = QLabel()
     mark.setAlignment(Qt.AlignCenter)
     mark.setFixedSize(size, size)
-    mark.setStyleSheet("background:%s; color:#0b0b10; font-weight:700; font-size:12px; border-radius:10px;" % color)
+    mark.setStyleSheet("background: transparent;")
+    mark.setPixmap(platform_tile(key, size))
     return mark
 
 

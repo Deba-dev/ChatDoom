@@ -12,7 +12,7 @@ const KV = {
   async delete(k) { store.delete(k); },
 };
 const env = { KV, YT_BOT_KEY: "same-key-as-render-BOT_ADMIN_KEY-0123456789", YT_BOT_CLIENT_ID: "BOTCID", YT_BOT_CLIENT_SECRET: "BOTSEC",
-              YT_BOT_REFRESH_TOKEN: "BOT_REFRESH", YT_BOT_TITLE: "CHATDOOM Moderator" };
+              YT_BOT_REFRESH_TOKEN: "BOT_REFRESH", YT_BOT_TITLE: "CHATDOOM" };
 const STREAMER = "UC" + "s".repeat(22), VIEWER = "UC" + "v".repeat(22), VIDEO = "LIVEVIDEO01";
 const Y = { refreshes: 0, chat: [], deleted: [], bans: [], deleteStatus: 204, deleteReason: "" };
 
@@ -28,7 +28,7 @@ globalThis.fetch = async (url, init = {}) => {
     return j({ access_token: "ACC", refresh_token: "NEW_REFRESH" });
   }
   if ((init.headers || {}).authorization !== "Bearer ACC") return j({ error: { message: "bad auth" } }, 401);
-  if (u.pathname.endsWith("/channels")) return j({ items: [{ id: "UCbot" + "b".repeat(19), snippet: { title: "CHATDOOM Moderator", customUrl: "@chatvoice-v1" } }] });
+  if (u.pathname.endsWith("/channels")) return j({ items: [{ id: "UCbot" + "b".repeat(19), snippet: { title: "CHATDOOM", customUrl: "@chatvoice-v1" } }] });
   if (u.pathname.endsWith("/videos")) {
     const id = u.searchParams.get("id");
     if (id === VIDEO) return j({ items: [{ snippet: { channelId: STREAMER, channelTitle: "Streamer" }, liveStreamingDetails: { activeLiveChatId: "CHAT1" } }] });
@@ -65,7 +65,7 @@ ok(await readToken(env, oldToken.slice(0, -2) + "xx") === null && await readToke
 
 // ---- info ----
 let r = await call("/v1/info");
-ok(r.status === 200 && r.data.authorized === true && r.data.bot.title === "CHATDOOM Moderator" && r.data.host === "cloudflare", "/v1/info is answered at once and shows the bot is signed in");
+ok(r.status === 200 && r.data.authorized === true && r.data.bot.title === "CHATDOOM" && r.data.host === "cloudflare", "/v1/info is answered at once and shows the bot is signed in");
 ok(store.get("ytbot:access") === "ACC" && ttls.get("ytbot:access") >= 60, "the Google access token is cached in KV");
 r = await call("/v1/info", {}, { KV });
 ok(r.status === 200 && r.data.authorized === false && r.data.bot.title === "", "without the bot secrets /v1/info still answers (not set up)");

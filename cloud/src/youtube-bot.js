@@ -104,6 +104,14 @@ async function accessToken(env) {
   return d.access_token;
 }
 
+// For the status page: can the bot still sign in to Google? Uses no YouTube API quota.
+export async function botSignedIn(env) {
+  if (missingBotConfig(env).length) return false;
+  const token = await accessToken(env);
+  const r = await fetch(`https://oauth2.googleapis.com/tokeninfo?access_token=${encodeURIComponent(token)}`);
+  return r.ok;
+}
+
 async function api(env, url, options = {}) {
   const r = await fetch(url, { ...options, headers: { authorization: `Bearer ${await accessToken(env)}`, ...(options.headers || {}) } });
   const d = r.status === 204 ? {} : await r.json().catch(() => ({}));

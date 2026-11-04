@@ -1,4 +1,5 @@
 """Update check and one-click update, using GitHub Releases (free, no server of our own)."""
+import glob
 import hashlib
 import json
 import os
@@ -13,14 +14,32 @@ import urllib.request
 
 from PySide6.QtCore import QObject, Signal
 
+from .settings import data_dir
 from .version import VERSION
 
 GH_API = "https://api.github.com"
 
 
 def parse_version(v):
-    nums = [int(x) for x in re.findall(r"\d+", v or "")][:3]
-    return tuple(nums + [0] * (3 - len(nums)))
+    """V1.0.4.1 -> (1, 0, 4, 1). Only the leading numbers count, so a suffix like -v2 is not read as a version."""
+    match = re.match(r"\s*[vV]?(\d+(?:\.\d+){0,3})", v or "")
+    nums = [int(x) for x in match.group(1).split(".")] if match else []
+    return tuple(nums + [0] * (4 - len(nums)))
+
+
+def clean_env():
+    """Environment for the installer. A frozen app passes on PyInstaller's own settings, and the new app started by the
+    installer would otherwise load files as if it were part of the old one."""
+    env = {k: v for k, v in os.environ.items() if not k.startswith(("_PYI", "_MEI", "QT_", "QML", "PYSIDE"))}
+    env["PYINSTALLER_RESET_ENVIRONMENT"] = "1"
+    bundle = getattr(sys, "_MEIPASS", "")
+    if bundle:
+        env["PATH"] = os.pathsep.join(p for p in env.get("PATH", "").split(os.pathsep) if not p.startswith(bundle))
+    return env
+
+
+def update_log():
+    return os.path.join(data_dir(), "update.log")
 
 
 class Updater(QObject):
@@ -54,19 +73,24 @@ class Updater(QObject):
         repo = self.s.get("update_repo").strip()
         try:
             d = self._fetch("%s/repos/%s/releases/latest" % (GH_API, repo))
-            self.s.set("update_last", int(time.time()))
             tag = d.get("tag_name", "")
             if parse_version(tag) <= parse_version(VERSION):
+                self.s.set("update_last", int(time.time()))
                 if manual:
                     self._evt.emit("status", "There is not any update at all. Wait for the devs to update the app.")
                 return
             asset = next((a for a in d.get("assets", []) if a.get("name", "").lower().endswith("setup.exe")), None)
+            if not asset:          # a release goes public 5-10 minutes before its installer is built: look again later
+                if manual:
+                    self._evt.emit("status", "A new version is being prepared. Check again in about 10 minutes.")
+                return
+            self.s.set("update_last", int(time.time()))
             canonical_repo = self._release_repo(d.get("html_url", ""))
             if canonical_repo:
                 self.s.set("update_repo", canonical_repo)
-            self._evt.emit("found", {"version": tag.lstrip("v"), "page": d.get("html_url", ""),
-                                     "asset": asset.get("browser_download_url", "") if asset else "",
-                                     "digest": (asset or {}).get("digest", ""), "notes": (d.get("body") or "")[:300],
+            self._evt.emit("found", {"version": tag.lstrip("vV"), "page": d.get("html_url", ""),
+                                     "asset": asset.get("browser_download_url", ""),
+                                     "digest": asset.get("digest", ""), "notes": (d.get("body") or "")[:300],
                                      "repo": canonical_repo or repo})
         except Exception as e:
             if manual:
@@ -123,11 +147,16 @@ class Updater(QObject):
                     done += len(chunk)
                     if total:
                         self._evt.emit("progress", "Downloading update... %d%%" % (done * 100 // total))
+            if total and done != total:
+                os.remove(path)
+                self._evt.emit("note", "The update download stopped early. Please try again.")
+                return
             want = (info.get("digest") or "").lower()
             if want.startswith("sha256:") and want[7:] != sha.hexdigest():
                 os.remove(path)
                 self._evt.emit("note", "The downloaded update did not match GitHub's checksum, so it was discarded.")
                 return
+            self.s.set("update_pending", info["version"])
             self._evt.emit("ready", path)
         except Exception as e:
             self._evt.emit("note", "Update download failed (%s)" % str(e)[:60])
@@ -136,7 +165,22 @@ class Updater(QObject):
 
     def launch(self, path):
         flags = 0x00000008 if sys.platform == "win32" else 0        # DETACHED_PROCESS
-        subprocess.Popen([path, "/SILENT", "/CLOSEAPPLICATIONS", "/RESTARTAPPLICATIONS"], close_fds=True, creationflags=flags)
+        subprocess.Popen([path, "/SILENT", "/SP-", "/SUPPRESSMSGBOXES", "/NORESTART", "/CLOSEAPPLICATIONS", "/LOG=" + update_log()],
+                         close_fds=True, creationflags=flags, env=clean_env())
+
+    def after_start(self):
+        """Run once at startup: says if the last update did not finish, and removes old installers (160 MB each)."""
+        pending = self.s.get("update_pending")
+        if pending:
+            self.s.set("update_pending", "")
+            if parse_version(VERSION) < parse_version(pending):
+                self.message.emit("The update to %s did not finish, so you are still on %s. Press Check for updates to try again. "
+                                  "Details: %s" % (pending, VERSION, update_log()))
+        for path in glob.glob(os.path.join(glob.escape(tempfile.gettempdir()), "CHATDOOM-Setup-*.exe")):
+            try:
+                os.remove(path)
+            except OSError:
+                pass
 
     def _on_evt(self, kind, data):
         if kind == "found":

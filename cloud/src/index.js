@@ -4,6 +4,7 @@
 import { handlePlatformAuth } from "./platform-auth.js";
 import { handlePublicPage } from "./legal-pages.js";
 import { handleYoutubeBot } from "./youtube-bot.js";
+import { recordUptime, statusFeed } from "./uptime.js";
 
 const API = "https://discord.com/api/v10";
 const PLATFORMS = ["youtube", "twitch", "kick"];
@@ -667,6 +668,7 @@ async function route(request, env, url) {
     if (result) return result;
   }
   if (p === "/health") return health(env);
+  if (p === "/status.json") return statusFeed(env);
   if (p.startsWith("/v1/")) return handleYoutubeBot(request, env, url);      // the YouTube moderator bot (its own secrets)
   const missing = missingConfig(env);
   if (missing.length)
@@ -688,7 +690,7 @@ async function route(request, env, url) {
 
 export default {
   async scheduled(event, env, ctx) {
-    const p = runScheduled(env);
+    const p = Promise.all([runScheduled(env), recordUptime(env).catch((e) => console.error("uptime check failed", e))]);
     if (ctx && ctx.waitUntil) ctx.waitUntil(p);
     return p;
   },

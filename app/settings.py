@@ -1,8 +1,10 @@
 """Settings stored as JSON in %APPDATA%/ChatVoice."""
 import json
 import os
+import tempfile
+import threading
 
-from .config import CLOUD_URL, OLD_CLOUD_URLS, OLD_YT_BOT_URLS, YT_BOT_HANDLE, YT_BOT_TITLE, YT_BOT_URL
+from .config import CLOUD_URL, OLD_CLOUD_URLS, OLD_YT_BOT_HANDLES, OLD_YT_BOT_URLS, YT_BOT_HANDLE, YT_BOT_TITLE, YT_BOT_URL
 from .secure import protect, unprotect
 
 SECRET_KEYS = ("cloud_token", "g_client_secret", "ov_external_url", "yt_bot_token",
@@ -47,7 +49,7 @@ DEFAULTS = {
     "yt_bot_url": YT_BOT_URL, "yt_bot_token": "", "yt_channel_id": "", "yt_channel_title": "", "yt_bot_handle": YT_BOT_HANDLE,
     "yt_bot_title": YT_BOT_TITLE, "yt_used": 0, "yt_used_day": "", "yt_limit": 60, "yt_mod_on": True,
     "music_folder": "", "music_volume": 40, "music_shuffle": True, "music_duck": True, "music_duck_pct": 30, "music_autoplay": False,
-    "update_repo": "Deba-dev/ChatDoom", "auto_update_check": True, "update_last": 0, "tips_on": False, "tip_min": 20, "tip_cursor": None, "g_client_id": "", "g_client_secret": "",
+    "update_repo": "Deba-dev/ChatDoom", "auto_update_check": True, "update_last": 0, "update_pending": "", "tips_on": False, "tip_min": 20, "tip_cursor": None, "g_client_id": "", "g_client_secret": "",
     "mod_del_blocked": True, "mod_del_links": True, "mod_del_spam": False, "mod_dry_run": True, "mod_budget": 60,
     "mod_timeout_after": 3, "mod_timeout_secs": 300, "yt_actions_date": "", "yt_actions_count": 0,
     "role_verified": "", "role_regular": "", "role_supporter": "", "regular_msgs": 50, "dedupe_secs": 20, "user_cooldown": 4, "queue_max": 6,
@@ -60,6 +62,7 @@ class Settings:
     def __init__(self, path=None):
         self.path = path or os.path.join(data_dir(), "settings.json")
         self.data = dict(DEFAULTS)
+        self._lock = threading.Lock()
         try:
             with open(self.path, encoding="utf-8") as f:
                 loaded = json.load(f)
@@ -69,8 +72,10 @@ class Settings:
             self.data.update(loaded)
             if self.data.get("update_repo", "").strip().casefold() == "deba-dev/chatvoice":
                 self.data["update_repo"] = DEFAULTS["update_repo"]
-            if str(self.data.get("yt_bot_title", "")).strip().casefold() == "chat voice":
+            if str(self.data.get("yt_bot_title", "")).strip().casefold() in ("chat voice", "chatdoom moderator"):
                 self.data["yt_bot_title"] = DEFAULTS["yt_bot_title"]
+            if str(self.data.get("yt_bot_handle", "")).strip().casefold() in OLD_YT_BOT_HANDLES:    # the bot's channel was renamed
+                self.data["yt_bot_handle"] = DEFAULTS["yt_bot_handle"]
             for k, default in (("cloud_url", CLOUD_URL), ("yt_bot_url", YT_BOT_URL)):      # older settings files saved an empty address
                 if not str(self.data.get(k, "")).strip():
                     self.data[k] = default
@@ -87,11 +92,22 @@ class Settings:
 
     def set(self, key, value):
         self.data[key] = value
+        tmp = None
         try:
-            with open(self.path, "w", encoding="utf-8") as f:
+            with self._lock:        # written beside the old file, then swapped in: a closing app can never leave half a file
                 out = dict(self.data)
                 for k in SECRET_KEYS:
                     out[k] = protect(out.get(k, ""))
-                json.dump(out, f, indent=2, ensure_ascii=False)
+                fd, tmp = tempfile.mkstemp(prefix="settings-", suffix=".tmp", dir=os.path.dirname(self.path) or ".")
+                with os.fdopen(fd, "w", encoding="utf-8") as f:
+                    json.dump(out, f, indent=2, ensure_ascii=False)
+                os.replace(tmp, self.path)
+                tmp = None
         except Exception:
             pass
+        finally:
+            if tmp:
+                try:
+                    os.remove(tmp)
+                except OSError:
+                    pass

@@ -5,3 +5,9 @@ cloud/.dev.vars*
 **/.wrangler/
 client_secret*.json
 *.pem
+__pycache__/
+*.pyc
+dist/
+build/
+installer/
+*.spec

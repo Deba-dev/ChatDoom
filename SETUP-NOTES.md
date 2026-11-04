@@ -57,7 +57,9 @@ Plan: options 1 + 3 now, option 2 in parallel once a domain is set up.
 
 Nightbot uses its own dedicated "Nightbot" channel. Streamers add it as a moderator, and its Google project is verified by Google.
 
-Problem: the CHATDOOM bot currently runs on **your personal YouTube account** (`@ChatVoice-V1`). Its refresh token in the Worker gives full YouTube control of that account. Streamers aren't at risk (a moderator can only delete messages and time people out); **your** account is.
+Update 2026-11-04: the bot's channel was renamed to **CHATDOOM** (`@ChatDoom`, formerly `@ChatVoice-V1`).
+
+Problem: the CHATDOOM bot runs on the account that owns that channel. Its refresh token in the Worker gives full YouTube control of that account. Streamers aren't at risk (a moderator can only delete messages and time people out); **your** account is.
 
 Fix:
 1. Create a brand-new Google account used only for the bot. Turn on 2FA and create a YouTube channel on it (e.g. "ChatDoom Bot").

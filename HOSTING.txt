@@ -90,6 +90,13 @@ The token in that file/service is the same secret as the Worker's DISCORD_BOT_TO
 If the token is ever leaked, reset it in the Discord developer portal and update both places.
 
 ------------------------------------------------------------------------------------------------
+STATUS PAGE
+------------------------------------------------------------------------------------------------
+zunimilabs.online/status/ shows if the Discord bot and the YouTube bot are up, with 48-hour and 90-day graphs. The Worker's 2-minute
+job checks both (cloud/src/uptime.js) and keeps the totals in D1. It costs nothing and uses no YouTube quota. The page reads
+cloud.zunimilabs.online/status.json. "Discord bot" means Discord accepts the bot's token; it does not show NOVA's green dot.
+
+------------------------------------------------------------------------------------------------
 WHY NOT KEEP RENDER?
 ------------------------------------------------------------------------------------------------
 Render's free web services sleep after about 15 minutes without visits and take up to a minute to wake, which is why the

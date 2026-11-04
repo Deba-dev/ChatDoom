@@ -4,7 +4,7 @@ No Google sign-in, no keys. You add the moderator bot to your channel once, prov
 FOR STREAMERS  (CHATDOOM > YouTube mod page shows the same three steps)
 1. ADD THE BOT TO YOUR CHANNEL
    YouTube Studio (studio.youtube.com) > Settings > Community > Moderators > add the bot's name shown in CHATDOOM
-   (@ChatVoice-V1). YouTube may rename menus; the idea is "add this channel as a moderator". It can take a minute.
+   (@ChatDoom). YouTube may rename menus; the idea is "add this channel as a moderator". It can take a minute.
    Moderators can only remove chat messages and time people out. They cannot see anything private.
 2. VERIFY YOUR CHANNEL  (you need to be live)
    Paste your live link on the Connect page, then press "Verify my channel". CHATDOOM shows a code like CV-7K2M9P.

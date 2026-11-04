@@ -12,7 +12,7 @@ const VID = "abcdefghijk";
 
 // ---- a tiny fake YouTube + Google ----
 function fakeYoutube() {
-  const y = { messages: [], deleted: [], bans: [], calls: [], live: true, videoChannel: CH, deleteStatus: 204, botHandle: "@ChatVoice-V1" };
+  const y = { messages: [], deleted: [], bans: [], calls: [], live: true, videoChannel: CH, deleteStatus: 204, botHandle: "@ChatDoom" };
   y.fetch = async (url, init = {}) => {
     const u = new URL(url);
     const method = init.method || "GET";
@@ -68,7 +68,7 @@ test("info works on a fresh server and shows the bot's channel (login kept in an
     const r = await h.call("GET", "/v1/info");
     assert.equal(r.status, 200);
     assert.equal(r.data.authorized, true);
-    assert.equal(r.data.bot.handle, "@ChatVoice-V1");
+    assert.equal(r.data.bot.handle, "@ChatDoom");
     assert.equal(r.data.bot.title, "Chat Voice");
   } finally { await h.done(); }
 });
