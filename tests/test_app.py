@@ -65,7 +65,7 @@ class Bot(BaseHTTPRequestHandler):
     def body(self):
         n = int(self.headers.get("content-length") or 0); return json.loads(self.rfile.read(n) or b"{}")
     def do_GET(self):
-        if self.path == "/v1/info": G["info"] += 1; return self.send({"ok": True, "authorized": True, "bot": {"title": "Chat Voice", "handle": "@ChatVoice-V1"}})
+        if self.path == "/v1/info": G["info"] += 1; return self.send({"ok": True, "authorized": True, "bot": {"title": "Chat Voice", "handle": "@ChatDoom"}})
         self.send({"error": "nf"}, 404)
     def do_POST(self):
         b = self.body()
@@ -285,8 +285,8 @@ _ms = _Settings(_moved)
 ok(_ms.get("cloud_url") == "https://cloud.zunimilabs.online" and _ms.get("yt_bot_url") == "https://cloud.zunimilabs.online",
    "saved workers.dev addresses move to the Worker's own domain")
 w.ytmod.refresh_info(); wait(600)
-ok(w.ytmod.bot_state == "online" and w.s.get("yt_bot_handle") == "@ChatVoice-V1" and "Bot online" in w.ytpage.bot_badge.text(), "page shows the bot online with its name")
-ok("@ChatVoice-V1" in w.ytpage.step2.body.text() and w.ytpage.handle.text() == "@ChatVoice-V1", "instructions name the bot to add as moderator")
+ok(w.ytmod.bot_state == "online" and w.s.get("yt_bot_handle") == "@ChatDoom" and "Bot online" in w.ytpage.bot_badge.text(), "page shows the bot online with its name")
+ok("@ChatDoom" in w.ytpage.step2.body.text() and w.ytpage.handle.text() == "@ChatDoom", "instructions name the bot to add as moderator")
 w.s.set("youtube", ""); w.ytpage.verify(); wait(200)
 ok("Connect page" in w.ytmod.message and not w.ytmod.code, "verifying without a live link tells the streamer what to do first")
 w.s.set("youtube", "https://www.youtube.com/watch?v=7NlbmyxncOk"); w.ytpage.verify(); wait(600)
@@ -413,7 +413,7 @@ w.apply_theme("Neon Violet")
 print("--- F. updates ---")
 import hashlib, app.updater as upd
 from app.version import VERSION
-ok(upd.parse_version("v0.10.0") > upd.parse_version("0.9.9") and upd.parse_version("v1") == (1, 0, 0) and upd.parse_version("v" + VERSION) == upd.parse_version(VERSION), "version numbers compare correctly (0.10 is newer than 0.9)")
+ok(upd.parse_version("v0.10.0") > upd.parse_version("0.9.9") and upd.parse_version("v1") == (1, 0, 0, 0) and upd.parse_version("v" + VERSION) == upd.parse_version(VERSION), "version numbers compare correctly (0.10 is newer than 0.9)")
 release_repo = "Deba-dev/ChatDoom"
 release_asset = "https://github.com/Deba-dev/ChatDoom/releases/download/V1.0.5/CHATDOOM-Setup.exe"
 ok(upd.Updater._release_repo("https://github.com/Deba-dev/ChatDoom/releases/tag/V1.0.5") == release_repo
@@ -900,6 +900,88 @@ ok(b'data-mode="widgets"' in urllib.request.urlopen(w.overlay.url("widgets")).re
    "the /widgets overlay page exists and its address is on the OBS overlays page")
 w.goto(10); wait(300); w.grab().save(os.path.join(os.environ["APPDATA"], "tools.png"))
 shutil.rmtree(pick_dir, ignore_errors=True)
+
+# ===== N. updates that survive a new look, and the home screen design =====
+print("--- N. safe updates and the new look ---")
+import hashlib, struct
+from PySide6.QtWidgets import QGraphicsOpacityEffect
+from app.theme import build_qss
+from app.ui import PAGES
+from app.version import VERSION
+from app import settings as settings_module
+from app.config import YT_BOT_HANDLE
+from app.visuals import StatCard, top_cards
+
+ok(upd.parse_version("V1.0.4.1") > upd.parse_version("V1.0.4") and upd.parse_version("V1.0.3-v2") == (1, 0, 3, 0) and upd.parse_version("") == (0, 0, 0, 0),
+   "versions compare all four numbers and ignore a suffix like -v2")
+os.environ["_PYI_APPLICATION_HOME_DIR"] = "x"; os.environ["QT_PLUGIN_PATH"] = "x"
+env = upd.clean_env()
+ok("_PYI_APPLICATION_HOME_DIR" not in env and "QT_PLUGIN_PATH" not in env and env["PYINSTALLER_RESET_ENVIRONMENT"] == "1",
+   "the installer does not inherit the old app's file locations")
+del os.environ["_PYI_APPLICATION_HOME_DIR"], os.environ["QT_PLUGIN_PATH"]
+
+class NoAsset(BaseHTTPRequestHandler):
+    def log_message(self, *a): pass
+    def do_GET(self):
+        b = json.dumps({"tag_name": "V9.9.9", "html_url": "https://github.com/Deba-dev/ChatDoom/releases/tag/V9.9.9", "assets": []}).encode()
+        self.send_response(200); self.send_header("Content-Length", str(len(b))); self.end_headers(); self.wfile.write(b)
+empty_gh = ThreadingHTTPServer(("127.0.0.1", 8814), NoAsset); threading.Thread(target=empty_gh.serve_forever, daemon=True).start()
+upd.GH_API = "http://127.0.0.1:8814"
+w.s.set("update_last", 0); w.pending_update = None; w.banner.hide(); w.updater.check(False); wait(500)
+ok(not w.banner.isVisible() and w.s.get("update_last") == 0, "a release still being built is not offered, and is checked again soon")
+w.updater.check(True); wait(500)
+ok("being prepared" in w.banner_text.text() and not w.upd_btn.isVisible(), "a manual check explains the installer is still being built")
+upd.GH_API = "http://127.0.0.1:8813"; empty_gh.shutdown(); w.banner.hide()
+
+w.s.set("update_pending", "9.9.9"); w.feed.clear(); stale = os.path.join(tempfile.gettempdir(), "CHATDOOM-Setup-0.0.0-test.exe"); open(stale, "wb").close()
+w.updater.after_start(); wait(50)
+ok("did not finish" in w.feed.toPlainText() and not w.s.get("update_pending") and not os.path.exists(stale),
+   "a failed update is reported on the next start, and old installers are cleaned up")
+w.s.set("update_pending", VERSION); w.feed.clear(); w.updater.after_start(); wait(50)
+ok("did not finish" not in w.feed.toPlainText(), "a finished update says nothing")
+
+path = os.path.join(os.environ["APPDATA"], "atomic.json")
+one = settings_module.Settings(path); one.set("theme", "Ocean")
+real_replace = os.replace
+def broken_replace(*a): raise OSError("disk full")
+settings_module.os.replace = broken_replace; one.set("theme", "Sunset"); settings_module.os.replace = real_replace
+ok(settings_module.Settings(path).get("theme") == "Ocean" and [f for f in os.listdir(os.environ["APPDATA"]) if f.endswith(".tmp")] == [],
+   "a failed save leaves the previous settings whole, with no leftovers")
+with open(path, "w", encoding="utf-8") as f: json.dump({"yt_bot_handle": "@ChatVoice-V1", "yt_bot_title": "CHATDOOM Moderator"}, f)
+two = settings_module.Settings(path)
+ok(two.get("yt_bot_handle") == YT_BOT_HANDLE == "@ChatDoom" and two.get("yt_bot_title") == "CHATDOOM", "the renamed YouTube bot replaces the old saved name")
+w.s.set("theme", "No Such Theme"); ok(bool(build_qss("No Such Theme")), "a theme removed in a later version falls back instead of crashing")
+w.s.set("theme", "Neon Violet")
+
+here = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+source = open(os.path.join(here, "branding", "chatdoom-logo-source.png"), "rb").read()
+ok(open(os.path.join(here, "branding", "source.sha256")).read().strip() == hashlib.sha256(source).hexdigest(),
+   "the icons were made from the current logo (otherwise run tools/make_icons.py)")
+ico = open(os.path.join(here, "assets", "icon.ico"), "rb").read()
+count = struct.unpack("<H", ico[4:6])[0]
+ok(ico[:4] == b"\x00\x00\x01\x00" and count >= 6 and 0 in [ico[6 + 16 * i] for i in range(count)], "icon.ico is a real icon with a full-size picture")
+iss = open(os.path.join(here, "installer.iss"), encoding="utf-8").read()
+ok('Name: "{app}\\_internal"' in iss and "ChangesAssociations=yes" in iss and "RestartApplications=no" in iss and "PrepareToInstall" in iss,
+   "the installer replaces old files, refreshes icons, and closes the app first")
+version_files = [open(os.path.join(here, n), encoding="utf-8").read() for n in ("installer.iss", "version_info.txt")]
+ok("AppVersion=%s" % VERSION in version_files[0] and "'%s BETA'" % VERSION in version_files[1], "the version number matches in every file")
+
+w.goto(0); wait(100)
+ok(not w.statbar.isVisible() and w.num_total.parent().objectName() == "stat", "the Connect page shows its own stat cards")
+for i in range(1, w.stack.count()):
+    w.goto(i); wait(30)
+    shown = [c.num.text() for c in w.stat_cards]
+    ok(w.statbar.isVisible() and all(shown) and all(c.cap.text() for c in w.stat_cards), "%s shows three live stats" % PAGES[i])
+w.goto(1); before = w.msg_seen
+w.on_message(Message("youtube", "Asha", "hello from the stats test")); w._refresh_stats()
+ok(w.msg_seen == before + 1 and w.stat_cards[0].num.text() == str(before + 1), "the stat cards count real messages")
+w.goto(3); wait(10)
+ok(len(top_cards(w.stack.widget(3))) >= 2, "the Moderation page uses cards like the home screen")
+w.s.set("lite_mode", True); w.goto(5); wait(30)
+ok(w.title_line.width() == 72 and all(c.graphicsEffect() is None for c in top_cards(w.stack.widget(5))), "Lite mode skips the entrance animations")
+w.s.set("lite_mode", False); w.goto(5); wait(700)
+ok(all(not isinstance(c.graphicsEffect(), QGraphicsOpacityEffect) for c in top_cards(w.stack.widget(5))), "cards are left clean when the entrance animation ends")
+w.goto(0); wait(600)
 print("\nALL PASSED" if not fails else "\n%d FAILED" % fails)
 w.close()
 shutil.rmtree(os.environ["APPDATA"], ignore_errors=True)

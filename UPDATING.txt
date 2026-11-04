@@ -10,7 +10,8 @@ A. PUBLISH A NEW VERSION  (you, about 15 minutes, no tools needed)
    - Or on github.com: Add file > Upload files, drag the changed files/folders in, Commit.
      (The hidden folder .github is skipped by the web uploader. Only needed if the workflow changed: open
      .github/workflows/build.yml on github.com, click the pencil, paste the new text, commit.)
-2. Make sure the version number went UP. In app/version.py set PHASE, VERSION (for example "0.4.1") and STAGE ("BETA" now,
+2. Make sure the version number went UP (the tag in step 3 sets it for the build; keep app/version.py in step so local builds match).
+   In app/version.py set PHASE, VERSION (for example "0.4.1") and STAGE ("BETA" now,
    later "STABLE" or empty). The app shows it as "Phase 4 . v0.4.1 (BETA)". VERSION is the number the updater compares.
    For Windows' own labels also change the same number in installer.iss (AppVersion, AppVerName, VersionInfoVersion) and
    version_info.txt. The project I send you already has all of them in step.
@@ -30,7 +31,22 @@ C. THE CLOUD PART (Discord, payments) IS SEPARATE
 When the files in the cloud folder change, run this once in that folder:   npx wrangler deploy
 Your secrets and data stay. Do the cloud update BEFORE you publish an app version that needs it.
 
-D. GOOD TO KNOW
+D. CHANGING THE LOGO OR THE LOOK
+The logo lives in ONE picture: branding/chatdoom-logo-source.png. To change it:
+1. Replace that file (same layout: robot on top, name plate below, black background).
+2. Run:   py -3.12 tools\make_icons.py
+   This remakes the sidebar logo, the robot picture, icon.png and icon.ico (the desktop and taskbar icon) together.
+3. Publish a new version as usual. If you forget step 2, the build stops and tells you, so users never get a half-changed logo.
+Windows can keep showing an old icon for a while on pinned taskbar shortcuts: unpin and pin again, or restart Explorer.
+
+What protects updates now:
+- The installer waits for the app to close, removes the old program files, then puts the new ones in. Settings stay in %APPDATA%.
+- Each build starts the finished app once (--selftest). If it cannot start or a picture is broken, nothing is published.
+- A release is only offered once its installer is attached, so nobody gets an update during the 5-10 minutes of building.
+- Library versions are fixed in requirements.txt, so a new library cannot change the app by surprise. Change them on purpose only.
+- If something still goes wrong, these files explain it: %APPDATA%\ChatVoice\update.log and %APPDATA%\ChatVoice\crash.log
+
+E. GOOD TO KNOW
 - The very first installation (v0.4.0) is manual. Updates are automatic from then on.
 - The repository must stay public so installed apps can see releases without a login.
 - The updater only accepts files from YOUR repository's releases, and checks GitHub's checksum when GitHub provides one.

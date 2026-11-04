@@ -5,7 +5,7 @@ import sys
 import time
 import urllib.parse
 
-from PySide6.QtCore import Property, QEasingCurve, QEvent, QParallelAnimationGroup, QPoint, QPropertyAnimation, QSize, Qt, QTimer, QUrl
+from PySide6.QtCore import Property, QEasingCurve, QEvent, QParallelAnimationGroup, QPoint, QPropertyAnimation, QSize, Qt, QTimer, QUrl, QVariantAnimation
 from PySide6.QtGui import QColor, QDesktopServices, QFont, QFontDatabase, QIcon, QPainter, QPalette, QPen, QPixmap, QTextBlockFormat, QTextCursor, QTextOption
 from PySide6.QtWidgets import (QApplication, QButtonGroup, QCheckBox, QColorDialog, QComboBox, QDialog, QDialogButtonBox, QFrame, QGraphicsDropShadowEffect, QGraphicsOpacityEffect, QGridLayout, QHBoxLayout,
                                QLabel, QLineEdit, QPlainTextEdit, QPushButton, QScrollArea, QSlider, QSpinBox, QStackedWidget,
@@ -23,7 +23,7 @@ from .payments import TipPoller
 from .payments_page import PaymentsPage
 from .platform_auth import PlatformAuth
 from .hotkeys import Hotkeys
-from .icons import nav_icon
+from .icons import PLATFORM_COLORS, nav_icon, platform_glyph, platform_tile, utility_icon
 from .music import MusicPlayer
 from .music_page import MusicPage
 from .ytmod import YtModerator
@@ -37,7 +37,8 @@ from .speech import VOICES, Speaker
 from .theme import DEFAULT_THEME, FX, THEMES, build_qss
 from .tools import Tools
 from .tools_page import ToolsPage
-from .visuals import BACKGROUNDS, Backdrop, NavIndicator, Toasts, count_to
+from .ui_kit import platform_mark, section_card
+from .visuals import BACKGROUNDS, Backdrop, CardGlow, HeroCard, Motion, NavIndicator, StatCard, Toasts, count_to, stagger_in
 from .updater import Updater
 from .version import CREATOR, PRODUCT_NAME, STAGE, VERSION, label
 
@@ -275,16 +276,11 @@ class PlatformCard(QFrame):
         lay.setSpacing(10)
         head = QHBoxLayout()
         head.setSpacing(10)
-        letter, color = MARKS.get(key, ("•", "#888888"))
-        mark = QLabel(letter)
-        mark.setAlignment(Qt.AlignCenter)
-        mark.setFixedSize(36, 36)
-        mark.setStyleSheet("background:%s; color:#0b0b10; font-weight:700; font-size:12px; border-radius:10px;" % color)
-        head.addWidget(mark)
+        head.addWidget(platform_mark(key, 58), 0, Qt.AlignTop)
         names = QVBoxLayout()
         names.setSpacing(0)
         name = QLabel(title)
-        name.setStyleSheet("font-size:15px; font-weight:650;")
+        name.setStyleSheet("font-size:19px; font-weight:700; background:transparent;")
         names.addWidget(name)
         if hint:
             h = QLabel(hint)
@@ -354,18 +350,17 @@ class PlatformCard(QFrame):
             self.auth_label.setText("Sign in for chat, polls, and platform alerts")
             self.auth_btn.setText("Login")
 
-    def enterEvent(self, event):
-        if not self.s.get("lite_mode") and self.graphicsEffect() is None:
-            shade = QGraphicsDropShadowEffect(self)
-            shade.setBlurRadius(28)
-            shade.setOffset(0, 10)
-            shade.setColor(QColor(0, 0, 0, 160))
-            self.setGraphicsEffect(shade)
-        super().enterEvent(event)
-
-    def leaveEvent(self, event):
-        self.setGraphicsEffect(None)
-        super().leaveEvent(event)
+    def paintEvent(self, event):
+        super().paintEvent(event)
+        size = min(150, self.height() - 40)                  # large, faint platform symbol behind the card
+        if size < 60:
+            return
+        p = QPainter(self)
+        p.setRenderHint(QPainter.Antialiasing)
+        p.setOpacity(0.10)
+        p.translate(self.width() - size - 22, (self.height() - size) / 2)
+        platform_glyph(p, self.key, size, QColor(PLATFORM_COLORS[self.key][0]))
+        p.end()
 
     def args(self):
         self.s.set(self.key, self.edit.text().strip())
@@ -483,9 +478,9 @@ class ExtraStreamCard(QFrame):
     def _use_platform(self):
         p = self.platform()
         self.source = SOURCES[p](self.hub, self.key)
-        letter, color = MARKS[p]
-        self.mark.setText(letter)
-        self.mark.setStyleSheet("background:%s; color:#0b0b10; font-weight:700; font-size:12px; border-radius:10px;" % color)
+        self.mark.setText("")
+        self.mark.setStyleSheet("background: transparent;")
+        self.mark.setPixmap(platform_tile(p, self.mark.width()))
         self.edit.setPlaceholderText(self.PLACEHOLDERS[p])
         self.room.setVisible(p == "kick")
 
@@ -513,7 +508,9 @@ class MainWindow(QWidget):
         super().__init__()
         self.setObjectName("root")
         self.setWindowTitle("%s (%s) \u2014 by %s" % (PRODUCT_NAME, STAGE, CREATOR))
-        self.resize(1180, 760)
+        screen = QApplication.primaryScreen()
+        room = screen.availableGeometry() if screen else None
+        self.resize(min(1280, room.width() - 40) if room else 1280, min(840, room.height() - 60) if room else 840)
         self.setMinimumSize(980, 680)
         self.s = Settings()
         self.hub = Hub()
@@ -531,6 +528,9 @@ class MainWindow(QWidget):
         self._anim_targets = []
         self.fx = FX()
         self.fx.enabled = not bool(self.s.get("lite_mode"))
+        self.motion = Motion(self.s, self)
+        self.glow = CardGlow(self.s, self)
+        self.msg_seen = self.msg_read = self.msg_skipped = 0
         self.bridge = Bridge()
         self.platform_auth = PlatformAuth(self.s, self.bridge)
         self.twitch_events = TwitchEventSub(self.platform_auth)
@@ -577,11 +577,22 @@ class MainWindow(QWidget):
         right.addWidget(self._build_topbar())
         self.banner = self._build_banner()
         right.addWidget(self.banner)
+        self.statbar = QWidget()
+        bar = QHBoxLayout(self.statbar)
+        bar.setContentsMargins(0, 0, 0, 0)
+        bar.setSpacing(14)
+        self.stat_cards = [StatCard("layers", "violet", "", "", seed=i * 1.7) for i in range(3)]
+        for card in self.stat_cards:
+            self.motion.add(card)
+            bar.addWidget(card, 1)
+        right.addWidget(self.statbar)
         self.stack = QStackedWidget()
         for page in (self._page_connect(), self._page_feed(), self._page_voice(), self._page_mod(), self.discord, self.payments, self.ytpage, self.ovpage, self.musicpage, self.cmdpage, self.toolspage):
             self.stack.addWidget(page)
         right.addWidget(self.stack, 1)
         root.addWidget(canvas, 1)
+        self.glow.watch(self.stack)
+        self.glow.watch(self.statbar)
 
         self.hub.message.connect(self.on_message)
         self.hub.status.connect(self.on_status)
@@ -622,6 +633,7 @@ class MainWindow(QWidget):
         self.updater.message.connect(lambda t: self.feed.append("<span style='color:#7cf0c0'>Update: %s</span>" % esc(t)))
         self.updater.progress.connect(self.banner_text.setText)
         self.updater.quit_now.connect(lambda: QTimer.singleShot(400, QApplication.quit))
+        QTimer.singleShot(3000, self.updater.after_start)
         QTimer.singleShot(6000, self._auto_update)
         self.apply_theme(self.s.get("theme"))
         self.goto(0)
@@ -631,39 +643,50 @@ class MainWindow(QWidget):
     def _build_sidebar(self):
         side = QFrame()
         side.setObjectName("side")
-        side.setFixedWidth(228)
+        side.setFixedWidth(232)
         lay = QVBoxLayout(side)
-        lay.setContentsMargins(0, 16, 0, 14)
+        lay.setContentsMargins(0, 12, 0, 12)
         lay.setSpacing(2)
         self.logo = QLabel()
         self.logo.setObjectName("logo")
         self.logo.setAlignment(Qt.AlignCenter)
-        self.logo.setContentsMargins(4, 4, 4, 8)
+        self.logo.setContentsMargins(4, 0, 4, 4)
         logo = QPixmap(os.path.join(ROOT, "assets", "chatdoom-logo.png"))
         if not logo.isNull():
-            self.logo.setPixmap(logo.scaled(196, 100, Qt.KeepAspectRatio, Qt.SmoothTransformation))
+            self.logo.setPixmap(logo.scaled(138, 138, Qt.KeepAspectRatio, Qt.SmoothTransformation))
         else:
             self.logo.setText(PRODUCT_NAME)
         lay.addWidget(self.logo)
+        navbox = QWidget()
+        navlay = QVBoxLayout(navbox)                  # scrolls on small screens so nothing is ever cut off
+        navlay.setContentsMargins(0, 0, 0, 0)
+        navlay.setSpacing(0)
         self.nav = QButtonGroup(self)
         self.nav.setExclusive(True)
         groups = (("Workspace", (0, 1, 2, 8)), ("Tools", (3, 9, 10, 4, 5, 6, 7)))
         for title, indexes in groups:
             g = QLabel(title.upper())
             g.setObjectName("group")
-            lay.addWidget(g)
+            navlay.addWidget(g)
             for i in indexes:
                 b = QPushButton("  " + PAGES[i])
                 b.setIcon(nav_icon(i))
-                b.setIconSize(QSize(18, 18))
+                b.setIconSize(QSize(19, 19))
                 b.setObjectName("nav")
                 b.setCheckable(True)
                 b.setCursor(Qt.PointingHandCursor)
                 self.nav.addButton(b, i)
-                lay.addWidget(b)
+                navlay.addWidget(b)
+        navlay.addStretch(1)
         self.nav.idClicked.connect(self.goto)
-        self.nav_glow = NavIndicator(side, self.s)
-        lay.addStretch(1)
+        self.nav_glow = NavIndicator(navbox, self.s)
+        self.nav_scroll = QScrollArea()
+        self.nav_scroll.setWidgetResizable(True)
+        self.nav_scroll.setFrameShape(QFrame.NoFrame)
+        self.nav_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self.nav_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self.nav_scroll.setWidget(navbox)
+        lay.addWidget(self.nav_scroll, 1)
         box = QWidget()
         bl = QVBoxLayout(box)
         bl.setContentsMargins(16, 8, 16, 4)
@@ -672,33 +695,45 @@ class MainWindow(QWidget):
         lab.setObjectName("group")
         bl.addWidget(lab)
         theme = QComboBox()
+        theme.setObjectName("sideCombo")
         theme.addItems(list(THEMES))
         theme.setCurrentText(self.s.get("theme") if self.s.get("theme") in THEMES else DEFAULT_THEME)
         theme.currentTextChanged.connect(self.apply_theme)
-        bl.addWidget(theme)
         backdrop = QComboBox()
+        backdrop.setObjectName("sideCombo")
         for text, value in BACKGROUNDS:
             backdrop.addItem(text, value)
         backdrop.setCurrentIndex(max(0, backdrop.findData(self.s.get("background"))))
         backdrop.setToolTip("Background behind the pages. The aurora moves only while CHATDOOM is the active window.")
         backdrop.currentIndexChanged.connect(lambda _: (self.s.set("background", backdrop.currentData()), self.canvas.sync()))
-        bl.addWidget(backdrop)
-        lite = QCheckBox("Lite mode")
+        looks = QHBoxLayout()
+        looks.setSpacing(6)
+        looks.addWidget(theme, 3)
+        looks.addWidget(backdrop, 2)
+        bl.addLayout(looks)
+        lite = Switch()
         lite.setToolTip("Turns off fade and hover motion. Use it on slow PCs or while gaming.")
         lite.setChecked(bool(self.s.get("lite_mode")))
         lite.toggled.connect(self._lite)
-        bl.addWidget(lite)
+        lite_row = QHBoxLayout()
+        lite_row.setSpacing(10)
+        lite_row.addWidget(lite)
+        lite_row.addWidget(QLabel("Lite mode"), 1)
+        bl.addLayout(lite_row)
         upd = QPushButton("Check for updates")
+        upd.setObjectName("primary")
         upd.setCursor(Qt.PointingHandCursor)
         upd.clicked.connect(lambda: self.updater.check(True))
         bl.addWidget(upd)
         lay.addWidget(box)
         ver = QLabel(label())
         ver.setObjectName("hint")
-        ver.setContentsMargins(16, 4, 12, 0)
+        ver.setAlignment(Qt.AlignCenter)
+        ver.setContentsMargins(12, 4, 12, 0)
         by = QLabel(CREATOR)
         by.setObjectName("hint")
-        by.setContentsMargins(16, 0, 12, 0)
+        by.setAlignment(Qt.AlignCenter)
+        by.setContentsMargins(12, 0, 12, 0)
         lay.addWidget(ver)
         lay.addWidget(by)
         return side
@@ -775,7 +810,12 @@ class MainWindow(QWidget):
     def _build_topbar(self):
         bar = QWidget()
         lay = QHBoxLayout(bar)
-        lay.setContentsMargins(0, 0, 0, 8)
+        lay.setContentsMargins(0, 0, 0, 6)
+        lay.setSpacing(10)
+        accent = QFrame()
+        accent.setObjectName("titleBar")
+        accent.setFixedSize(6, 44)
+        lay.addWidget(accent, 0, Qt.AlignTop)
         left = QVBoxLayout()
         left.setSpacing(2)
         row = QHBoxLayout()
@@ -800,20 +840,28 @@ class MainWindow(QWidget):
         self.blurb.setObjectName("sub")
         self.blurb.setWordWrap(True)
         left.addWidget(self.blurb)
+        self.title_line = QFrame()
+        self.title_line.setObjectName("titleLine")
+        self.title_line.setFixedSize(72, 3)
+        left.addSpacing(6)
+        left.addWidget(self.title_line)
         lay.addLayout(left, 1)
         self.mute_btn = QPushButton()
         self.mute_btn.setObjectName("quiet")
+        self.mute_btn.setIcon(utility_icon("mute"))
         self.mute_btn.setCheckable(True)
         self.mute_btn.setChecked(bool(self.s.get("muted")))
         self._update_mute_button(self.s.get("muted"))
         self.mute_btn.setCursor(Qt.PointingHandCursor)
         self.mute_btn.toggled.connect(self._mute)
         skip = QPushButton("Skip")
+        skip.setIcon(utility_icon("skip"))
         skip.setObjectName("quiet")
         skip.setToolTip("Skip the message being spoken")
         skip.setCursor(Qt.PointingHandCursor)
         skip.clicked.connect(self.speaker.skip)
         test = QPushButton("Test voice")
+        test.setIcon(utility_icon("test"))
         test.setObjectName("quiet")
         test.setToolTip("Speak a short sample")
         test.setCursor(Qt.PointingHandCursor)
@@ -822,19 +870,57 @@ class MainWindow(QWidget):
             lay.addWidget(b, 0, Qt.AlignTop)
         return bar
 
-    def _stat(self, number, caption):
-        chip = QFrame()
-        chip.setObjectName("stat")
-        lay = QVBoxLayout(chip)
-        lay.setContentsMargins(14, 10, 14, 10)
-        lay.setSpacing(0)
-        num = QLabel(number)
-        num.setObjectName("statNum")
-        cap = QLabel(caption)
-        cap.setObjectName("hint")
-        lay.addWidget(num)
-        lay.addWidget(cap)
-        return chip, num
+    def _stat(self, icon, color, number, caption, seed=0.0):
+        chip = StatCard(icon, color, number, caption, seed)
+        self.motion.add(chip)
+        return chip, chip.num
+
+    def _page_stats(self, i):
+        """The three live numbers shown at the top of each page."""
+        s = self.s
+        on_off = lambda v: "On" if v else "Off"
+        if i == 1:
+            return (("chat", "violet", self.msg_seen, "Messages"), ("check", "green", self.msg_read, "Read aloud"),
+                    ("shield", "orange", self.msg_skipped, "Skipped"))
+        if i == 2:
+            engine = "Neural" if s.get("engine") == "neural" else "Windows"
+            return (("voice", "violet", engine, "Voice engine"), ("music", "green", "%d%%" % int(s.get("volume")), "Volume"),
+                    ("star", "orange", "%+d%%" % int(s.get("rate")), "Speed"))
+        if i == 3:
+            return (("shield", "violet", len(self.mod.blocked), "Blocked words"), ("chat", "green", int(s.get("max_len")), "Max length"),
+                    ("power", "orange", self.msg_skipped, "Skipped"))
+        if i == 4:
+            return (("discord", "violet", "Linked" if s.get("cloud_token") else "Not set", "Server"),
+                    ("people", "green", len(self.links.linked), "Linked viewers"), ("star", "orange", len(self.links.counts), "Known viewers"))
+        if i == 5:
+            return (("money", "violet", str(s.get("pay_gateway")).capitalize(), "Payment service"),
+                    ("check", "green", on_off(s.get("tips_on")), "Listening"), ("star", "orange", self.tools.stats.paid_count, "Paid this stream"))
+        if i == 6:
+            state = {"online": "Online", "offline": "Offline", "waking": "Checking"}.get(self.ytmod.bot_state, "Unknown")
+            return (("play", "violet", state, "Moderator bot"), ("shield", "green", int(s.get("yt_actions_count") or 0), "Actions today"),
+                    ("layers", "orange", int(s.get("mod_budget")), "Daily limit"))
+        if i == 7:
+            return (("screen", "violet", int(s.get("ov_port")), "Local port"), ("star", "green", str(s.get("ov_alert_style")).capitalize(), "Alert style"),
+                    ("chat", "orange", str(s.get("ov_chat_style")).capitalize(), "Chat style"))
+        if i == 8:
+            return (("music", "violet", len(self.music.tracks), "Tracks"), ("voice", "green", "%d%%" % int(s.get("music_volume")), "Volume"),
+                    ("power", "orange", "Playing" if self.music.playing else "Stopped", "Player"))
+        if i == 9:
+            return (("commands", "violet", len(s.get("commands") or []), "Commands"), ("star", "green", len(s.get("memes") or []), "Memes"),
+                    ("power", "orange", on_off(s.get("commands_on")), "Chat commands"))
+        return (("people", "violet", len(self.tools.seen_stream), "Viewers this stream"), ("layers", "green", len(s.get("counters") or []), "Counters"),
+                ("star", "orange", len(s.get("timers") or []), "Timers"))
+
+    def _refresh_stats(self):
+        i = self.stack.currentIndex()
+        self.statbar.setVisible(i != 0)
+        if i == 0:
+            return
+        try:
+            for card, stat in zip(self.stat_cards, self._page_stats(i)):
+                card.show_stat(*stat)
+        except Exception:                            # a number must never stop the page from opening
+            pass
 
     def _sync_summary(self):
         total = len(self.cards) + len(self.extra_cards)
@@ -856,10 +942,10 @@ class MainWindow(QWidget):
         lay.setContentsMargins(0, 0, 8, 0)
         lay.setSpacing(14)
         stats = QHBoxLayout()
-        stats.setSpacing(10)
-        platforms, self.num_total = self._stat("3", "Streams")
-        connected, self.num_on = self._stat("0", "Connected")
-        offline, self.num_off = self._stat("3", "Offline")
+        stats.setSpacing(14)
+        platforms, self.num_total = self._stat("layers", "violet", "3", "Platforms", 0.0)
+        connected, self.num_on = self._stat("check", "green", "0", "Connected", 1.7)
+        offline, self.num_off = self._stat("power", "orange", "3", "Offline", 3.4)
         for chip in (platforms, connected, offline):
             stats.addWidget(chip, 1)
         lay.addLayout(stats)
@@ -876,19 +962,19 @@ class MainWindow(QWidget):
                                  hint="Public chat by channel name.", field="Channel name"),
         }
         grid = QGridLayout()
-        grid.setSpacing(12)
+        grid.setSpacing(14)
         grid.addWidget(self.cards["youtube"], 0, 0)
         grid.addWidget(self.cards["twitch"], 0, 1)
         grid.addWidget(self.cards["kick"], 1, 0)
-        aside = QFrame()
-        aside.setObjectName("aside")
+        aside = HeroCard(os.path.join(ROOT, "assets", "robot.png"))
+        self.motion.add(aside)
         al = QVBoxLayout(aside)
-        al.setContentsMargins(18, 16, 18, 16)
-        title = QLabel("Multi-stream")
-        title.setStyleSheet("font-size:15px; font-weight:650;")
-        body = QLabel("Read more chats at the same time: a second YouTube live (like your vertical stream), another Twitch "
-                      "channel or more Kick channels. They all share the voice, moderation, commands and overlays.")
-        body.setObjectName("sub")
+        al.setContentsMargins(22, 18, 22, 18)
+        title = QLabel("One voice for every chat")
+        title.setObjectName("heroTitle")
+        body = QLabel("Connect any mix of platforms, or add a second YouTube, Twitch or Kick stream. "
+                      "They all share the voice, moderation, commands and overlays.")
+        body.setObjectName("heroText")
         body.setWordWrap(True)
         al.addWidget(title)
         al.addWidget(body)
@@ -924,6 +1010,8 @@ class MainWindow(QWidget):
         card = ExtraStreamCard(self.hub, data, self._save_streams, self._remove_stream)
         self.extra_cards[card.key] = card
         self._layout_streams()
+        if hasattr(self, "stack"):
+            self.glow.watch(self.stack)
         if save:
             self._save_streams()
         return card
@@ -1485,6 +1573,7 @@ class MainWindow(QWidget):
 
         languages, lang_lay = self._voice_section("Language voices", "Pick who speaks each kind of message.")
         lang_lay.addWidget(self._voice_field("Hindi", "Choose the voice for Devanagari messages.", self._voice_combo("hi_voice")))
+        lang_lay.setAlignment(Qt.AlignTop)
         lang_lay.addWidget(self._voice_field("Hinglish / English", "Choose the voice for Latin-script messages.", self._voice_combo("en_voice")))
 
         options, opt_lay = self._voice_section("Voice options", "Small choices for how messages are spoken.")
@@ -1539,12 +1628,16 @@ class MainWindow(QWidget):
     def _page_mod(self):
         page = QWidget()
         page.setObjectName("page")
-        lay = QVBoxLayout(page)
-        lay.setContentsMargins(0, 8, 0, 0)
-        note = QLabel("These filters decide what gets read aloud. Skipped messages stay visible in grey on the Live chat page.")
-        note.setObjectName("sub")
-        note.setWordWrap(True)
-        lay.addWidget(note)
+        holder = QVBoxLayout(page)
+        holder.setContentsMargins(0, 4, 0, 0)
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.NoFrame)
+        inner = QWidget()
+        outer = QVBoxLayout(inner)
+        outer.setContentsMargins(0, 0, 8, 0)
+        outer.setSpacing(14)
+        filters, lay = section_card("What gets read", "These filters decide what gets read aloud. Skipped messages stay visible in grey on the Live chat page.")
         for text, key in (("Skip messages with links", "skip_links"), ("Skip !commands", "skip_cmds"),
                           ("Ignore known bots (Nightbot, StreamElements, ...)", "ignore_bots"),
                           ("Only read moderators and the streamer", "mods_only")):
@@ -1552,8 +1645,10 @@ class MainWindow(QWidget):
         lay.addWidget(labeled("Max message length", self._bind_spin("max_len", 20, 500, " chars")))
         lay.addWidget(labeled("Ignore repeats for", self._bind_spin("dedupe_secs", 0, 120, " s")))
         lay.addWidget(labeled("Same viewer cooldown", self._bind_spin("user_cooldown", 0, 60, " s")))
-        lay.addWidget(QLabel("Blocked words (one per line, never read aloud, also blocks paid messages)"))
+        outer.addWidget(filters)
+        words, lay = section_card("Blocked words", "One per line. Never read aloud, and also blocks paid messages.")
         self.blocked_edit = QPlainTextEdit()
+        self.blocked_edit.setMinimumHeight(170)
         try:
             with open(self.blocked_path, encoding="utf-8") as f:
                 self.blocked_edit.setPlainText(f.read())
@@ -1564,6 +1659,9 @@ class MainWindow(QWidget):
         save.setObjectName("primary")
         save.clicked.connect(self._save_blocked)
         lay.addWidget(save, 0, Qt.AlignLeft)
+        outer.addWidget(words, 1)
+        scroll.setWidget(inner)
+        holder.addWidget(scroll)
         return page
 
     # ---------- behaviour ----------
@@ -1574,6 +1672,7 @@ class MainWindow(QWidget):
         self.s.set("theme", name)
         self.setStyleSheet(build_qss(name))
         self.fx.recolor(t["a1"])
+        self.glow.color = QColor(t["a1"])
         for switch in self.findChildren(Switch):
             switch.set_accent(t["a1"])
         if hasattr(self, "canvas"):
@@ -1604,21 +1703,36 @@ class MainWindow(QWidget):
         page = self.stack.widget(i)
         self.stack.setCurrentIndex(i)
         self.nav_glow.move_to(self.nav.button(i))
+        self.nav_scroll.ensureWidgetVisible(self.nav.button(i), 0, 8)
+        self._refresh_stats()
         if page is self.toolspage:
             self.toolspage.refresh()
         if self.s.get("lite_mode"):
+            self.title_line.setFixedWidth(72)
             return
+        sweep = QVariantAnimation(self)              # the line under the title draws itself
+        sweep.setDuration(420)
+        sweep.setStartValue(0)
+        sweep.setEndValue(72)
+        sweep.setEasingCurve(QEasingCurve.OutCubic)
+        sweep.valueChanged.connect(lambda v: self.title_line.setFixedWidth(int(v)))
         group = QParallelAnimationGroup(self)
-        targets = [page]
-        fx = QGraphicsOpacityEffect(page)
-        fx.setOpacity(0.0)
-        page.setGraphicsEffect(fx)
-        a = QPropertyAnimation(fx, b"opacity")
-        a.setDuration(220)
-        a.setStartValue(0.0)
-        a.setEndValue(1.0)
-        a.setEasingCurve(QEasingCurve.OutCubic)
-        group.addAnimation(a)
+        group.addAnimation(sweep)
+        cards_in, cards = stagger_in(page, group)
+        if cards_in is not None:
+            group.addAnimation(cards_in)
+            targets = list(cards)
+        else:
+            targets = [page]
+            fx = QGraphicsOpacityEffect(page)
+            fx.setOpacity(0.0)
+            page.setGraphicsEffect(fx)
+            a = QPropertyAnimation(fx, b"opacity")
+            a.setDuration(220)
+            a.setStartValue(0.0)
+            a.setEndValue(1.0)
+            a.setEasingCurve(QEasingCurve.OutCubic)
+            group.addAnimation(a)
         rise = QPropertyAnimation(page, b"pos")
         rise.setDuration(260)
         rise.setStartValue(page.pos() + QPoint(0, 18))
@@ -1694,6 +1808,9 @@ class MainWindow(QWidget):
         if not is_link and self._run_command(m):
             return
         ok, reason = self.mod.check(m)
+        self.msg_seen += 1
+        self.msg_read += bool(ok)
+        self.msg_skipped += not ok
         if is_link:
             ok, reason = False, "link code (processing)"
         elif not ok and m.platform == "youtube" and not m.mod and m.stream in ("", "youtube"):
@@ -1802,6 +1919,7 @@ class MainWindow(QWidget):
             self.toolspage.refresh_live()
 
     def _tools_tick(self):
+        self._refresh_stats()
         now = time.time()
         poll = self.tools.poll
         if poll.active and now >= poll.ends:

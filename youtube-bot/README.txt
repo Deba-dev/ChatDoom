@@ -4,7 +4,7 @@ NOW HOSTED ON CLOUDFLARE: the app-driven /v1 API (mode A below) also runs inside
 (cloud/src/youtube-bot.js), which is free and never sleeps. That is what the app uses now. See HOSTING.txt in the
 project folder for the 10-minute move. This Node folder stays as a self-hosting option and for mode B.
 
-One YouTube channel ("Chat Voice", @ChatVoice-V1) acts as the moderator bot. Each streamer adds that channel as a
+One YouTube channel ("CHATDOOM", @ChatDoom) acts as the moderator bot. Each streamer adds that channel as a
 moderator of their own channel (manual step, shown inside the CHATDOOM app). The bot then removes messages.
 
 TWO WAYS TO USE IT
@@ -28,7 +28,7 @@ FREE SETUP ON RENDER  (what you have now)
         BOT_ADMIN_KEY      a long random private value (32+ characters). It also signs the streamers' tokens.
         PUBLIC_URL         https://YOUR-SERVICE.onrender.com   (no trailing slash)
         SHOW_REFRESH_TOKEN 1          (temporary, see step 4)
-    Optional: BOT_HANDLE=@ChatVoice-V1 and BOT_TITLE=CHATDOOM Moderator (shown in the app if YouTube cannot be asked).
+    Optional: BOT_HANDLE=@ChatDoom and BOT_TITLE=CHATDOOM (shown in the app if YouTube cannot be asked).
  3. Google Cloud > the OAuth client > Authorized redirect URI:  https://YOUR-SERVICE.onrender.com/oauth/callback
  4. Open https://YOUR-SERVICE.onrender.com/admin , enter BOT_ADMIN_KEY, press "Authorize bot Google account" and sign
     in as the bot's Google account. The next page shows the bot's login code ONCE. Copy it into a NEW Render
