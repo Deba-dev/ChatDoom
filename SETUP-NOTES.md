@@ -186,12 +186,27 @@ Only needed for the Discord green dot, or a future bot that has to stay connecte
 
 ## 7. Still to do
 
-- [ ] Fix whatever is blocking Google "Publish" (get the exact error message).
-- [ ] Create the dedicated bot Google account + channel, sign it in, update `YT_BOT_HANDLE` / guides / tests.
-- [ ] Buy and attach a domain, then update `CLOUD_URL`, `YT_BOT_URL` and the address migration.
+Done on 2026-11-04:
+
+- [x] Domain attached: `cloud.zunimilabs.online`, with `CLOUD_URL`, `YT_BOT_URL` and the address migration updated.
+- [x] Domain verified in Search Console (DNS TXT record; leave it in place).
+- [x] YouTube moderator bot signed in and live as CHATDOOM (`@ChatDoom`). It stays on its current account, which is used only for the bot.
+- [x] New `CHATDOOM login` client created for streamer login, and its keys are on the Worker.
+- [x] Discord redirects added for `cloud.zunimilabs.online` (setup and link).
+- [x] V1.1.1 released: new logo and look, safe updates.
+- [x] Status page live at `zunimilabs.online/status/`.
+- [x] Landing page live at `zunimilabs.online/chatdoom/`.
+- [x] `legal-pages.js` changes committed and deployed.
+
+Still open:
+
+- [ ] Finish streamer login: Branding, Data Access, Publish, then confirm **Login** works in the app.
+- [ ] Test the moderator bot on a real stream (test mode first, then a real removal).
+- [ ] Add `@ChatDoom` as a moderator again on any channel that lost it, and verify the channel again (the new `YT_BOT_KEY` cancelled old verifications).
+- [ ] Record the demo video and submit the `CHATDOOM` project for Google verification.
+- [ ] Check the 30-day YouTube data refresh/delete rule, and add the wording to the privacy page, before verification.
+- [ ] NOVA: add the Task Scheduler start-up task, then confirm it comes back after a restart. It is online only while the PC is on.
+- [ ] Point the app at NOVA if wanted (needs a separate "Discord bot address" setting).
 - [ ] Build **bot replies**: use the streamer's login when signed in, otherwise the bot, with a daily cap per channel.
 - [ ] Build **Kick login** (check Kick's current developer API docs first).
-- [ ] Check the 30-day YouTube data refresh/delete rule before verification.
-- [ ] Optional: one-command install script for the Oracle server.
-- [ ] Optional: proper landing page (screenshots, features, download button).
-- [ ] Commit + `npx wrangler deploy` the `legal-pages.js` changes (not committed yet).
+- [ ] Optional: move NOVA to a machine that never turns off.
