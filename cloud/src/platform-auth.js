@@ -7,11 +7,25 @@ const providers = {
     clientId: "GOOGLE_OAUTH_CLIENT_ID",
     clientSecret: "GOOGLE_OAUTH_CLIENT_SECRET",
     callback: "/platform-auth/youtube/callback",
+    authorize: "https://accounts.google.com/o/oauth2/v2/auth",
+    token: "https://oauth2.googleapis.com/token",
+    revoke: "https://oauth2.googleapis.com/revoke",
   },
   twitch: {
     clientId: "TWITCH_CLIENT_ID",
     clientSecret: "TWITCH_CLIENT_SECRET",
     callback: "/platform-auth/twitch/callback",
+    authorize: "https://id.twitch.tv/oauth2/authorize",
+    token: "https://id.twitch.tv/oauth2/token",
+    revoke: "https://id.twitch.tv/oauth2/revoke",
+  },
+  kick: {
+    clientId: "KICK_CLIENT_ID",
+    clientSecret: "KICK_CLIENT_SECRET",
+    callback: "/platform-auth/kick/callback",
+    authorize: "https://id.kick.com/oauth/authorize",
+    token: "https://id.kick.com/oauth/token",
+    revoke: "https://id.kick.com/oauth/revoke",
   },
 };
 let dbReady;
@@ -26,6 +40,11 @@ function randomString(length) {
 async function hash(value) {
   const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value));
   return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+async function pkceChallenge(verifier) {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(verifier));
+  return toBase64(digest).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 }
 
 function toBase64(bytes) {
@@ -155,11 +174,10 @@ async function start(env, origin, url) {
   const returnUrl = url.searchParams.get("return") || "";
   if (!returnAddress(returnUrl)) return json({ error: "The return address must be the app's local /done callback" }, 400);
   const state = randomString(24);
-  await kvPut(env, `platform-oauth-state:${state}`, { platform, returnUrl }, 600);
+  const verifier = platform === "kick" ? randomString(32) : "";   // Kick requires PKCE
+  await kvPut(env, `platform-oauth-state:${state}`, { platform, returnUrl, verifier }, 600);
   const redirectUri = origin + config.callback;
-  const authUrl = new URL(platform === "youtube"
-    ? "https://accounts.google.com/o/oauth2/v2/auth"
-    : "https://id.twitch.tv/oauth2/authorize");
+  const authUrl = new URL(config.authorize);
   authUrl.searchParams.set("client_id", env[config.clientId]);
   authUrl.searchParams.set("redirect_uri", redirectUri);
   authUrl.searchParams.set("response_type", "code");
@@ -168,13 +186,17 @@ async function start(env, origin, url) {
     authUrl.searchParams.set("scope", "openid profile https://www.googleapis.com/auth/youtube.force-ssl");
     authUrl.searchParams.set("access_type", "offline");
     authUrl.searchParams.set("prompt", "consent");
+  } else if (platform === "kick") {
+    authUrl.searchParams.set("scope", "user:read chat:write");
+    authUrl.searchParams.set("code_challenge", await pkceChallenge(verifier));
+    authUrl.searchParams.set("code_challenge_method", "S256");
   } else {
     authUrl.searchParams.set("scope", "user:write:chat channel:manage:polls moderator:read:followers channel:read:subscriptions");
   }
   return json({ authorizeUrl: authUrl.toString() });
 }
 
-async function exchangeCode(env, platform, config, code, redirectUri) {
+async function exchangeCode(env, platform, config, code, redirectUri, verifier) {
   const body = new URLSearchParams({
     client_id: env[config.clientId],
     client_secret: env[config.clientSecret],
@@ -182,8 +204,8 @@ async function exchangeCode(env, platform, config, code, redirectUri) {
     grant_type: "authorization_code",
     redirect_uri: redirectUri,
   });
-  const endpoint = platform === "youtube" ? "https://oauth2.googleapis.com/token" : "https://id.twitch.tv/oauth2/token";
-  return tokenResponse(await fetch(endpoint, {
+  if (verifier) body.set("code_verifier", verifier);
+  return tokenResponse(await fetch(config.token, {
     method: "POST",
     headers: { "content-type": "application/x-www-form-urlencoded" },
     body,
@@ -202,6 +224,15 @@ async function profile(env, platform, accessToken) {
     const channel = data.items && data.items[0];
     if (!channel || !channel.id) throw new Error("YouTube did not return a channel for this account");
     return { id: channel.id, name: channel.snippet && channel.snippet.title || channel.id };
+  }
+  if (platform === "kick") {
+    const response = await fetch("https://api.kick.com/public/v1/users", {
+      headers: { Authorization: "Bearer " + accessToken },
+    });
+    const data = await tokenResponse(response, "Kick", "account lookup");
+    const user = data.data && data.data[0];
+    if (!user || !user.user_id) throw new Error("Kick did not return the signed-in account");
+    return { id: String(user.user_id), name: user.name || String(user.user_id) };
   }
   const response = await fetch("https://api.twitch.tv/helix/users", {
     headers: { Authorization: "Bearer " + accessToken, "Client-Id": env.TWITCH_CLIENT_ID },
@@ -225,7 +256,7 @@ async function callback(env, origin, url, platform) {
 
   let token, identity;
   try {
-    token = await exchangeCode(env, platform, config, url.searchParams.get("code"), origin + config.callback);
+    token = await exchangeCode(env, platform, config, url.searchParams.get("code"), origin + config.callback, saved.verifier);
     if (!token.refresh_token) throw new Error("The provider did not issue a refresh token; revoke CHATDOOM access and try login again");
     identity = await profile(env, platform, token.access_token);
   } catch (error) {
@@ -257,8 +288,7 @@ async function accountFor(request, env) {
   if (account.expires_at > Math.floor(Date.now() / 1000) + 60) return account;
 
   const config = providerConfig(env, account.platform);
-  const response = await fetch(account.platform === "youtube"
-    ? "https://oauth2.googleapis.com/token" : "https://id.twitch.tv/oauth2/token", {
+  const response = await fetch(config.token, {
     method: "POST",
     headers: { "content-type": "application/x-www-form-urlencoded" },
     body: new URLSearchParams({
@@ -460,6 +490,20 @@ async function action(request, env, kind) {
   if (platform !== account.platform) return json({ error: "Choose the platform account you signed in to" }, 400);
 
   try {
+    if (platform === "kick") {
+      if (kind !== "message") return json({ error: "Kick does not offer polls to apps" }, 400);
+      const text = clean(body.text, 500);
+      if (!text) return json({ error: "Type a message first" }, 400);
+      const response = await fetch("https://api.kick.com/public/v1/chat", {
+        method: "POST",
+        headers: { Authorization: "Bearer " + account.accessToken, "content-type": "application/json" },
+        body: JSON.stringify({ content: text, type: "user", broadcaster_user_id: Number(account.provider_user_id) }),
+      });
+      const data = await tokenResponse(response, "Kick", "message send");
+      if (data.data && data.data.is_sent === false) return json({ error: "Kick did not send the message" }, 502);
+      return json({ ok: true, id: data.data && data.data.message_id || "" });
+    }
+
     if (platform === "youtube") {
       let snippet;
       if (kind === "message") {
@@ -523,16 +567,16 @@ async function disconnect(request, env) {
   catch (error) { return json({ error: clean(error.message, 140) }, error.status === 400 || error.status === 401 ? 401 : 502); }
   if (!account) return json({ error: "Platform login expired or disconnected" }, 401);
   const config = providerConfig(env, account.platform);
-  const revokeUrl = account.platform === "youtube"
-    ? "https://oauth2.googleapis.com/revoke"
-    : "https://id.twitch.tv/oauth2/revoke";
-  const revokeBody = account.platform === "youtube"
-    ? { token: account.refreshToken }
-    : { client_id: env[config.clientId], token: account.accessToken };
-  const revoked = await fetch(revokeUrl, {
+  const kick = account.platform === "kick";   // Kick takes the token in the query string, not the body
+  const revokeParams = new URLSearchParams(kick
+    ? { token: account.refreshToken, token_hint_type: "refresh_token" }
+    : account.platform === "youtube"
+      ? { token: account.refreshToken }
+      : { client_id: env[config.clientId], token: account.accessToken });
+  const revoked = await fetch(kick ? `${config.revoke}?${revokeParams}` : config.revoke, {
     method: "POST",
     headers: { "content-type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams(revokeBody),
+    body: kick ? "" : revokeParams,
   });
   if (!revoked.ok && revoked.status !== 400 && revoked.status !== 401)
     return json({ error: `${account.platform} did not revoke the app's authorization (${revoked.status})` }, 502);
@@ -547,6 +591,7 @@ export async function handlePlatformAuth(request, env, url) {
   if (request.method === "GET" && path === "/platform-auth/start") return start(env, url.origin, url);
   if (request.method === "GET" && path === providers.youtube.callback) return callback(env, url.origin, url, "youtube");
   if (request.method === "GET" && path === providers.twitch.callback) return callback(env, url.origin, url, "twitch");
+  if (request.method === "GET" && path === providers.kick.callback) return callback(env, url.origin, url, "kick");
   if (request.method === "POST" && path === "/platform-auth/redeem") return redeem(request, env);
   if (request.method === "GET" && path === "/platform-auth/account") return accountInfo(request, env);
   if (request.method === "POST" && path === "/platform-auth/eventsub") return twitchEventSub(request, env);

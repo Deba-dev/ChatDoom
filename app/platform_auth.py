@@ -42,7 +42,7 @@ class PlatformAuth(QObject):
     subscribers = Signal(object)
     broadcasts = Signal(object, bool)     # the channel's live and scheduled streams; True when the streamer asked
 
-    SUPPORTED = ("youtube", "twitch")
+    SUPPORTED = ("youtube", "twitch", "kick")
 
     def __init__(self, settings, bridge):
         super().__init__()
@@ -121,6 +121,9 @@ class PlatformAuth(QObject):
         }, "platform:reply" if quiet else "platform:action")
 
     def create_poll(self, platform, question, options, duration):
+        if platform == "kick":
+            self.notice.emit("Kick does not offer polls to apps.")
+            return
         self._action(platform, "poll", {
             "platform": platform,
             "question": question,

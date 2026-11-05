@@ -485,6 +485,25 @@ ok(w.banner.isVisible() and not w.upd_btn.isVisible() and "not any update" in w.
 w.s.set("update_last", 0); w.s.set("auto_update_check", False); w.banner.hide(); GH["tag"] = "v9.9.9"; w._auto_update(); wait(400)
 ok(not w.banner.isVisible(), "automatic check can be switched off")
 
+# ===== custom look =====
+print("--- custom look ---")
+from app.theme import THEMES as _TH, custom_theme
+from app.visuals import BUILT_IN_BACKGROUNDS, background_path
+from app.appearance import AppearanceDialog, import_image
+from PySide6.QtGui import QColor as _QC, QImage as _QI
+w.set_custom_colours({"a1": "#00ff88", "a2": "#ff0066", "bg": "#ffffff"})
+ok(w.s.get("theme") == "Custom" and w.theme_combo.currentText() == "Custom" and _TH["Custom"]["a1"] == "#00ff88", "picked colours switch the app to the Custom theme")
+ok(_QC(_TH["Custom"]["bg"]).lightnessF() <= 0.17, "a very light background colour is kept dark so text stays readable")
+ok(all(os.path.isfile(background_path("builtin:" + k)) and not _QI(background_path("builtin:" + k)).isNull() for _, k in BUILT_IN_BACKGROUNDS), "all six built-in pictures load")
+w.set_background_picture("builtin:sunset"); w.canvas.grab(); ok(w.s.get("background") == "image" and w.canvas.picture[1] is not None, "a built-in picture is drawn behind the pages")
+own = os.path.join(_test_appdata, "mine.png"); _QI(64, 36, _QI.Format_RGB32).save(own)
+value, problem = import_image(own); ok(value.startswith("custom:") and not problem and os.path.isfile(background_path(value)), "your own picture is copied into CHATDOOM's folder")
+bad = os.path.join(_test_appdata, "bad.png"); open(bad, "wb").write(b"not a picture"); ok(import_image(bad)[0] == "" and "picture" in import_image(bad)[1], "a broken picture is refused with a plain message")
+w.set_background_picture("custom:gone.png"); w.canvas.grab(); ok(w.canvas.picture[1] is None, "a deleted picture falls back without leaving the window blank")
+ok(background_path("custom:../../settings.json").endswith(os.path.join("Backgrounds", "settings.json")), "picture names cannot leave the Backgrounds folder")
+dialog = AppearanceDialog(w, w.s, w.set_custom_colours, w.set_background_picture, w.set_background_dim); ok(len(dialog.swatches) == 3, "the Customize look window opens"); dialog.deleteLater()
+w.set_background_dim(70); w.s.set("background", "plain"); w.theme_combo.setCurrentText("Neon Violet"); w.canvas.sync()
+
 # ===== G. protected secrets =====
 print("--- G. protected secrets ---")
 import app.secure as sec, app.settings as stg, sys as _sys
@@ -518,13 +537,13 @@ pg.gw.setCurrentIndex(pg.gw.findData("cashfree")); ok(pg.hook.text().endswith("/
 
 # ===== I. creator credit and version label =====
 print("--- I. credit and version ---")
-from app.version import label, CREATOR, PHASE, STAGE
+from app.version import label, CREATOR, STAGE
 from PySide6.QtWidgets import QLabel as _QL
 texts = [l.text() for l in w.findChildren(_QL)]
-ok(label() == "Phase %d \u00b7 v%s (BETA)" % (PHASE, VERSION) and STAGE == "BETA" and CREATOR == "itsmeblitz", "version label reads: %s" % label())
-ok(label() in texts and any("itsmeblitz" in x for x in texts), "sidebar shows the version label and 'by itsmeblitz'")
-ok("itsmeblitz" in w.windowTitle() and "BETA" in w.windowTitle(), "window title: %s" % w.windowTitle())
-ok(b"itsmeblitz" in urllib.request.urlopen("http://127.0.0.1:%d/" % w.overlay.port).read() if w.overlay.server else True, "overlay start page carries the credit")
+ok(label() == "v%s \u00b7 Released" % VERSION and STAGE == "Released" and CREATOR == "ZUNIMILABS", "version label reads: %s" % label())
+ok(label() in texts and "Developed by ZUNIMILABS" in texts, "sidebar shows the version label and the company")
+ok("ZUNIMILABS" in w.windowTitle() and "BETA" not in w.windowTitle(), "window title: %s" % w.windowTitle())
+ok(b"ZUNIMILABS" in urllib.request.urlopen("http://127.0.0.1:%d/" % w.overlay.port).read() if w.overlay.server else True, "overlay start page carries the credit")
 
 # ===== J. simple Discord setup =====
 print("--- J. one-click Discord ---")
@@ -675,6 +694,7 @@ ok(c2.key not in w.extra_cards and c2.key not in w.connected and w.num_total.tex
 w.s.set("commands", [{"name": "discord", "response": "Join discord.gg/x {user} ({count})", "mode": "reply", "cooldown": 30},
                      {"name": "hug", "response": "!{user} hugs {touser}", "mode": "speak", "cooldown": 0},
                      {"name": "secret", "response": "mods only text", "mode": "both", "mods_only": True}])
+w.s.set("yt_bot_posts", False)   # these checks are about the signed-in account; the bot has its own below
 w.platform_auth.is_connected = lambda p: False
 before = w.feed.toPlainText(); announced.clear(); spoken.clear()
 w.on_message(Message("youtube", "Viewer", "!discord", stream="youtube"))
@@ -687,9 +707,18 @@ w.platform_auth.is_connected = lambda p: True
 w.on_message(Message("youtube", "Mod", "!discord", mod=True, stream="youtube"))
 w.on_message(Message("youtube", "Mod", "!DISCORD extra words", mod=True, stream=c1.key))
 w.on_message(Message("kick", "Kicker", "!discord", mod=True, stream="kick"))
-ok([a for a, k in sent] == [("youtube", "Join discord.gg/x Mod (2)", ""), ("youtube", "Join discord.gg/x Mod (3)", "https://youtu.be/VERTICAL123")]
-   and all(k == {"quiet": True} for a, k in sent) and "Kick replies are not supported" in w.feed.toPlainText(),
-   "signed in, replies go to the right YouTube stream (main or added); moderators skip cooldowns; Kick explains it cannot reply")
+ok([a for a, k in sent] == [("youtube", "Join discord.gg/x Mod (2)", ""), ("youtube", "Join discord.gg/x Mod (3)", "https://youtu.be/VERTICAL123"), ("kick", "Join discord.gg/x Kicker (4)", "")]
+   and all(k == {"quiet": True} for a, k in sent) and "Kick replies are not supported" not in w.feed.toPlainText(),
+   "signed in, replies go to the right stream (main or added YouTube, or Kick); moderators skip cooldowns")
+ok(w.cards["kick"].auth_btn is not None and w.action_platform.findData("kick") >= 0, "the Kick card has a Login button and Kick is in the chat bar")
+bot_said = []; real_say = w.ytmod.say; w.ytmod.say = lambda *a: bot_said.append(a)
+w.s.set("yt_bot_token", "TOKEN123"); w.s.set("yt_bot_posts", True); w.platform_auth.is_connected = lambda p: False; sent.clear()
+w._post_chat("youtube", "Hi chat"); w._post_chat("twitch", "Hi Twitch")
+ok(bot_said == [("Hi chat", "")] and [a for a, k in sent] == [("twitch", "Hi Twitch", "")], "with the bot set up it speaks on YouTube, and other platforms use their login")
+ok(w._reply_target(Message("youtube", "V", "!x", stream="youtube")) == ("", ""), "a verified channel can answer commands with no streamer login")
+w.s.set("yt_bot_posts", False); bot_said.clear(); sent.clear(); w.platform_auth.is_connected = lambda p: True
+w._post_chat("youtube", "Mine"); ok(not bot_said and [a for a, k in sent] == [("youtube", "Mine", "")], "turning the bot off posts from the signed-in account")
+w.ytmod.say = real_say; sent.clear()
 w.on_message(Message("twitch", "T", "!hug @Friend", stream="twitch"))
 ok(announced and announced[-1] == ("T hugs Friend",), "read-aloud commands use {user}/{touser} and never start with ! (no command loops)")
 w.on_message(Message("twitch", "T", "!secret", stream="twitch"))
@@ -998,7 +1027,7 @@ iss = open(os.path.join(here, "installer.iss"), encoding="utf-8").read()
 ok('Name: "{app}\\_internal"' in iss and "ChangesAssociations=yes" in iss and "RestartApplications=no" in iss and "PrepareToInstall" in iss,
    "the installer replaces old files, refreshes icons, and closes the app first")
 version_files = [open(os.path.join(here, n), encoding="utf-8").read() for n in ("installer.iss", "version_info.txt")]
-ok("AppVersion=%s" % VERSION in version_files[0] and "'%s BETA'" % VERSION in version_files[1], "the version number matches in every file")
+ok("AppVersion=%s" % VERSION in version_files[0] and "'ProductVersion', '%s'" % VERSION in version_files[1], "the version number matches in every file")
 
 w.goto(0); wait(100)
 ok(not w.statbar.isVisible() and w.num_total.parent().objectName() == "stat", "the Connect page shows its own stat cards")

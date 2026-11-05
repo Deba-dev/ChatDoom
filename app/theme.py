@@ -12,6 +12,29 @@ THEMES = {
     "Matcha":      dict(bg="#101814", bg2="#16201a", text="#effff5", mute="#93bfa5", a1="#34d399", a2="#a3e635", a3="#22d3ee"),
 }
 DEFAULT_THEME = "Neon Violet"
+CUSTOM_THEME = "Custom"
+CUSTOM_DEFAULT = {"a1": "#7c3aed", "a2": "#c026d3", "bg": "#05031a"}
+
+
+def custom_theme(colours):
+    """A full theme from three picked colours. The background stays dark because the app's text and glows are light."""
+    picked = {**CUSTOM_DEFAULT, **(colours or {})}
+    a1, a2, bg = (QColor(picked[k]) for k in ("a1", "a2", "bg"))
+    a1, a2 = (c if c.isValid() else QColor(CUSTOM_DEFAULT["a1"]) for c in (a1, a2))
+    if not bg.isValid():
+        bg = QColor(CUSTOM_DEFAULT["bg"])
+    hue, sat, light, _ = bg.getHslF()
+    bg = QColor.fromHslF(max(hue, 0), sat, min(light, 0.16))
+    bg2 = QColor.fromHslF(max(hue, 0), sat, min(light, 0.16) + 0.06)
+    a3 = QColor.fromHsvF(((max(a1.hueF(), 0) + 0.12) % 1.0), max(a1.saturationF(), 0.5), max(a1.valueF(), 0.7))
+    return dict(bg=bg.name(), bg2=bg2.name(), text="#f6f4ff", mute="#aaa6cc", a1=a1.name(), a2=a2.name(), a3=a3.name())
+
+
+def set_custom_theme(colours):
+    THEMES[CUSTOM_THEME] = custom_theme(colours)
+
+
+set_custom_theme(None)
 
 QSS = Template("""
 * { font-family: "Poppins", "Segoe UI", "Noto Sans Devanagari", sans-serif; font-size: 13px; color: $text; }

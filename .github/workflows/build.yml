@@ -30,7 +30,7 @@ jobs:
           iss = Path("installer.iss")
           text = iss.read_text(encoding="utf-8")
           text = re.sub(r"AppVersion=.*", "AppVersion=%s" % ver, text)
-          text = re.sub(r"AppVerName=CHATDOOM .*", "AppVerName=CHATDOOM %s BETA" % ver, text)
+          text = re.sub(r"AppVerName=CHATDOOM .*", "AppVerName=CHATDOOM %s" % ver, text)
           text = re.sub(r"VersionInfoVersion=.*", "VersionInfoVersion=%d.%d.%d.%d" % tuple(parts), text)
           iss.write_text(text, encoding="utf-8")
           info = Path("version_info.txt")
@@ -38,7 +38,7 @@ jobs:
           body = re.sub(r"filevers=\([^)]*\)", "filevers=(%d, %d, %d, %d)" % tuple(parts), body)
           body = re.sub(r"prodvers=\([^)]*\)", "prodvers=(%d, %d, %d, %d)" % tuple(parts), body)
           body = re.sub(r"StringStruct\('FileVersion', '[^']*'\)", "StringStruct('FileVersion', '%d.%d.%d.%d')" % tuple(parts), body)
-          body = re.sub(r"StringStruct\('ProductVersion', '[^']*'\)", "StringStruct('ProductVersion', '%s BETA')" % ver, body)
+          body = re.sub(r"StringStruct\('ProductVersion', '[^']*'\)", "StringStruct('ProductVersion', '%s')" % ver, body)
           info.write_text(body, encoding="utf-8")
         env:
           GITHUB_REF_NAME: ${{ github.ref_name }}

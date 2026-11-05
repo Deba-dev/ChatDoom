@@ -87,6 +87,19 @@ class YtModerator(QObject):
     def used_today(self):
         return int(self.s.get("yt_used")) if self.s.get("yt_used_day") == str(date.today()) else 0
 
+    def can_post(self):
+        """The bot answers in chat itself, like Nightbot, once the channel is verified."""
+        return self.verified and bool(self.s.get("yt_bot_posts"))
+
+    def say(self, text, video=""):
+        vid = youtube_id(video or self.s.get("youtube") or "")
+        if not vid:
+            self.notice.emit("The bot needs your live link on the Connect page to post in chat.")
+            return
+        body = {"videoId": vid, "text": text, "limit": int(self.s.get("mod_budget"))}
+        token = self.s.get("yt_bot_token")
+        run_bg(self.bridge, "yt:say", lambda: bot_call(self.s, "POST", "/v1/say", body, token))
+
     def video_id(self):
         return youtube_id(self.s.get("youtube") or "")
 
@@ -248,6 +261,17 @@ class YtModerator(QObject):
             elif not res.get("waiting") and res.get("error"):
                 self.message = res["error"]
             self.changed.emit()
+        elif tag == "yt:say":
+            if status == 401:
+                self.forget()
+                self.notice.emit("Your channel verification expired. Verify it again on the YouTube mod page.")
+            elif res.get("ok"):
+                self.s.set("yt_used_day", str(date.today()))
+                self.s.set("yt_used", int(res.get("usedToday", 0)))
+                self.changed.emit()
+            elif time.time() - self._last_error_note > 60:
+                self._last_error_note = time.time()
+                self.notice.emit("The bot could not post in chat: %s" % res.get("error", "unknown error"))
         elif tag == "yt:sweep":
             self.busy = False
             self._record(self.in_flight, res)

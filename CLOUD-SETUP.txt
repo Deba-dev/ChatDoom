@@ -101,7 +101,15 @@ EACH STREAMER  (CHATDOOM > Connect page)
    stream owned by the signed-in YouTube channel.
 4. Disconnect the account from its platform card to revoke CHATDOOM's provider grant and remove its cloud session. The app
    encrypts its session handle using Windows DPAPI; provider tokens are encrypted in the cloud's D1 database.
-Kick remains read-only because this version has no supported Kick integration.
+5. Kick login posts chat messages and command replies. Kick has no polls for apps, and Kick alerts are not supported yet.
+WEBSITE SUPPORT PAGE (you, once)
+1. In your Discord server, open the support channel's settings > Integrations > Webhooks > New Webhook, then copy its URL.
+2. Turn on Developer Mode in Discord (Settings > Advanced), then right-click the support role and press Copy Role ID.
+3. In the cloud folder run  npx wrangler secret put SUPPORT_WEBHOOK_URL  and  npx wrangler secret put SUPPORT_ROLE_ID
+4. Run  npx wrangler deploy
+Lily, the AI assistant, answers questions about CHATDOOM and the bots only, and works without steps 1-3. Until then "Ask the team" tells people to join the Discord. To change what the AI knows,
+edit NOTES in cloud/src/support.js and deploy again. It allows 200 questions and 20 team pings a day.
+
 OPTIONAL CHAT TRANSLATION (each streamer)
 1. Make sure CHATDOOM is connected to its cloud service from the Discord page. Translation uses this connection; YouTube
    or Twitch account login is not required.

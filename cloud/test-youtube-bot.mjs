@@ -155,5 +155,20 @@ ok(r.status === 200 && r.data.includes("NEW_REFRESH") && r.data.includes("wrangl
 r = await call("/v1/oauth/callback?code=C&state=" + google.searchParams.get("state"));
 ok(r.status === 400, "the login link cannot be replayed");
 
+// ---- the bot talks in chat ----
+Y.posted = []; delete Y.postStatus;
+r = await post("/v1/say", { videoId: VIDEO, text: "Join the Discord!", limit: 150 }, { authorization: "Bearer junk" });
+ok(r.status === 401 && !Y.posted.length, "only a verified channel can make the bot talk");
+r = await post("/v1/say", { videoId: "OTHERVIDEO1", text: "Hi", limit: 150 }, H);
+ok(r.status === 403 && !Y.posted.length, "the bot never talks in someone else's stream");
+r = await post("/v1/say", { videoId: VIDEO, text: "   ", limit: 150 }, H);
+ok(r.status === 400 && !Y.posted.length, "an empty message is refused");
+r = await post("/v1/say", { videoId: VIDEO, text: "Join the\nDiscord! " + "x".repeat(300), limit: 150 }, H);
+const said = Y.posted[0]?.snippet?.textMessageDetails?.messageText || "";
+ok(r.status === 200 && said.startsWith("Join the Discord! ") && said.length === 200, "a chat line is cleaned, shortened to YouTube's limit and posted");
+const usedBefore = r.data.usedToday;
+r = await post("/v1/say", { videoId: VIDEO, text: "Over the limit", limit: usedBefore }, H);
+ok(r.status === 429 && Y.posted.length === 1, "the bot stops at the channel's daily limit");
+
 console.log(fails ? `\n${fails} FAILED` : "\nALL PASSED");
 process.exit(fails ? 1 : 0);

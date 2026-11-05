@@ -8,7 +8,7 @@ from .config import CLOUD_URL, OLD_CLOUD_URLS, OLD_YT_BOT_HANDLES, OLD_YT_BOT_UR
 from .secure import protect, unprotect
 
 SECRET_KEYS = ("cloud_token", "g_client_secret", "ov_external_url", "yt_bot_token",
-               "platform_youtube_session", "platform_twitch_session")   # stored encrypted on Windows
+               "platform_youtube_session", "platform_twitch_session", "platform_kick_session")   # stored encrypted on Windows
 
 
 def data_dir():
@@ -29,13 +29,14 @@ DEFAULTS = {
     "welcome_reply": False, "timers_on": True, "timers": [], "sr_on": True, "sr_max": 10, "sr_per_viewer": 1,
     "summary_post": False, "hk_skip": "Ctrl+Alt+S", "hk_mute": "Ctrl+Alt+M", "hk_counter": "", "hk_music": "",
     "background": "aurora", "toasts": True,
-    "platform_youtube_session": "", "platform_twitch_session": "",
-    "platform_youtube_name": "", "platform_twitch_name": "",
+    "platform_youtube_session": "", "platform_twitch_session": "", "platform_kick_session": "",
+    "platform_youtube_name": "", "platform_twitch_name": "", "platform_kick_name": "",
     "engine": "neural", "hi_voice": "hi-IN-SwaraNeural", "en_voice": "hi-IN-MadhurNeural",
     "per_viewer": False, "rate": 0, "volume": 100, "read_name": True, "muted": False,
     "skip_links": True, "skip_cmds": True, "ignore_bots": True, "mods_only": False,
     "read_super": True, "read_mode": "all", "translate_chat": False, "max_len": 150,
-    "theme": "Neon Violet", "lite_mode": False,
+    "theme": "Neon Violet", "lite_mode": False, "theme_custom": {"a1": "#7c3aed", "a2": "#c026d3", "bg": "#05031a"},
+    "bg_image": "builtin:nebula", "bg_dim": 55, "yt_bot_posts": True,
     "inv_youtube": "", "inv_twitch": "", "inv_kick": "", "inv_role_youtube": "", "inv_role_twitch": "", "inv_role_kick": "",
     "cloud_url": CLOUD_URL, "cloud_token": "", "guild_id": "", "guild_name": "", "webhook_url": "",
     "announce_auto": False, "announce_title": "🔴 LIVE NOW", "announce_text": "I'm live! Come hang out", "post_super": False,

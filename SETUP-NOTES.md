@@ -37,7 +37,7 @@ Reading chat never needs a login. Only **posting into chat** does.
 
 Without a login, the app shows the reply in the feed marked "not sent in chat" (`app/ui.py`, `_reply_target`).
 
-**Kick login doesn't exist in the code.** `PlatformAuth.SUPPORTED = ("youtube", "twitch")` in `app/platform_auth.py`. Kick is read-only until it's built: a Kick developer app, OAuth with PKCE, and a Kick provider in `platform-auth.js`.
+**Kick login is built** (OAuth with PKCE, `kick` provider in `platform-auth.js`). It covers chat messages and command replies only: Kick has no polls for apps, and Kick alerts would need webhooks. Chat is still read anonymously. It needs `KICK_CLIENT_ID` and `KICK_CLIENT_SECRET` as Wrangler secrets.
 
 ### Ways to do YouTube login (decided: keep the real login and add the others)
 
@@ -208,5 +208,5 @@ Still open:
 - [ ] NOVA: add the Task Scheduler start-up task, then confirm it comes back after a restart. It is online only while the PC is on.
 - [ ] Point the app at NOVA if wanted (needs a separate "Discord bot address" setting).
 - [ ] Build **bot replies**: use the streamer's login when signed in, otherwise the bot, with a daily cap per channel.
-- [ ] Build **Kick login** (check Kick's current developer API docs first).
+- [ ] Deploy **Kick login**, then test Login, a chat message, and Disconnect with a real Kick account.
 - [ ] Optional: move NOVA to a machine that never turns off.

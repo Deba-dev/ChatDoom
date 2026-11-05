@@ -34,13 +34,14 @@ from .moderation import KNOWN_BOTS, Moderator
 from .platforms import SOURCES, Hub, KickSource, TwitchSource, YouTubeSource, youtube_id
 from .settings import Settings, data_dir
 from .speech import VOICES, Speaker
-from .theme import DEFAULT_THEME, FX, THEMES, build_qss
+from .appearance import AppearanceDialog
+from .theme import CUSTOM_THEME, DEFAULT_THEME, FX, THEMES, build_qss, set_custom_theme
 from .tools import Tools
 from .tools_page import ToolsPage
 from .ui_kit import platform_mark, section_card
 from .visuals import BACKGROUNDS, Backdrop, CardGlow, HeroCard, Motion, NavIndicator, StatCard, Toasts, count_to, stagger_in
 from .updater import Updater
-from .version import CREATOR, PRODUCT_NAME, STAGE, VERSION, label
+from .version import CREATOR, PRODUCT_NAME, VERSION, label
 
 COLORS = {"youtube": "#ff4d4d", "twitch": "#9146ff", "kick": "#53fc18", "test": "#00d4ff", "tip": "#ffd24d"}
 TAGS = {"youtube": "YT", "twitch": "TW", "kick": "KICK", "test": "TEST", "tip": "TIP"}
@@ -406,7 +407,7 @@ class PlatformCard(QFrame):
             self.auth_label.setText("Signed in as %s" % (self.platform_auth.display_name(platform) or "account"))
             self.auth_btn.setText("Disconnect account")
         else:
-            self.auth_label.setText("Sign in for chat, polls, and platform alerts")
+            self.auth_label.setText("Sign in to post in chat" if platform == "kick" else "Sign in for chat, polls, and platform alerts")
             self.auth_btn.setText("Login")
 
     def paintEvent(self, event):
@@ -566,12 +567,13 @@ class MainWindow(QWidget):
     def __init__(self):
         super().__init__()
         self.setObjectName("root")
-        self.setWindowTitle("%s (%s) \u2014 by %s" % (PRODUCT_NAME, STAGE, CREATOR))
+        self.setWindowTitle("%s \u2014 Powered by %s" % (PRODUCT_NAME, CREATOR))
         screen = QApplication.primaryScreen()
         room = screen.availableGeometry() if screen else None
         self.resize(min(1280, room.width() - 40) if room else 1280, min(840, room.height() - 60) if room else 840)
         self.setMinimumSize(980, 680)
         self.s = Settings()
+        set_custom_theme(self.s.get("theme_custom"))
         self.hub = Hub()
         self.speaker = Speaker(self.s)
         self.words_path = os.path.join(data_dir(), "hinglish_words.txt")
@@ -662,6 +664,7 @@ class MainWindow(QWidget):
         self.twitch_events.notice.connect(lambda t: self.feed.append("<span style='color:#9146ff'>Twitch alerts: %s</span>" % esc(t)))
         self.platform_auth.refresh("youtube")
         self.platform_auth.refresh("twitch")
+        self.platform_auth.refresh("kick")
         self.platform_auth.find_youtube_streams()
         self.speaker.note.connect(lambda t: self.feed.append("<span style='color:#ffb020'>%s</span>" % esc(t)))
         self.links.notice.connect(lambda t: self.feed.append("<span style='color:#7c9cff'>Discord: %s</span>" % esc(t)))
@@ -771,6 +774,12 @@ class MainWindow(QWidget):
         looks.addWidget(theme, 3)
         looks.addWidget(backdrop, 2)
         bl.addLayout(looks)
+        self.theme_combo, self.backdrop_combo = theme, backdrop
+        customize = QPushButton("Customize look")
+        customize.setObjectName("quiet")
+        customize.setCursor(Qt.PointingHandCursor)
+        customize.clicked.connect(self._open_appearance)
+        bl.addWidget(customize)
         lite = Switch()
         lite.setToolTip("Turns off fade and hover motion. Use it on slow PCs or while gaming.")
         lite.setChecked(bool(self.s.get("lite_mode")))
@@ -790,7 +799,7 @@ class MainWindow(QWidget):
         ver.setObjectName("hint")
         ver.setAlignment(Qt.AlignCenter)
         ver.setContentsMargins(12, 4, 12, 0)
-        by = QLabel(CREATOR)
+        by = QLabel("Developed by %s" % CREATOR)
         by.setObjectName("hint")
         by.setAlignment(Qt.AlignCenter)
         by.setContentsMargins(12, 0, 12, 0)
@@ -1019,7 +1028,8 @@ class MainWindow(QWidget):
                                    platform_auth=self.platform_auth),
             "kick": PlatformCard("kick", "Kick", "Channel name", KickSource(self.hub), self.s,
                                  extra=("kick_room", "Chatroom ID, only if the name lookup fails"),
-                                 hint="Public chat by channel name.", field="Channel name"),
+                                 hint="Reads public chat by channel name. Sign in to post messages and command replies.",
+                                 field="Channel name", platform_auth=self.platform_auth),
         }
         grid = QGridLayout()
         grid.setSpacing(14)
@@ -1155,6 +1165,7 @@ class MainWindow(QWidget):
         self.action_platform = QComboBox()
         self.action_platform.addItem("YouTube", "youtube")
         self.action_platform.addItem("Twitch", "twitch")
+        self.action_platform.addItem("Kick", "kick")
         self.action_platform.currentIndexChanged.connect(self._action_platform_changed)
         self.message_edit = QLineEdit()
         self.message_edit.setPlaceholderText("Sign in, then type a chat message...")
@@ -1183,9 +1194,11 @@ class MainWindow(QWidget):
             self.message_edit.setMaxLength(200)
         else:
             self.message_edit.setMaxLength(500)
+        self.poll_btn.setEnabled(platform != "kick")
+        self.poll_btn.setToolTip("Kick does not offer polls to apps." if platform == "kick" else "")
 
     def _platform_account_changed(self, platform):
-        if not hasattr(self, "action_platform") or platform not in ("youtube", "twitch"):
+        if not hasattr(self, "action_platform") or platform not in self.platform_auth.SUPPORTED:
             return
         index = self.action_platform.findData(platform)
         if index < 0:
@@ -1738,6 +1751,26 @@ class MainWindow(QWidget):
         if hasattr(self, "canvas"):
             self.canvas.set_theme(t)
 
+    def _open_appearance(self):
+        AppearanceDialog(self, self.s, self.set_custom_colours, self.set_background_picture, self.set_background_dim).exec()
+
+    def set_custom_colours(self, colours):
+        self.s.set("theme_custom", colours)
+        set_custom_theme(colours)
+        if self.theme_combo.currentText() == CUSTOM_THEME:
+            self.apply_theme(CUSTOM_THEME)
+        else:
+            self.theme_combo.setCurrentText(CUSTOM_THEME)
+
+    def set_background_picture(self, value):
+        self.s.set("bg_image", value)
+        self.backdrop_combo.setCurrentIndex(self.backdrop_combo.findData("image"))
+        self.canvas.sync()
+
+    def set_background_dim(self, value):
+        self.s.set("bg_dim", value)
+        self.canvas.sync()
+
     def _lite(self, on):
         self.s.set("lite_mode", on)
         self.fx.set_enabled(not on)
@@ -1938,7 +1971,7 @@ class MainWindow(QWidget):
             if video is None:
                 self.feed.append("<span style='color:#8a93a8'>&raquo; %s <i>(not sent in chat: %s)</i></span>" % (esc(act["reply"]), esc(why)))
             else:
-                self.platform_auth.send_message(m.platform, act["reply"], video, quiet=True)
+                self._post_chat(m.platform, act["reply"], video)
                 self.feed.append("<span style='color:#7cf0c0'>&raquo; %s</span>" % esc(act["reply"]))
         if act["type"] == "meme":
             self.speaker.announce(act["speak"], act["sound"])
@@ -1962,16 +1995,26 @@ class MainWindow(QWidget):
         if self.s.get("welcome_reply"):
             video, _ = self._reply_target(m)
             if video is not None:
-                self.platform_auth.send_message(m.platform, text, video, quiet=True)
+                self._post_chat(m.platform, text, video)
+
+    def _can_post(self, platform):
+        return self.platform_auth.is_connected(platform) or (platform == "youtube" and self.ytmod.can_post())
+
+    def _post_chat(self, platform, text, video=""):
+        """The YouTube bot speaks when it is set up, like Nightbot. Otherwise the signed-in account does."""
+        if platform == "youtube" and self.ytmod.can_post():
+            self.ytmod.say(text, video)
+        else:
+            self.platform_auth.send_message(platform, text, video, quiet=True)
 
     def _broadcast(self, text):
         """Post a message in every main chat that is connected and signed in. Returns the platforms it went to."""
-        sent = [p for p in ("youtube", "twitch") if p in self.connected and self.platform_auth.is_connected(p)]
+        sent = [p for p in self.platform_auth.SUPPORTED if p in self.connected and self._can_post(p)]
         for p in sent:
-            self.platform_auth.send_message(p, text, "", quiet=True)
+            self._post_chat(p, text)
         where = ", ".join(PLATFORM_NAMES[p] for p in sent)
         self.feed.append("<span style='color:%s'>&raquo; %s <i>(%s)</i></span>" % (
-            "#7cf0c0" if sent else "#8a93a8", esc(text), ("posted to " + where) if sent else "not posted: connect and sign in to YouTube or Twitch"))
+            "#7cf0c0" if sent else "#8a93a8", esc(text), ("posted to " + where) if sent else "not posted: connect and sign in to YouTube, Twitch or Kick"))
         return sent
 
     def tools_changed(self, lists=False):
@@ -2153,16 +2196,16 @@ class MainWindow(QWidget):
         if m.platform == "test":
             return None, "test"
         name = PLATFORM_NAMES.get(m.platform, m.platform.title())
-        if m.platform not in ("youtube", "twitch"):
+        if m.platform not in self.platform_auth.SUPPORTED:
             return None, "%s replies are not supported" % name
-        if not self.platform_auth.is_connected(m.platform):
+        if not self._can_post(m.platform):
             return None, "sign in to %s on the Connect page" % name
         if m.stream in ("", m.platform):
             return "", ""
         card = self.extra_cards.get(m.stream)
         if m.platform == "youtube" and card is not None:
             return card.edit.text().strip(), ""
-        return None, "Twitch replies only go to your own channel"
+        return None, "%s replies only go to your own channel" % name
 
     def _test_command(self, name):
         self.on_message(Message("test", "Test", "!" + name, mod=True))
