@@ -92,7 +92,7 @@ from PySide6.QtCore import QUrl
 from PySide6.QtWebEngineCore import QWebEnginePage, QWebEngineProfile
 from PySide6.QtGui import QDesktopServices
 w = MainWindow(); w.show()
-ok(w.windowTitle().startswith("CHATDOOM ") and w.logo.pixmap() is not None and not w.logo.pixmap().isNull(),
+ok(w.windowTitle() == "CHATDOOM" and w.logo.pixmap() is not None and not w.logo.pixmap().isNull(),
    "app shows the CHATDOOM name and uploaded logo")
 w.mute_btn.setChecked(True)
 ok(w.s.get("muted") and w.mute_btn.text() == "Unmute", "muted voice has a clear Unmute control")
@@ -542,7 +542,7 @@ from PySide6.QtWidgets import QLabel as _QL
 texts = [l.text() for l in w.findChildren(_QL)]
 ok(label() == "v%s \u00b7 Released" % VERSION and STAGE == "Released" and CREATOR == "ZUNIMILABS", "version label reads: %s" % label())
 ok(label() in texts and "Developed by ZUNIMILABS" in texts, "sidebar shows the version label and the company")
-ok("ZUNIMILABS" in w.windowTitle() and "BETA" not in w.windowTitle(), "window title: %s" % w.windowTitle())
+ok(w.windowTitle() == "CHATDOOM", "window title: %s" % w.windowTitle())
 ok(b"ZUNIMILABS" in urllib.request.urlopen("http://127.0.0.1:%d/" % w.overlay.port).read() if w.overlay.server else True, "overlay start page carries the credit")
 
 # ===== J. simple Discord setup =====

@@ -1,4 +1,5 @@
 """Catches the browser's 'come back to the app' step of a login (Discord) on this PC only (127.0.0.1)."""
+import html
 import threading
 import time
 import urllib.parse
@@ -33,7 +34,8 @@ class Loopback:
                     return
                 good = q.get("ok") == "1"
                 body = PAGE % (("\u2705", "You are connected", "You can close this tab and go back to CHATDOOM.") if good
-                               else ("\u26a0\ufe0f", "Not connected", "Nothing was changed. You can close this tab and try again in CHATDOOM."))
+                               else ("\u26a0\ufe0f", "Not connected", (html.escape(q["error"]) + ". " if q.get("error") else "") +
+                                     "You can close this tab and try again in CHATDOOM."))
                 self.send_response(200)
                 self.send_header("Content-Type", "text/html; charset=utf-8")
                 self.end_headers()
