@@ -2,11 +2,11 @@
 [Setup]
 AppId=ChatVoice
 AppName=CHATDOOM
-AppVersion=1.2.1
+AppVersion=1.2.2
 AppPublisher=ZUNIMILABS
 AppCopyright=Developed and powered by ZUNIMILABS
-AppVerName=CHATDOOM 1.2.1
-VersionInfoVersion=1.2.1.0
+AppVerName=CHATDOOM 1.2.2
+VersionInfoVersion=1.2.2.0
 VersionInfoCompany=ZUNIMILABS
 VersionInfoDescription=CHATDOOM installer
 DefaultDirName={autopf}\ChatVoice

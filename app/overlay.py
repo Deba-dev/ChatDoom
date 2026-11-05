@@ -9,6 +9,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 from .overlay_html import INDEX, page
 
+STUDIO_ORIGIN = "https://zunimilabs.online"
 IMAGE_TYPES = {".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".gif": "image/gif", ".webp": "image/webp"}
 
 
@@ -63,8 +64,22 @@ class Overlay:
                 self.send_header("Content-Type", ctype)
                 self.send_header("Content-Length", str(len(data)))
                 self.send_header("Cache-Control", "no-store")
+                self._studio_headers()
                 self.end_headers()
                 self.wfile.write(data)
+
+            def _studio_headers(self):
+                """Overlay Studio's page may read /poll. Every other website stays blocked by the browser."""
+                if self.path.startswith("/poll") and self.headers.get("Origin") == STUDIO_ORIGIN:
+                    self.send_header("Access-Control-Allow-Origin", STUDIO_ORIGIN)
+                    self.send_header("Access-Control-Allow-Private-Network", "true")
+                    self.send_header("Vary", "Origin")
+
+            def do_OPTIONS(self):
+                self.send_response(204)
+                self._studio_headers()
+                self.send_header("Content-Length", "0")
+                self.end_headers()
 
             def do_GET(self):
                 u = urllib.parse.urlparse(self.path)
