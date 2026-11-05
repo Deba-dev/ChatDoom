@@ -208,5 +208,10 @@ Still open:
 - [ ] NOVA: add the Task Scheduler start-up task, then confirm it comes back after a restart. It is online only while the PC is on.
 - [ ] Point the app at NOVA if wanted (needs a separate "Discord bot address" setting).
 - [ ] Build **bot replies**: use the streamer's login when signed in, otherwise the bot, with a daily cap per channel.
-- [ ] Deploy **Kick login**, then test Login, a chat message, and Disconnect with a real Kick account.
+- [x] Deploy **Kick login** and set its secrets on the cloud.
+- [ ] Test Kick Login, a chat message, and Disconnect with a real Kick account (use `run.bat`).
+- [ ] Test the YouTube bot posting on a real stream with Test mode off.
+- [ ] Send one real **Ask the team** request from the support page to confirm the Discord ping.
+- [ ] Merge to `main`, then publish tag `V1.2.0`.
+- [ ] Mark each CHATDOOM feature free or premium, then build premium and payments.
 - [ ] Optional: move NOVA to a machine that never turns off.

@@ -567,7 +567,7 @@ class MainWindow(QWidget):
     def __init__(self):
         super().__init__()
         self.setObjectName("root")
-        self.setWindowTitle("%s \u2014 Powered by %s" % (PRODUCT_NAME, CREATOR))
+        self.setWindowTitle(PRODUCT_NAME)
         screen = QApplication.primaryScreen()
         room = screen.availableGeometry() if screen else None
         self.resize(min(1280, room.width() - 40) if room else 1280, min(840, room.height() - 60) if room else 840)
