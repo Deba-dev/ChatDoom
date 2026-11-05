@@ -3,6 +3,7 @@
 // (3) gives roles when the desktop app reports activity.
 import { handlePlatformAuth } from "./platform-auth.js";
 import { handlePublicPage } from "./legal-pages.js";
+import { handleSupport } from "./support.js";
 import { handleYoutubeBot } from "./youtube-bot.js";
 import { recordUptime, statusFeed } from "./uptime.js";
 
@@ -670,6 +671,7 @@ async function route(request, env, url) {
   if (p === "/health") return health(env);
   if (p === "/status.json") return statusFeed(env);
   if (p.startsWith("/v1/")) return handleYoutubeBot(request, env, url);      // the YouTube moderator bot (its own secrets)
+  if (p.startsWith("/support/")) return handleSupport(request, env, url);    // the website's support page
   const missing = missingConfig(env);
   if (missing.length)
     return p.startsWith("/api/")

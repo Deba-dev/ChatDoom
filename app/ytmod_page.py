@@ -44,6 +44,12 @@ class YtModPage(FormScrollArea):
                              "Set it up once in three steps.")
         self.status = make_badge("\u25cf  Not set up", "pill")
         cl.addWidget(status_row(self.status))
+        self.test_warning = QLabel("Test mode is on: the bot will not remove messages, time out viewers or post reasons in chat. "
+                                   "Turn off Test mode in Step 3 when you are ready.")
+        self.test_warning.setObjectName("settingNote")
+        self.test_warning.setWordWrap(True)
+        self.test_warning.setStyleSheet("color: #fbbf24;")
+        cl.addWidget(self.test_warning)
         cl.addWidget(option_switch_row("Auto-moderation", "Turn the bot's clean-up on or off without removing your setup.",
                                        bind_switch(self.s, "yt_mod_on", accent)))
         lay.addWidget(c)
@@ -106,7 +112,10 @@ class YtModPage(FormScrollArea):
                                  ("Tell viewers why", "The bot posts a short reason in chat after a removal or time-out, once a minute per viewer at most. "
                                   "Each post counts toward the daily limit.", "mod_explain"),
                                  ("Test mode", "Only show what would be removed. Turn off to really remove.", "mod_dry_run")):
-            cl.addWidget(option_switch_row(title, note, bind_switch(self.s, key, accent)))
+            switch = bind_switch(self.s, key, accent)
+            if key == "mod_dry_run":
+                switch.toggled.connect(lambda _: self.refresh())
+            cl.addWidget(option_switch_row(title, note, switch))
         for title, note, key, lo, hi, suffix in (("Daily action limit", "Most removals or time-outs per day. Keeps your share of YouTube's daily allowance safe.", "mod_budget", 1, 150, ""),
                                                  ("Time out after", "Time out a viewer after this many removals in 10 minutes.", "mod_timeout_after", 2, 20, " removals"),
                                                  ("Time-out length", "How long a timed-out viewer cannot chat.", "mod_timeout_secs", 10, 3600, " s")):
@@ -119,6 +128,14 @@ class YtModPage(FormScrollArea):
         self.used = QLabel("")
         self.used.setObjectName("settingNote")
         cl.addWidget(self.used)
+        lay.addWidget(c)
+
+        # ---------- the bot talks in chat ----------
+        c, cl = section_card("Step 4 \u2014 Let the bot talk in chat",
+                             "Works like Nightbot: your !commands, timers and welcome messages are posted by the bot. "
+                             "Set them up on the Commands and Stream tools pages. CHATDOOM must be open while you stream.")
+        cl.addWidget(option_switch_row("Post as the bot", "Each post counts toward the daily limit. Turn off to post from your signed-in YouTube account instead.",
+                                       bind_switch(self.s, "yt_bot_posts", accent)))
         lay.addWidget(c)
 
         # ---------- what was removed ----------
@@ -194,6 +211,7 @@ class YtModPage(FormScrollArea):
         self.verify_btn.setVisible(not verified)
         self.verify_btn.setText("Get a new code" if self.mod.code else "Verify my channel")
         self.remove_btn.setVisible(verified)
+        self.test_warning.setVisible(verified and bool(self.s.get("mod_dry_run")))
         if not verified:
             set_badge(self.status, "\u25cf  Not set up", "pill")
         elif not self.s.get("yt_mod_on"):

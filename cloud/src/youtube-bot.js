@@ -298,6 +298,27 @@ async function moderate(request, env) {
   return json({ ok: true, notes, results, usedToday: used, limit });
 }
 
+// The bot posts one line in the streamer's live chat: command replies, timers and welcomes, like Nightbot.
+async function say(request, env) {
+  const tok = await readToken(env, (request.headers.get("authorization") || "").replace(/^Bearer\s+/i, ""));
+  if (!tok) return fail(401, "Your channel is not verified (or the verification expired). Verify it again in CHATDOOM.");
+  if (limited(`say:${tok.ch}`, 20)) return fail(429, "Slow down: too many chat messages.");
+  const body = await readBody(request);
+  if (!validVideo(body.videoId)) return fail(400, "Missing live video ID.");
+  const messageText = String(body.text || "").replace(/[\u0000-\u001f\u007f]/g, " ").trim().slice(0, 200);
+  if (!messageText) return fail(400, "Type a message first.");
+  const meta = await videoMeta(env, body.videoId);
+  if (meta.channelId !== tok.ch) return fail(403, "That live stream belongs to a different channel than the one you verified.");
+  if (!meta.chatId) return fail(409, "The stream is not live.");
+  const limit = Math.min(MAX_DAILY_ACTIONS, Math.max(1, Math.floor(Number(body.limit) || 60)));
+  if (await actionsUsed(env, tok.ch) >= limit) return fail(429, "The bot's daily limit is used up for this channel.");
+  await api(env, `${API}/liveChat/messages?part=snippet`, {
+    method: "POST", headers: { "content-type": "application/json" },
+    body: JSON.stringify({ snippet: { liveChatId: meta.chatId, type: "textMessageEvent", textMessageDetails: { messageText } } }),
+  });
+  return json({ ok: true, usedToday: await addAction(env, tok.ch), limit });
+}
+
 // ---------- one-time bot login (only needed if you do not have the refresh token from Render any more) ----------
 async function sameKey(env, given) {
   const k = await hmacKey(enc.encode("ytbot-admin"));
@@ -358,6 +379,7 @@ export async function handleYoutubeBot(request, env, url) {
     if (key === "POST /v1/verify/start") return await verifyStart(request, env, ip);
     if (key === "POST /v1/verify/check") return await verifyCheck(request, env, ip);
     if (key === "POST /v1/moderate") return await moderate(request, env);
+    if (key === "POST /v1/say") return await say(request, env);
     return fail(404, "Not found");
   } catch (error) {
     const status = [400, 403, 404, 409, 429].includes(error.status) ? error.status : 502;

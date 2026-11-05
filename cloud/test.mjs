@@ -1,5 +1,6 @@
 // Offline test of the worker with a fake KV and a fake Discord. Run: node test.mjs
 import worker from "./src/index.js";
+import { createHash } from "node:crypto";
 
 const store = new Map();
 const KV = { async get(k) { return store.has(k) ? store.get(k) : null; }, async put(k, v) { store.set(k, v); }, async delete(k) { store.delete(k); } };
@@ -18,6 +19,7 @@ const baseRoles = () => [{ id: "1", name: "@everyone", position: 0 }, { id: "100
 let rolesNow = baseRoles(), roleCreateStatus = 200, systemChannel = "C1", inviteSeq = 0; const createdRoles = [], createdInvites = [];
 let invitesNow = [], membersNow = [], invitesStatus = 200, membersStatus = 200, memberCalls = 0;
 const putsFull = [];
+const kickTokenCalls = [], kickRevokeCalls = [];
 
 globalThis.fetch = async (url, init = {}) => {
   const u = new URL(url), p = u.pathname.replace("/api/v10", ""), m = init.method || "GET";
@@ -26,6 +28,22 @@ globalThis.fetch = async (url, init = {}) => {
     const body = new URLSearchParams(init.body);
     return j({ access_token: body.get("grant_type") === "refresh_token" ? "YT_ACCESS_2" : "YT_ACCESS",
       refresh_token: "YT_REFRESH", expires_in: 3600 });
+  }
+  if (u.hostname === "id.kick.com" && p === "/oauth/token") {
+    const body = new URLSearchParams(init.body);
+    kickTokenCalls.push(body);
+    return j({ access_token: "KICK_ACCESS", refresh_token: "KICK_REFRESH", expires_in: 3600 });
+  }
+  if (u.hostname === "id.kick.com" && p === "/oauth/revoke") {
+    kickRevokeCalls.push(u);
+    return new Response("OK", { status: 200 });
+  }
+  if (u.hostname === "api.kick.com" && p === "/public/v1/users") {
+    return j({ data: [{ user_id: 4242, name: "Test Kick", email: "x@example.com" }], message: "OK" });
+  }
+  if (u.hostname === "api.kick.com" && p === "/public/v1/chat") {
+    platformCalls.push({ platform: "kick", path: p, body: JSON.parse(init.body), headers: init.headers });
+    return j({ data: { is_sent: true, message_id: "KICK_ACTION" }, message: "OK" });
   }
   if ((u.hostname === "oauth2.googleapis.com" || u.hostname === "id.twitch.tv") && p === "/revoke") return new Response(null, { status: 200 });
   if (u.hostname === "id.twitch.tv" && p === "/oauth2/token") {
@@ -257,6 +275,8 @@ Object.assign(env, {
   GOOGLE_OAUTH_CLIENT_SECRET: "GOOGLE_CLIENT_SECRET",
   TWITCH_CLIENT_ID: "TWITCH_CLIENT_ID",
   TWITCH_CLIENT_SECRET: "TWITCH_CLIENT_SECRET",
+  KICK_CLIENT_ID: "KICK_CLIENT_ID",
+  KICK_CLIENT_SECRET: "KICK_CLIENT_SECRET",
   PLATFORM_TOKEN_ENCRYPTION_KEY: Buffer.alloc(32, 7).toString("base64"),
 });
 const localReturn = "http://127.0.0.1:5599/done";
@@ -361,6 +381,36 @@ ok(r.status === 200 && platformCalls.some((x) => x.path === "/helix/chat/message
 r = await call("/platform-auth/poll", { method: "POST", headers: twHeaders, body: JSON.stringify({ platform: "twitch", question: "Next game?", options: ["A", "B"], duration: 60 }) });
 ok(r.status === 200 && platformCalls.some((x) => x.path === "/helix/polls" && x.body.choices.length === 2),
   "Twitch poll is created with the signed-in broadcaster account");
+
+let kickLogin = await beginPlatformLogin("kick");
+let kickReturn = new URL(kickLogin.callback.headers.get("location"));
+let kickAccount = await (await call("/platform-auth/redeem", { method: "POST", body: JSON.stringify({ ticket: kickReturn.searchParams.get("ticket") }) })).json();
+let kickHeaders = { Authorization: "Bearer " + kickAccount.session, "content-type": "application/json" };
+const kickVerifier = kickTokenCalls[0]?.get("code_verifier") || "";
+const kickChallenge = createHash("sha256").update(kickVerifier).digest("base64url");
+ok(kickLogin.authorize.origin + kickLogin.authorize.pathname === "https://id.kick.com/oauth/authorize"
+  && kickLogin.authorize.searchParams.get("scope") === "user:read chat:write"
+  && kickLogin.authorize.searchParams.get("code_challenge_method") === "S256"
+  && kickVerifier.length >= 43 && kickLogin.authorize.searchParams.get("code_challenge") === kickChallenge
+  && !kickLogin.authorize.toString().includes(kickVerifier),
+  "Kick login sends an S256 challenge that matches the verifier kept on the server");
+ok(kickReturn.searchParams.get("ok") === "1" && kickAccount.displayName === "Test Kick" && kickAccount.userId === "4242"
+  && kickTokenCalls[0].get("grant_type") === "authorization_code" && kickTokenCalls[0].get("client_secret") === "KICK_CLIENT_SECRET",
+  "Kick login exchanges the code and reads the signed-in account");
+r = await call("/platform-auth/message", { method: "POST", headers: kickHeaders, body: JSON.stringify({ platform: "kick", text: "Hello Kick" }) });
+const kickSent = platformCalls.find((x) => x.platform === "kick");
+ok(r.status === 200 && kickSent && kickSent.body.content === "Hello Kick" && kickSent.body.type === "user"
+  && kickSent.body.broadcaster_user_id === 4242 && kickSent.headers.Authorization === "Bearer KICK_ACCESS",
+  "Kick chat message is sent with the signed-in broadcaster account");
+const callsBeforeKickPoll = platformCalls.length;
+r = await call("/platform-auth/poll", { method: "POST", headers: kickHeaders, body: JSON.stringify({ platform: "kick", question: "Next game?", options: ["A", "B"] }) });
+ok(r.status === 400 && platformCalls.length === callsBeforeKickPoll, "Kick polls are refused and never reach Twitch");
+r = await call("/platform-auth/account", { method: "DELETE", headers: kickHeaders });
+ok(r.status === 200 && kickRevokeCalls.length === 1 && kickRevokeCalls[0].searchParams.get("token") === "KICK_REFRESH"
+  && kickRevokeCalls[0].searchParams.get("token_hint_type") === "refresh_token", "Disconnect revokes the Kick token");
+r = await call("/platform-auth/account", { headers: kickHeaders });
+ok(r.status === 401, "a disconnected Kick session stops working");
+
 r = await call("/platform-auth/account", { method: "DELETE", headers: ytHeaders });
 ok(r.status === 200, "disconnect removes only the YouTube account session");
 r = await call("/platform-auth/account", { headers: ytHeaders });

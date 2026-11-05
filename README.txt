@@ -1,5 +1,5 @@
-CHATDOOM (BETA)  -  Phase 5  -  v0.5.0
-Created by itsmeblitz
+CHATDOOM
+Developed and powered by ZUNIMILABS
 Reads YouTube, Twitch and Kick chat aloud in Hindi / Hinglish / English, with moderation, Discord roles,
 payment alerts from the streamer's own payment page (Razorpay, Stripe, Cashfree or any tool), YouTube message deleting,
 OBS overlays (alerts and chat on screen) and one-click self-updates.
@@ -22,7 +22,7 @@ WHAT IS INSIDE
   MUSIC-GUIDE.txt         StreamBeats downloads/imports, licenses and OBS music setup
 
 PAGES IN THE APP
-  Connect     paste your YouTube link and channel names, press Connect; optional YouTube/Twitch login enables chat messages and polls.
+  Connect     paste your YouTube link and channel names, press Connect; optional YouTube, Twitch or Kick login enables chat messages (polls on YouTube and Twitch).
               Add stream reads more chats at once (a second YouTube live such as a vertical stream, another Twitch or Kick channel)
   Live chat   combined feed; grey lines were skipped by moderation
   Voice       voices, speed, volume, multilingual chat translation, all-chat / paid-only reading modes
@@ -37,7 +37,8 @@ PAGES IN THE APP
   YouTube mod add the CHATDOOM moderator bot to your channel, verify it is yours, choose the rules (like Nightbot)
   OBS overlays  alerts for tips, YouTube public subscribers/members, and Twitch follows/subs/raids, with multiple looks
   Music       browse StreamBeats music and Mixkit sound effects in-app, download/import them, and use local files
-  Sidebar     Theme (4 colour themes), Background (animated aurora, soft gradient or plain) and Lite mode (turns off all
+  Sidebar     Theme (4 colour themes or your own colours), Background (animated aurora, soft gradient, plain, or a picture:
+              six built in or your own, under Customize look) and Lite mode (turns off all
               motion for weak PCs or gaming). The aurora only moves while CHATDOOM is the active window.
 
 RUN IT (easiest)
@@ -89,6 +90,6 @@ viewers.json (who has chatted before, for welcome messages)
 NOTES
 - Neural voices need internet. If they fail, the app falls back to Windows voices.
 - Chat reading is anonymous; YouTube automatically retries after a chat connection drops. Kick uses its
-  unofficial chat connection and remains read-only. YouTube/Twitch login enables sending chat messages and creating polls.
+  unofficial chat connection. YouTube, Twitch and Kick login enable sending chat messages; YouTube and Twitch login also enable polls.
 - Platform sign-in needs the one-time OAuth setup in CLOUD-SETUP.txt. YouTube API quota is shared by all users of the app.
 - YouTube moderation still uses the separate moderator account shown on the YouTube mod page; login does not make the app a platform moderator.

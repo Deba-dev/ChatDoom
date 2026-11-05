@@ -1,6 +1,8 @@
 """Look and motion: the animated background, the sliding sidebar highlight, toast notifications and number count-ups.
 Motion stops in Lite mode and whenever CHATDOOM is not the active window, so games keep the CPU."""
 import math
+import os
+import sys
 import time
 
 from PySide6.QtCore import (QEasingCurve, QEvent, QObject, QParallelAnimationGroup, QPoint, QPointF, QPropertyAnimation, QRect, QRectF,
@@ -10,8 +12,23 @@ from PySide6.QtWidgets import (QApplication, QFrame, QGraphicsDropShadowEffect, 
                                QWidget)
 
 from .icons import stat_tile
+from .settings import data_dir
 
-BACKGROUNDS = (("Waves", "aurora"), ("Soft", "gradient"), ("Plain", "plain"))
+BACKGROUNDS = (("Waves", "aurora"), ("Soft", "gradient"), ("Plain", "plain"), ("Picture", "image"))
+BUILT_IN_BACKGROUNDS = (("Nebula", "nebula"), ("Night lights", "night-lights"), ("Sunset", "sunset"),
+                        ("Deep ocean", "deep-ocean"), ("Neon grid", "neon-grid"), ("Forest mist", "forest-mist"))
+ROOT = getattr(sys, "_MEIPASS", os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+
+def background_path(value):
+    """'builtin:nebula' or 'custom:file.png' -> the picture's path, or '' for anything else."""
+    kind, _, name = str(value or "").partition(":")
+    name = os.path.basename(name)
+    if kind == "builtin" and name:
+        return os.path.join(ROOT, "assets", "backgrounds", name + ".jpg")
+    if kind == "custom" and name:
+        return os.path.join(data_dir(), "Backgrounds", name)
+    return ""
 CARD_NAMES = ("tile", "card", "stat", "aside", "hero")
 STAT_COLORS = {"violet": ("#a78bfa", "#6d28d9"), "green": ("#4ade80", "#059669"), "orange": ("#fdba74", "#ea580c"),
                "blue": ("#7dd3fc", "#2563eb"), "pink": ("#f9a8d4", "#c026d3")}
@@ -29,6 +46,7 @@ class Backdrop(QWidget):
         self.t0 = time.monotonic()
         self.phase = 0.0
         self.frame = None                # the finished picture; repainting a small area only copies from it
+        self.picture = (None, None)      # (setting value, loaded picture), so a repaint never reads the file again
         self.timer = QTimer(self)
         self.timer.setInterval(1000 // self.FPS)
         self.timer.timeout.connect(self._step)
@@ -118,9 +136,29 @@ class Backdrop(QWidget):
         painter = QPainter(self)
         painter.drawPixmap(event.rect(), self.frame, event.rect())
 
+    def _load_picture(self):
+        value = self.s.get("bg_image")
+        if self.picture[0] != value:
+            image = QImage(background_path(value))
+            self.picture = (value, None if image.isNull() else image)
+        return self.picture[1]
+
+    def _draw_picture(self, painter, image):
+        scaled = image.scaled(self.size(), Qt.KeepAspectRatioByExpanding, Qt.SmoothTransformation)
+        painter.drawImage((self.width() - scaled.width()) // 2, (self.height() - scaled.height()) // 2, scaled)
+        shade = QColor(self.theme["bg"])
+        shade.setAlpha(int(255 * min(85, max(20, int(self.s.get("bg_dim")))) / 100))
+        painter.fillRect(self.rect(), shade)
+
     def draw(self, painter):
         bg, bg2 = QColor(self.theme["bg"]), QColor(self.theme["bg2"])
         mode = self.s.get("background")
+        if mode == "image":
+            image = self._load_picture()
+            if image is not None:
+                self._draw_picture(painter, image)
+                return
+            mode = "gradient"                     # a moved or deleted picture must not leave the window blank
         if mode == "plain":
             painter.fillRect(self.rect(), bg)
             return

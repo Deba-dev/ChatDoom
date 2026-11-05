@@ -11,8 +11,8 @@ A. PUBLISH A NEW VERSION  (you, about 15 minutes, no tools needed)
      (The hidden folder .github is skipped by the web uploader. Only needed if the workflow changed: open
      .github/workflows/build.yml on github.com, click the pencil, paste the new text, commit.)
 2. Make sure the version number went UP (the tag in step 3 sets it for the build; keep app/version.py in step so local builds match).
-   In app/version.py set PHASE, VERSION (for example "0.4.1") and STAGE ("BETA" now,
-   later "STABLE" or empty). The app shows it as "Phase 4 . v0.4.1 (BETA)". VERSION is the number the updater compares.
+   In app/version.py set VERSION (for example "1.2.1"). The app shows it as "v1.2.1 . Released". VERSION is the number the
+   updater compares, so it must always go up: installed copies ignore anything lower than what they already have.
    For Windows' own labels also change the same number in installer.iss (AppVersion, AppVerName, VersionInfoVersion) and
    version_info.txt. The project I send you already has all of them in step.
 3. On github.com open your repository > "Releases" (right side) > "Draft a new release".

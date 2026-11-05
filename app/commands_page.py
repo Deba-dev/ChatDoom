@@ -96,7 +96,7 @@ class CommandDialog(_ItemDialog):
         self.lay.addWidget(field_row("Response", "What the command answers. You can use " +
                                      ", ".join(v for v, _ in VARIABLES) + ".", self.response))
         self.mode = _combo(MODES, self.item.get("mode") or "reply")
-        self.lay.addWidget(field_row("Answer by", "Chat replies need the account signed in on the Connect page (YouTube or Twitch).", self.mode))
+        self.lay.addWidget(field_row("Answer by", "Chat replies need a signed-in account on the Connect page, or the YouTube bot.", self.mode))
         self.finish(5)
 
     def _save(self):
