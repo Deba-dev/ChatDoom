@@ -47,6 +47,11 @@ E. REGISTER PLATFORM OAUTH APPS AND FINISH DISCORD
         https://chatvoice-cloud.YOURNAME.workers.dev/setup/callback
         https://chatvoice-cloud.YOURNAME.workers.dev/link/callback
       Save changes in each provider console.
+   4. Overlay Studio sign-in uses the same Google and Discord apps with their own return addresses. Add:
+        Google OAuth client > Authorized redirect URIs:  https://cloud.zunimilabs.online/studio/auth/google/callback
+        Discord OAuth2 > Redirects:                      https://cloud.zunimilabs.online/studio/auth/discord/callback
+      It asks only for a basic profile and needs no new secrets. To block an account that breaks the upload rules:
+        npx wrangler d1 execute chatvoice --remote --command "UPDATE studio_users SET blocked = 1 WHERE id = 'USER_ID'"
 
 F. GIVE THE CLOUD ITS SECRETS  (each command asks you to paste the value)
    npx wrangler secret put DISCORD_CLIENT_ID
