@@ -77,6 +77,29 @@ function make(file, cfg) {
   ok(lines[7].querySelector(".tag").textContent === "TWITCH" && lines[6].querySelector(".tag").textContent === "YOUTUBE", "platform tags shown");
   await sleep(1400); ok(d3.querySelectorAll("#chatbox .m").length === 0, "chat lines fade away after the set time");
   t.dom.window.close();
+  // ---- chat designs ----
+  t = make(require("path").join(__dirname, "out", "chat.html"), { chatSeconds: 5, maxLines: 8, colors: {}, designs: { chat: {
+    skin: "comic", enter: "drop", exit: "blur", idle: "none", text: "wave", font: "Bangers", size: 120, opacity: 80, align: "center", edge: "top", newest: "start",
+    width: 60, maxLines: 3, showTag: false, nameColour: "platform", hideCommands: true, keep: true, useColors: true, c1: "#123456", c2: "#222222", c3: "#333333" } } });
+  const dc = t.dom.window.document, cb = dc.getElementById("chatbox"); await sleep(120);
+  for (let i = 0; i < 5; i++) t.push({ platform: "twitch", name: "<b>u" + i + "</b>", text: "<img src=x onerror=window.hacked=1> m" + i });
+  t.push({ platform: "twitch", name: "cmd", text: "!points" });
+  await sleep(200);
+  const styled = dc.querySelectorAll("#chatbox .m");
+  ok(styled.length === 3 && styled[0].className.includes("skin-comic") && styled[0].className.includes("in-drop") && styled[0].className.includes("exit-blur"), "chat lines use the chosen skin, animations and line limit");
+  ok(cb.className === "edge-top new-start align-center" && cb.style.right === "40%" && cb.style.fontFamily.includes("Bangers") && cb.style.opacity === "0.8" && cb.style.getPropertyValue("--a1") === "#123456", "chat layout, font, see-through and colours are applied");
+  ok(!styled[0].querySelector(".tag") && styled[0].querySelectorAll("b .ch").length > 0 && !cb.textContent.includes("!points"), "tags can be hidden, names animate and !commands can be hidden");
+  ok(!cb.querySelector("img") && !t.dom.window.hacked && cb.textContent.includes("<b>u4</b>"), "styled chat stays plain text");
+  await sleep(300); ok(dc.querySelectorAll("#chatbox .m").length === 3, "kept lines stay until newer ones push them out");
+  t.dom.window.close();
+  t = make(require("path").join(__dirname, "out", "music.html"), { colors: {}, designs: { music: { skin: "neon", enter: "rise", exit: "drop", idle: "none", position: "top-right", showEq: false, showArtist: false, text: "wave", font: "Poppins" } } });
+  const dm = t.dom.window.document, mb = dm.getElementById("musicbox"); await sleep(120);
+  t.music({ title: "<i>Song</i>", artist: "Aria", playing: true }); await sleep(150);
+  ok(mb.className.includes("skin-neon") && mb.className.includes("at-top-right") && mb.className.includes("no-eq") && mb.classList.contains("on") && mb.querySelector(".ma").style.display === "none", "now playing uses its skin, corner and options");
+  ok(mb.querySelector(".mt").textContent === "<i>Song</i>" && !mb.querySelector("i i, .mt i"), "an animated song title stays plain text");
+  t.music({ title: "x", artist: "", playing: false }); await sleep(150);
+  ok(!mb.classList.contains("on") && mb.classList.contains("out"), "now playing leaves with its exit animation");
+  t.dom.window.close();
   // ---- now playing ----
   t = make(require("path").join(__dirname, "out", "music.html"), { colors: {} });
   const d4 = t.dom.window.document, box = d4.getElementById("musicbox"); await sleep(120);

@@ -42,6 +42,7 @@ CHATDOOM COMMANDS AND TOOLS
 - To add a timer: open the Stream tools page, turn on Timers, then press Add timer.
 - Loyalty points (!points, !gamble, !top) are on the Loyalty page, and polls (!vote), giveaways (!join) and counters are on the Engage page. The Stream tools page has welcome messages, timers, song requests (!sr), hotkeys and a stream summary.
 - The Alerts page designs on-screen alerts with a live preview: looks, animations, particles, fonts, ready-made packs, wording, pictures, sounds and position. Each alert type can have its own design. Fonts other than Poppins need internet in OBS.
+- The Overlay styles page does the same for chat, now playing, memes and widgets: style packs, skins, animations, fonts, colours and layout, with a live preview. Use this style everywhere gives all overlays and alerts one look.
 - The Loyalty page has points, levels (!level) and a points shop (!shop, !buy). The streamer delivers shop rewards themselves.
 - The Engage page has polls, predictions (!bet 1 100), giveaways, a viewer queue (!queue, !place, !leave, and !next for moderators), counters and goals.
 - The Stream tools page also has paid read-aloud (!say). !uptime shows how long the stream has been live.

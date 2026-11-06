@@ -379,7 +379,7 @@ for name in THEMES:
 w.apply_theme("Sunset"); w.goto(0); wait(120); w.grab().save(os.path.join(os.environ["APPDATA"], "sunset_connect.png")); wait(500)
 w.apply_theme("Neon Violet"); w.goto(4); wait(150); w.grab().save(os.path.join(os.environ["APPDATA"], "violet_discord_midanim.png")); wait(600); w.grab().save(os.path.join(os.environ["APPDATA"], "violet_discord.png"))
 for i in range(w.stack.count()): w.goto(i); wait(60); w.grab()
-ok(w.stack.count() == 14, "all 14 pages render without errors")
+ok(w.stack.count() == 15, "all 15 pages render without errors")
 n = len(w.fx.items)
 ok(n == 0, "buttons use a quiet hover instead of a glow")
 w._lite(True); wait(100); ok(w.fx.enabled is False, "Lite mode turns motion off")
@@ -647,9 +647,9 @@ ok(st["state"] == {"title": "Second", "artist": "Bo", "playing": True}, "the OBS
 ok(b'data-mode="music"' in urllib.request.urlopen(w.overlay.url("music")).read() and w.musicpage.music_url.text().endswith("/music"), "now-playing overlay page exists and its address is on the Music page")
 w.music.stop(); ok(ov("/poll?type=music&after=-1")["state"]["playing"] is False, "stopping hides it on stream")
 w.goto(8); wait(300); w.grab().save(os.path.join(os.environ["APPDATA"], "music.png")); shutil.rmtree(folder, ignore_errors=True); shutil.rmtree(library, ignore_errors=True)
-ok(len([b for b in w.findChildren(__import__("PySide6.QtWidgets", fromlist=["QPushButton"]).QPushButton) if b.objectName() == "nav"]) == 14 and w.nav.button(8).text().strip() == "Music" and not w.nav.button(8).icon().isNull()
+ok(len([b for b in w.findChildren(__import__("PySide6.QtWidgets", fromlist=["QPushButton"]).QPushButton) if b.objectName() == "nav"]) == 15 and w.nav.button(8).text().strip() == "Music" and not w.nav.button(8).icon().isNull()
    and w.nav.button(9).text().strip() == "Commands" and w.nav.button(10).text().strip() == "Stream tools" and not w.nav.button(10).icon().isNull(),
-   "sidebar has all 14 pages, each with a drawn icon (Music, Commands and Stream tools included)")
+   "sidebar has all 15 pages, each with a drawn icon (Music, Commands and Stream tools included)")
 
 # ===== L. multi-stream, commands and memes =====
 print("--- L. multi-stream, commands and memes ---")
@@ -1036,7 +1036,7 @@ ok("AppVersion=%s" % VERSION in version_files[0] and "'ProductVersion', '%s'" % 
 w.goto(0); wait(100)
 ok(not w.statbar.isVisible() and w.num_total.parent().objectName() == "stat", "the Connect page shows its own stat cards")
 for i in range(1, w.stack.count()):
-    if i == 11: continue                     # Alerts uses the room for its preview
+    if i in (11, 14): continue               # the design pages use the room for their preview
     w.goto(i); wait(30)
     shown = [c.num.text() for c in w.stat_cards]
     ok(w.statbar.isVisible() and all(shown) and all(c.cap.text() for c in w.stat_cards), "%s shows three live stats" % PAGES[i])
@@ -1056,9 +1056,9 @@ from app.commands import render, safe_math
 from app.ui_kit import SubPage
 
 nav_ids = [w.nav.id(b) for b in w.nav.buttons()]
-ok(sorted(nav_ids) == list(range(14)) and all(w.nav.button(i).text().strip() == PAGES[i] for i in range(14)), "every main page has a sidebar button")
+ok(sorted(nav_ids) == list(range(15)) and all(w.nav.button(i).text().strip() == PAGES[i] for i in range(15)), "every main page has a sidebar button")
 tabbed = [i for i in range(w.stack.count()) if isinstance(w.stack.widget(i), SubPage)]
-ok(set(tabbed) == set(range(2, 14)), "every settings page uses the horizontal submenu")
+ok(set(tabbed) == set(range(2, 15)), "every settings page uses the horizontal submenu")
 for i in tabbed:
     page = w.stack.widget(i); w.goto(i); wait(20)
     ok(page.subnav.isVisible() and len(page.tab_names()) >= 2 and page._tabs.width() > 0, "%s has a submenu: %s" % (PAGES[i], ", ".join(page.tab_names())))
@@ -1171,6 +1171,39 @@ T.stats.reset(); ok("not live" in say("Ana", "!uptime")["reply"], "!uptime when 
 ok("1h 1m" in render("{uptime}", V("a"), extra=T.command_values(Message("twitch", "Ana", "x"))), "{uptime} works in custom commands")
 T.stats.reset()
 T.points.add(key("Sav"), 500, "Sav"); T.prediction.__init__(); T.prediction.start("Q?", ["A", "B"], 60, now); say("Sav", "!bet 1 200")
+
+ok(not w.settings_box.isVisibleTo(w), "the sidebar settings start folded away")
+w.settings_btn.setChecked(True); ok(w.settings_box.isVisibleTo(w) and w.theme_combo.isVisibleTo(w), "the Settings button opens them"); w.settings_btn.setChecked(False)
+
+# overlay styles: chat, now playing, memes and widgets
+from app import overlay_styles as OS
+P = w.stylespage
+for prefix, group in ((".skin-", OS.SKINS[1:]),):
+    missing = [v for _, v in group if prefix + v not in PAGE]
+    ok(not missing and len(OS.SKINS) >= 20, "every skin has CSS in the overlay %s" % missing)
+ok(".in-nudge" in PAGE and all(OS.pack_for(k, v) for k in OS.KIND_KEYS for _, v in OS.PACKS), "every pack works on every overlay")
+w.s.set("ov_designs", {}); w.s.set("ov_chat_style", "panel")
+ok(OS.design_for(w.s, "chat")["skin"] == "panel", "the chat look chosen in an older version is kept")
+w.s.set("ov_chat_style", "glass"); P.target.setCurrentIndex(0); P.load()
+P.pack_buttons[3].click()
+c = ov("/poll?type=chat&after=-1")["cfg"]["designs"]
+ok(c["chat"]["skin"] == "arcade" and c["chat"]["font"] == "Press Start 2P" and c["chat"]["idle"] == "none" and c["music"]["skin"] == "classic", "a pack styles chat only, and keeps chat lines still")
+P.boxes["align"].setCurrentIndex(P.boxes["align"].findData("center")); P.sliders["maxLines"].setValue(12); P.checks["hideCommands"].setChecked(True)
+c = ov("/poll?type=chat&after=-1")["cfg"]["designs"]["chat"]
+ok(c["align"] == "center" and c["maxLines"] == 12 and c["hideCommands"] is True, "chat layout options reach OBS")
+for kind, keys in (("music", ("showEq", "position")), ("meme", ("picture", "effect")), ("widgets", ("panelSide", "goalsAt"))):
+    P.target.setCurrentIndex(P.target.findData(kind)); P.load()
+    ok(all(k in P.design() for k in keys), "%s has its own options" % kind)
+    ok(P.test.isVisibleTo(P) == (kind != "widgets"), "%s test button is right" % kind)
+P.target.setCurrentIndex(P.target.findData("meme")); P.load(); P.boxes["skin"].setCurrentIndex(P.boxes["skin"].findData("royal"))
+ok(OS.clean("meme", {"skin": "bad", "picture": 999, "c1": "red;}"})["picture"] == 100 and OS.clean("meme", {"skin": "bad"})["skin"] == "classic", "a broken saved design falls back")
+ok("align" not in OS.clean("meme", {"align": "center"}), "options from another overlay are ignored")
+P.match_everywhere()
+c = ov("/poll?type=alert&after=-1")["cfg"]
+ok(all(c["designs"][k]["skin"] == "royal" for k in OS.KIND_KEYS) and c["alertDesigns"]["default"]["look"] == "royal", "Use this style everywhere matches every overlay and alert")
+n0 = ov("/poll?type=chat&after=-1")["latest"]; P.target.setCurrentIndex(0); P.load(); P.send_test()
+ok(len(ov("/poll?type=chat&after=%d" % n0)["events"]) == len(OS.SAMPLES["chat"]), "the chat test sends sample lines")
+w.s.set("ov_designs", {}); w.s.set("ov_alert_design", {}); w.s.set("ov_alert_style", "neon"); P.load()
 
 w.goto(11); wait(200); w.grab().save(os.path.join(os.environ["APPDATA"], "alerts.png"))
 w.goto(0); wait(600)
