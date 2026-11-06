@@ -9,7 +9,7 @@ from PySide6.QtWidgets import (QComboBox, QDialog, QDialogButtonBox, QFileDialog
 
 from .commands import MEME_IMAGES, MEME_SOUNDS, VARIABLES, clean_name, import_file
 from .theme import DEFAULT_THEME, THEMES
-from .ui_kit import FormScrollArea, bind_switch, field_row, hrow, info_box, option_switch_row, section_card
+from .ui_kit import SubPage, bind_switch, field_row, hrow, info_box, option_switch_row, section_card
 
 MODES = (("Reply in chat", "reply"), ("Read aloud", "speak"), ("Reply in chat and read aloud", "both"))
 WHO = (("Everyone", False), ("Moderators and the streamer", True))
@@ -174,16 +174,19 @@ class MemeDialog(_ItemDialog):
         self.accept()
 
 
-class CommandsPage(FormScrollArea):
+BUILT_IN = (("!commands", "lists your commands"), ("!uptime", "how long you have been live"), ("!points", "their points"), ("!top", "the richest viewers"),
+            ("!level", "their level"), ("!gamble 50", "double or nothing"), ("!vote 2", "vote in a poll"), ("!bet 1 100", "bet points in a prediction"),
+            ("!queue", "join the viewer queue"), ("!place", "their place in the queue"), ("!leave", "leave the queue"),
+            ("!shop", "what points can buy"), ("!buy 1", "buy a shop item"), ("!say hello", "pay points to have a message read aloud"),
+            ("!sr song name", "request a song"), ("!song", "what is playing"))
+MOD_BUILT_IN = (("!next", "calls the next viewer in the queue"), ("!clearqueue", "empties the queue"), ("!death+ and !death-", "change a counter"))
+
+
+class CommandsPage(SubPage):
     def __init__(self, settings, engine, on_test):
         super().__init__()
         self.s, self.engine, self.on_test = settings, engine, on_test
-        inner = QWidget()
-        inner.setObjectName("page")
-        self.setWidget(inner)
-        lay = QVBoxLayout(inner)
-        lay.setContentsMargins(0, 8, 12, 12)
-        lay.setSpacing(14)
+        lay = self.add_tab("Settings")
         accent = THEMES.get(self.s.get("theme"), THEMES[DEFAULT_THEME])["a1"]
 
         c, cl = section_card("Chat commands", "Viewers type !name in any connected chat. Command messages are never read aloud themselves.")
@@ -196,6 +199,7 @@ class CommandsPage(FormScrollArea):
                               "<b>Read aloud</b> for those viewers.", "Where replies go"))
         lay.addWidget(c)
 
+        lay = self.add_tab("Custom commands")
         c, cl = section_card("Custom commands", "Like Nightbot: a fixed answer for things viewers keep asking.")
         self.cmd_list = QVBoxLayout()
         self.cmd_list.setSpacing(4)
@@ -206,6 +210,7 @@ class CommandsPage(FormScrollArea):
         cl.addWidget(info_box("<br>".join("<b>%s</b> — %s" % (html.escape(v), html.escape(d)) for v, d in VARIABLES), "Words you can use in a response"))
         lay.addWidget(c)
 
+        lay = self.add_tab("Memes")
         c, cl = section_card("Memes", "A viewer types !name: CHATDOOM plays the sound, shows the picture on the /meme overlay (OBS overlays page) "
                                       "and reads the line aloud.")
         self.meme_list = QVBoxLayout()
@@ -224,7 +229,12 @@ class CommandsPage(FormScrollArea):
         gap.valueChanged.connect(lambda v: self.s.set("meme_gap", v))
         cl.addWidget(field_row("Gap between memes", "After any meme plays, other memes wait this long so chat cannot spam them.", gap))
         lay.addWidget(c)
-        lay.addStretch(1)
+        lay = self.add_tab("Built-in")
+        c, cl = section_card("Built-in chat commands", "Ready to use. Your own command with the same name always wins.")
+        cl.addWidget(info_box("<br>".join("<b>%s</b> \u2014 %s" % (html.escape(k), html.escape(v)) for k, v in BUILT_IN), "Viewers can type"))
+        cl.addWidget(info_box("<br>".join("<b>%s</b> \u2014 %s" % (html.escape(k), html.escape(v)) for k, v in MOD_BUILT_IN), "Moderators can also type"))
+        lay.addWidget(c)
+        self.finish()
         self.refresh()
 
     # ---------- lists ----------

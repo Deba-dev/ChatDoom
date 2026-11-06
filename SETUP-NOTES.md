@@ -215,3 +215,5 @@ Still open:
 - [ ] Merge to `main`, then publish tag `V1.2.0`.
 - [ ] Mark each CHATDOOM feature free or premium, then build premium and payments.
 - [ ] Optional: move NOVA to a machine that never turns off.
+- [ ] With the next app release, deploy the cloud and website too: Lily's notes and the CHATDOOM page now describe the Alerts, Loyalty and Engage pages.
+- [ ] Overlay Studio sign-in: add the two redirect addresses (`CLOUD-SETUP.txt`, step E4), deploy the cloud, then the website, and test both buttons with real accounts.

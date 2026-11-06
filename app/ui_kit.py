@@ -2,12 +2,15 @@
 from PySide6.QtCore import Property, QEasingCurve, QPropertyAnimation, Qt
 from PySide6.QtGui import QColor, QPainter
 from PySide6.QtWidgets import (
+    QButtonGroup,
     QCheckBox,
     QFrame,
     QGridLayout,
     QHBoxLayout,
     QLabel,
+    QPushButton,
     QScrollArea,
+    QStackedWidget,
     QVBoxLayout,
     QWidget,
 )
@@ -71,6 +74,108 @@ class FormScrollArea(QScrollArea):
         self.setWidgetResizable(True)
         self.setFrameShape(QFrame.NoFrame)
         FORM_SCROLL_AREAS.append(self)
+
+
+class SubPage(QWidget):
+    """A main page: its sections sit behind a horizontal submenu, so nothing is buried in one long scroll."""
+
+    def __init__(self):
+        super().__init__()
+        self.setObjectName("page")
+        self._outer = QVBoxLayout(self)
+        self._outer.setContentsMargins(0, 4, 0, 0)
+        self._outer.setSpacing(10)
+        self.subnav = QFrame()
+        self.subnav.setObjectName("subnav")
+        line = QHBoxLayout(self.subnav)
+        line.setContentsMargins(6, 5, 6, 5)
+        line.setSpacing(4)
+        strip = QWidget()
+        strip.setObjectName("subStrip")
+        self._bar = QHBoxLayout(strip)
+        self._bar.setContentsMargins(0, 0, 0, 0)
+        self._bar.setSpacing(4)
+        self._strip = QScrollArea()                   # on a small window the tabs slide, so none is ever cut off
+        self._strip.setObjectName("subStrip")
+        self._strip.setFrameShape(QFrame.NoFrame)
+        self._strip.setWidgetResizable(True)
+        self._strip.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self._strip.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self._strip.setWidget(strip)
+        self._arrows = []
+        for text, step in (("\u2039", -180), ("\u203a", 180)):
+            arrow = QPushButton(text)
+            arrow.setObjectName("subArrow")
+            arrow.setCursor(Qt.PointingHandCursor)
+            arrow.setFixedWidth(26)
+            arrow.setToolTip("More tabs")
+            arrow.clicked.connect(lambda _=False, d=step: self._slide(d))
+            arrow.hide()
+            self._arrows.append(arrow)
+        line.addWidget(self._arrows[0])
+        line.addWidget(self._strip, 1)
+        line.addWidget(self._arrows[1])
+        self._strip.horizontalScrollBar().rangeChanged.connect(lambda _low, high: self._show_arrows(high > 0))
+        self._group = QButtonGroup(self)
+        self._group.setExclusive(True)
+        self._group.idClicked.connect(self.show_tab)
+        self._tabs = QStackedWidget()
+        self._layouts = []
+        self._names = []
+        self._outer.addWidget(self.subnav)
+        self._outer.addWidget(self._tabs, 1)
+
+    def add_header(self, widget):
+        """A widget that stays above the submenu whichever tab is open."""
+        self._outer.insertWidget(0, widget)
+
+    def add_tab(self, title):
+        scroll = FormScrollArea()
+        inner = QWidget()
+        inner.setObjectName("page")
+        lay = QVBoxLayout(inner)
+        lay.setContentsMargins(0, 0, 12, 12)
+        lay.setSpacing(14)
+        scroll.setWidget(inner)
+        button = QPushButton(title)
+        button.setObjectName("subTab")
+        button.setFixedHeight(34)
+        button.setCheckable(True)
+        button.setCursor(Qt.PointingHandCursor)
+        self._group.addButton(button, len(self._names))
+        self._bar.addWidget(button)
+        self._tabs.addWidget(scroll)
+        self._layouts.append(lay)
+        self._names.append(title)
+        return lay
+
+    def finish(self):
+        self._bar.addStretch(1)
+        for lay in self._layouts:
+            lay.addStretch(1)
+        self.subnav.setVisible(len(self._names) > 1)
+        self._strip.setFixedHeight(36)
+        self.show_tab(0)
+
+    def show_tab(self, which):
+        index = self._names.index(which) if isinstance(which, str) else which
+        self._tabs.setCurrentIndex(index)
+        self._group.button(index).setChecked(True)
+        self._strip.ensureWidgetVisible(self._group.button(index), 24, 0)
+
+    def _slide(self, step):
+        bar = self._strip.horizontalScrollBar()
+        bar.setValue(bar.value() + step)
+
+    def _show_arrows(self, on):
+        for arrow in self._arrows:
+            arrow.setVisible(on)
+
+    def current_tab(self):
+        return self._names[self._tabs.currentIndex()]
+
+    def tab_names(self):
+        return list(self._names)
 
 
 class TwoColumnBoard(QWidget):

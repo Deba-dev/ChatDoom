@@ -7,7 +7,7 @@ from PySide6.QtWidgets import QComboBox, QLabel, QLineEdit, QPushButton, QSpinBo
 
 from .discord import run_bg
 from .theme import DEFAULT_THEME, THEMES
-from .ui_kit import FormScrollArea, bind_switch, field_row, hrow, option_switch_row, section_card
+from .ui_kit import SubPage, bind_switch, field_row, hrow, option_switch_row, section_card
 
 GATEWAYS = {
     "razorpay": ("Razorpay", "Razorpay webhook secret (you choose it in the Razorpay dashboard)",
@@ -25,16 +25,11 @@ GATEWAYS = {
 }
 
 
-class PaymentsPage(FormScrollArea):
+class PaymentsPage(SubPage):
     def __init__(self, settings, cloud, bridge, poller):
         super().__init__()
         self.s, self.cloud, self.bridge, self.poller = settings, cloud, bridge, poller
-        inner = QWidget()
-        inner.setObjectName("page")
-        self.setWidget(inner)
-        lay = QVBoxLayout(inner)
-        lay.setContentsMargins(0, 8, 12, 12)
-        lay.setSpacing(14)
+        lay = self.add_tab("Connect")
         accent = THEMES.get(self.s.get("theme"), THEMES[DEFAULT_THEME])["a1"]
 
         c, cl = section_card(
@@ -73,6 +68,7 @@ class PaymentsPage(FormScrollArea):
         self._gateway_changed()
         lay.addWidget(c)
 
+        lay = self.add_tab("Read aloud")
         c, cl = section_card(
             "Reading payments aloud",
             "On your payment page, add two fields labelled Name and Message. CHATDOOM finds them by their labels.",
@@ -106,6 +102,7 @@ class PaymentsPage(FormScrollArea):
         cl.addWidget(note)
         lay.addWidget(c)
 
+        lay = self.add_tab("Tip page")
         c, cl = section_card(
             "Quick tip link",
             "Paste a payment or tipping page link to share with viewers. This opens your provider's page; it does not process or alert on payments.",
@@ -125,7 +122,7 @@ class PaymentsPage(FormScrollArea):
         cl.addWidget(hrow(save_link, copy_link, open_link, self.link_status))
         lay.addWidget(c)
 
-        lay.addStretch(1)
+        self.finish()
         bridge.done.connect(self.on_done)
         poller.status.connect(self.status.setText)
 

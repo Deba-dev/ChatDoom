@@ -1,6 +1,7 @@
 """Stream tools: loyalty points, chat polls, giveaways, counters, first-time welcomes, timers, song requests and the
 stream summary. Plain Python (no Qt) so every rule can be tested; the main window feeds it chat and acts on the results."""
 import json
+import math
 import os
 import random
 import re
@@ -10,6 +11,12 @@ from .commands import PLATFORM_NAMES, clean_name, render
 from .models import viewer_key
 
 ACTIVE_WINDOW = 600            # a viewer who chatted in the last 10 minutes counts as watching for the points bonus
+
+
+LINK_RX = re.compile(r"https?://|www\.|\b[\w-]+\.(com|net|org|in|gg|tv|io|xyz|ru)\b", re.I)
+GOAL_SOURCES = {"follow": "follows", "subscription": "subs", "gift": "subs", "subscriber": "subs", "membership": "members", "tip": "money", "superchat": "money"}
+LATEST_LABELS = {"follow": "Latest follower", "subscription": "Latest sub", "gift": "Latest gift", "subscriber": "Latest subscriber",
+                 "membership": "Latest member", "tip": "Latest tip", "superchat": "Latest Super Chat"}
 
 
 def action(kind, name, skipped="", reply="", speak="", toast=""):
@@ -44,10 +51,16 @@ class JsonFile:
 
 
 # ---------------------------------------------------------------- loyalty points
+def level_of(xp, base):
+    """Each level takes more than the last: level 2 at base, level 3 at 4x base, level 4 at 9x base."""
+    return int(math.sqrt(max(0, xp) / max(1, base))) + 1
+
+
 class Points:
     def __init__(self, settings, path):
         self.s, self.file = settings, JsonFile(path, {})
         self.gambled = {}
+        self.levelups = []           # (platform, viewer, level) waiting to be announced
 
     @property
     def name(self):
@@ -68,6 +81,18 @@ class Points:
         self.file.dirty = True
         return row["points"]
 
+    def level(self, key):
+        return level_of(int(self.file.data.get(key, {}).get("xp", 0)), int(self.s.get("level_base") or 100))
+
+    def _gain_xp(self, row, amount):
+        row["xp"] = int(row.get("xp", 0)) + amount
+
+    def _check_level(self, row, m):
+        now_level = level_of(int(row.get("xp", 0)), int(self.s.get("level_base") or 100))
+        if now_level > int(row.get("lvl", 1)):
+            row["lvl"] = now_level
+            self.levelups.append((m.platform, m.author, now_level))
+
     def spend(self, key, amount):
         if self.balance(key) < amount:
             return False
@@ -83,6 +108,10 @@ class Points:
         if now - row.get("msg", 0) >= float(self.s.get("points_msg_cooldown") or 0):
             row["msg"] = now
             row["points"] = int(row["points"]) + int(self.s.get("points_per_msg") or 0)
+            if self.s.get("levels_on"):
+                self._gain_xp(row, int(self.s.get("level_xp_msg") or 0))
+        if self.s.get("levels_on"):
+            self._check_level(row, m)
         self.file.dirty = True
 
     def tick(self, now):
@@ -94,6 +123,8 @@ class Points:
             if now - row.get("active", 0) <= ACTIVE_WINDOW and now - row.get("bonus", 0) >= every:
                 row["bonus"] = now
                 row["points"] = int(row["points"]) + amount
+                if self.s.get("levels_on"):
+                    self._gain_xp(row, int(self.s.get("level_xp_bonus") or 0))
                 given += 1
         if given:
             self.file.dirty = True
@@ -114,6 +145,11 @@ class Points:
             top = self.top(5)
             return action("points", word, "" if top else "nobody has points yet",
                           reply="Top %s: " % self.name + ", ".join("%s %d" % t for t in top))
+        if word == "level" and self.s.get("levels_on"):
+            key = viewer_key(m)
+            level, base = self.level(key), int(self.s.get("level_base") or 100)
+            left = level * level * base - int(self.file.data.get(key, {}).get("xp", 0))
+            return action("points", word, reply="%s is level %d (%d XP to level %d)" % (m.author, level, left, level + 1))
         if word == "gamble" and self.s.get("gamble_on"):
             key, have = viewer_key(m), self.balance(viewer_key(m))
             bet_text = (args.split() or [""])[0].lower()
@@ -229,6 +265,83 @@ def split_amount(text):
     return (text[:m.start()] + text[m.end():]).strip(), float(m.group(0).replace(",", ""))
 
 
+class Prediction:
+    """Viewers bet points on what happens next. Winners get their bet back plus a fair share of what the losers bet."""
+
+    def __init__(self):
+        self.question, self.options, self.bets = "", [], {}
+        self.open = self.locked = False
+        self.ends, self.result = 0, ""
+
+    @property
+    def active(self):
+        return self.open or self.locked
+
+    def start(self, question, options, seconds, now):
+        question, options = (question or "").strip(), [o.strip() for o in options if o.strip()]
+        if self.active:
+            return "A prediction is already running."
+        if not question or len(options) < 2:
+            return "A prediction needs a question and at least two outcomes."
+        self.__init__()
+        self.question, self.options, self.open, self.ends = question, options, True, now + seconds
+        return ""
+
+    def lock(self):
+        if self.open:
+            self.open, self.locked = False, True
+
+    def pools(self):
+        totals = [0] * len(self.options)
+        for number, amount, _ in self.bets.values():
+            totals[number - 1] += amount
+        return totals
+
+    def resolve(self, number):
+        """Returns [(key, name, points back)], and the sentence for chat."""
+        if not self.active or not 1 <= number <= len(self.options):
+            return [], ""
+        pools = self.pools()
+        winners, losers = pools[number - 1], sum(pools) - pools[number - 1]
+        if not winners:
+            paid, _ = self.refund("Nobody bet on %s, so all bets were returned." % self.options[number - 1])
+            return paid, self.result
+        paid = [(key, name, amount + losers * amount // winners) for key, (pick, amount, name) in self.bets.items() if pick == number]
+        self.open = self.locked = False
+        self.bets = {}
+        self.result = "%s won! %d viewer%s shared %d points." % (self.options[number - 1], len(paid), "" if len(paid) == 1 else "s", winners + losers)
+        return paid, self.result
+
+    def refund(self, text="The prediction was cancelled and all bets were returned."):
+        paid = [(key, name, amount) for key, (_, amount, name) in self.bets.items()]
+        self.open = self.locked = False
+        self.bets, self.result = {}, text
+        return paid, text
+
+    def state(self, now):
+        if not (self.active or self.result):
+            return None
+        pools = self.pools()
+        return {"question": self.question, "open": self.open, "locked": self.locked, "result": self.result, "total": sum(pools),
+                "endsIn": max(0, int(self.ends - now)), "options": [{"text": o, "pool": p} for o, p in zip(self.options, pools)]}
+
+
+class ViewerQueue:
+    """A line of viewers waiting for their turn, like joining your next game."""
+
+    def __init__(self):
+        self.open, self.people = False, []          # people: [(key, name, platform)]
+
+    def place(self, key):
+        return next((i + 1 for i, p in enumerate(self.people) if p[0] == key), 0)
+
+    def next(self):
+        return self.people.pop(0) if self.people else None
+
+    def state(self):
+        return {"open": self.open, "count": len(self.people), "names": [p[1] for p in self.people[:5]]}
+
+
 class SessionStats:
     def __init__(self):
         self.reset()
@@ -296,6 +409,8 @@ class Tools:
         self.seen_ever = set(self.viewers.data)
         self.seen_stream = set()
         self.poll, self.giveaway, self.stats = Poll(), Giveaway(), SessionStats()
+        self.prediction, self.queue = Prediction(), ViewerQueue()
+        self.redeemed, self.latest = [], {}
         self.timer_last, self.lines_since = {}, {}
         self.cooldowns = {}
 
@@ -349,7 +464,17 @@ class Tools:
         counter = self._counter(m, word, args)
         if counter:
             return counter
-        if self.s.get("points_on") and word in ("points", "top", "gamble"):
+        if word == "uptime":
+            return action("info", word, reply="Live for %s" % self.uptime(now) if self.live(now) else "The stream is not live right now")
+        if word == "bet" and self.prediction.active and self.s.get("points_on"):
+            return self._bet(m, args)
+        if word in ("queue", "place", "leave", "next", "clearqueue") and (self.queue.open or self.queue.people):
+            return self._queue(m, word)
+        if self.s.get("points_on") and self.s.get("shop_on") and word in ("shop", "buy"):
+            return self._shop(m, word, args)
+        if self.s.get("points_on") and self.s.get("say_on") and word == "say":
+            return self._say(m, args, now)
+        if self.s.get("points_on") and word in ("points", "top", "gamble", "level"):
             return self.points.handle(m, word, args, now)
         if self.s.get("sr_on") and self.music is not None and word in ("sr", "songrequest", "song"):
             return self._song(m, word, args, now)
@@ -370,6 +495,135 @@ class Tools:
         g.entries[key] = (m.author, m.platform)
         self.stats.count("entry")
         return action("entry", g.keyword)
+
+    # ----- predictions, queue, shop and paid read-aloud -----
+    def _bet(self, m, args):
+        p, key, words = self.prediction, viewer_key(m), args.split()
+        name = self.points.name
+        if not p.open:
+            return action("bet", "bet", "bets are locked")
+        if key in p.bets:
+            return action("bet", "bet", "already bet")
+        have = self.points.balance(key)
+        amount_text = words[1].lower() if len(words) > 1 else ""
+        amount = have if amount_text == "all" else int(amount_text) if amount_text.isdigit() else 0
+        number = int(words[0]) if words and words[0].isdigit() else 0
+        if not 1 <= number <= len(p.options) or amount < 1:
+            return action("bet", "bet", reply="%s, bet like this: !bet 1 100" % m.author)
+        if not self.points.spend(key, amount):
+            return action("bet", "bet", reply="%s, you only have %d %s" % (m.author, have, name))
+        p.bets[key] = (number, amount, m.author)
+        return action("bet", "bet")
+
+    def settle_prediction(self, paid):
+        for key, name, amount in paid:
+            self.points.add(key, amount, name)
+
+    def _queue(self, m, word):
+        q, key = self.queue, viewer_key(m)
+        if word == "queue":
+            if not q.open:
+                return action("queue", word, "the queue is closed")
+            if q.place(key):
+                return action("queue", word, reply="%s, you are already number %d" % (m.author, q.place(key)))
+            if len(q.people) >= int(self.s.get("queue_limit") or 50):
+                return action("queue", word, reply="The queue is full right now.")
+            q.people.append((key, m.author, m.platform))
+            return action("queue", word, reply="%s joined the queue at number %d" % (m.author, len(q.people)))
+        if word == "place":
+            spot = q.place(key)
+            return action("queue", word, reply=("%s is number %d in the queue" % (m.author, spot)) if spot else "%s is not in the queue. Type !queue to join." % m.author)
+        if word == "leave":
+            if not q.place(key):
+                return action("queue", word, "not in the queue")
+            q.people = [p for p in q.people if p[0] != key]
+            return action("queue", word, reply="%s left the queue" % m.author)
+        if not m.mod:
+            return action("queue", word, "mods only")
+        if word == "clearqueue":
+            q.people = []
+            return action("queue", word, reply="The queue is empty.")
+        person = q.next()
+        return action("queue", word, "" if person else "the queue is empty", reply="Next up: %s" % person[1] if person else "", toast="Next up: %s" % person[1] if person else "")
+
+    def shop_items(self):
+        return [dict(i) for i in self.s.get("shop_items") or [] if isinstance(i, dict) and (i.get("name") or "").strip()]
+
+    def _shop(self, m, word, args):
+        items, name = self.shop_items(), self.points.name
+        if word == "shop":
+            listed = " | ".join("%d. %s (%d)" % (i + 1, x["name"], int(x.get("cost") or 0)) for i, x in enumerate(items) if int(x.get("stock", -1)) != 0)
+            return action("shop", word, "" if listed else "the shop is empty", reply=("Shop, buy with !buy 1: " + listed)[:400] if listed else "")
+        pick = args.strip().lower()
+        index = int(pick) - 1 if pick.isdigit() else next((i for i, x in enumerate(items) if x["name"].lower() == pick), -1)
+        if not 0 <= index < len(items):
+            return action("shop", word, reply="%s, type !shop to see what you can buy" % m.author)
+        item, key = items[index], viewer_key(m)
+        stock, cost = int(item.get("stock", -1)), int(item.get("cost") or 0)
+        if stock == 0:
+            return action("shop", word, reply="%s is sold out" % item["name"])
+        if not self.points.spend(key, cost):
+            return action("shop", word, reply="%s, %s costs %d %s and you have %d" % (m.author, item["name"], cost, name, self.points.balance(key)))
+        if stock > 0:
+            item["stock"] = stock - 1
+            items[index] = item
+            self.s.set("shop_items", items)
+        self.redeemed = ([(m.author, item["name"])] + self.redeemed)[:30]
+        self.stats.count("redeem")
+        return action("shop", word, reply="%s bought %s!" % (m.author, item["name"]), toast="%s bought %s" % (m.author, item["name"]))
+
+    def _say(self, m, args, now):
+        key, cost = viewer_key(m), int(self.s.get("say_cost") or 0)
+        text = args.strip()[:200]
+        if not text:
+            return action("say", "say", reply="%s, type !say and your message (%d %s)" % (m.author, cost, self.points.name))
+        if LINK_RX.search(text):
+            return action("say", "say", "links are not read aloud")
+        if not m.mod and now - self.cooldowns.get(("say", key), -1e9) < float(self.s.get("say_cooldown") or 0):
+            return action("say", "say", "cooldown")
+        if not m.mod and not self.points.spend(key, cost):
+            return action("say", "say", reply="%s, !say costs %d %s" % (m.author, cost, self.points.name))
+        self.cooldowns[("say", key)] = now
+        return action("say", "say", speak="%s says %s" % (m.author, text))
+
+    # ----- live time and {variables} for custom commands -----
+    def live(self, now):
+        return bool(self.stats.started and not self.stats.ended)
+
+    def uptime(self, now):
+        minutes = max(0, int(now - self.stats.started)) // 60
+        return "%dh %dm" % (minutes // 60, minutes % 60) if minutes >= 60 else "%d minutes" % minutes
+
+    def command_values(self, m):
+        now, key = time.time(), viewer_key(m)
+        return {"points": self.points.balance(key), "level": self.points.level(key), "uptime": self.uptime(now) if self.live(now) else "not live",
+                "counters": {c["name"]: int(c.get("value") or 0) for c in self.counters()}}
+
+    # ----- goals and the latest supporters -----
+    def goals(self):
+        return [dict(g) for g in self.s.get("goals") or [] if isinstance(g, dict) and (g.get("title") or "").strip()]
+
+    def note_alert(self, alert):
+        """Every alert moves the goals that count it, and becomes the latest of its kind."""
+        category, name, amount = alert.get("category") or "", alert.get("name") or "Someone", alert.get("amount") or ""
+        source = GOAL_SOURCES.get(category)
+        label = LATEST_LABELS.get(category)
+        if label:
+            self.latest[label] = (name + " " + amount).strip() if category in ("tip", "superchat") else name
+        if not source:
+            return
+        items = self.goals()
+        add = split_amount(amount)[1] if source == "money" else 1
+        for g in items:
+            if g.get("source") == source:
+                g["value"] = round(float(g.get("value") or 0) + add, 2)
+        self.s.set("goals", items)
+
+    def bump_goal(self, index, change):
+        items = self.goals()
+        if 0 <= index < len(items):
+            items[index]["value"] = max(0, float(items[index].get("value") or 0) + change)
+            self.s.set("goals", items)
 
     # counters: !death shows it; !death+ / !death + adds one; !death- / !death - removes one (moderators only)
     def _counter(self, m, word, args):
@@ -457,4 +711,8 @@ class Tools:
         return {"counters": [{"label": c.get("label") or c["name"].title(), "value": int(c.get("value") or 0)}
                              for c in self.counters() if c.get("overlay", True)],
                 "poll": self.poll.state(now), "giveaway": self.giveaway.state(),
+                "prediction": self.prediction.state(now), "queue": self.queue.state(),
+                "goals": [{"title": g["title"], "value": int(float(g.get("value") or 0)), "target": int(g.get("target") or 1)}
+                          for g in self.goals()] if self.s.get("goals_overlay") else [],
+                "latest": [{"label": k, "value": v} for k, v in self.latest.items()] if self.s.get("latest_overlay") else [],
                 "pointsName": self.points.name}

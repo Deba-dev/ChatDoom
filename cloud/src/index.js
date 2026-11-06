@@ -6,6 +6,7 @@ import { handlePublicPage } from "./legal-pages.js";
 import { handleSupport } from "./support.js";
 import { handleYoutubeBot } from "./youtube-bot.js";
 import { recordUptime, statusFeed } from "./uptime.js";
+import { handleStudio } from "./studio.js";
 
 const API = "https://discord.com/api/v10";
 const PLATFORMS = ["youtube", "twitch", "kick"];
@@ -672,6 +673,7 @@ async function route(request, env, url) {
   if (p === "/status.json") return statusFeed(env);
   if (p.startsWith("/v1/")) return handleYoutubeBot(request, env, url);      // the YouTube moderator bot (its own secrets)
   if (p.startsWith("/support/")) return handleSupport(request, env, url);    // the website's support page
+  if (p.startsWith("/studio/")) return handleStudio(request, env, url);      // Overlay Studio: saved designs and uploads
   const missing = missingConfig(env);
   if (missing.length)
     return p.startsWith("/api/")

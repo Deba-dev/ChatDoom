@@ -70,6 +70,7 @@ class YtModerator(QObject):
         self.code_exp = 0.0
         self.message = ""                 # last short status line for the page
         self._last_error_note = 0.0
+        self._last_error = ""
         self.in_flight = []               # the items of the request the bot is working on
         self.log_path = os.path.join(data_dir(), "moderation_log.json")
         self.log = self._load_log()       # what the bot did, newest last
@@ -285,9 +286,11 @@ class YtModerator(QObject):
                 self.s.set("yt_used_day", str(date.today()))
                 self.s.set("yt_used", int(res.get("usedToday", 0)))
                 self.changed.emit()
-            elif time.time() - self._last_error_note > 60:
-                self._last_error_note = time.time()
-                self.notice.emit("YouTube moderation problem: %s" % res.get("error", "unknown error"))
+            else:
+                error = res.get("error", "unknown error")
+                if error != self._last_error or time.time() - self._last_error_note > 60:   # only repeats of the same problem wait
+                    self._last_error, self._last_error_note = error, time.time()
+                    self.notice.emit("YouTube moderation problem: %s" % error)
             self.changed.emit()
             if self.pending:
                 self.timer.start()

@@ -36,6 +36,37 @@ function make(file, cfg) {
   const d2 = t.dom.window.document; await sleep(120); t.push({ platform: "tip", name: "Sam", amount: "$5", message: "secret text" }); await sleep(250);
   ok(d2.querySelector(".alert") && !d2.querySelector(".msg") && t.dom.window.audioCalls === 1, "message hidden when turned off; chime attempted when sound is on");
   t.dom.window.close();
+  // ---- alert designs ----
+  t = make(require("path").join(__dirname, "out", "alert.html"), { seconds: 5, showMessage: true, sound: false, colors: {}, alertDesigns: {
+    default: { look: "comic", enter: "bounce", idle: "wobble", exit: "fade", text: "none", effect: "none", font: "Bangers", position: "bottom-left", size: 120, useColors: true, c1: "#123456", c2: "#654321", c3: "#abcdef" },
+    follow: { look: "cyber", enter: "glitch", idle: "none", exit: "blur", text: "wave", effect: "confetti", font: "Poppins", position: "top-center", template: "{name} joined with {amount}!", imageUrl: "/memes/hi.gif", layout: "side" },
+    raid: { look: "royal", template: "<img src=x onerror=window.hacked=1> {name}", imageUrl: "https://evil.example/x.png" },
+  } });
+  const ad1 = t.dom.window.document; await sleep(120);
+  t.push({ platform: "tip", category: "tip", name: "Rahul", amount: "₹100", message: "" }); await sleep(120);
+  let al = ad1.querySelector(".alert");
+  ok(al.className.includes("style-comic") && al.className.includes("in-bounce") && al.className.includes("idle-wobble") && al.className.includes("exit-fade"), "an alert uses the chosen look and animations");
+  ok(ad1.getElementById("alertbox").className === "pos-bottom-left" && al.style.fontFamily.includes("Bangers") && al.style.getPropertyValue("--a1") === "#123456", "position, font and own colours are applied");
+  ok([...ad1.querySelectorAll("link")].some((l) => l.href.includes("family=Bangers")), "a chosen font is loaded");
+  al.remove(); t.dom.window.close();
+  t = make(require("path").join(__dirname, "out", "alert.html"), { seconds: 5, showMessage: true, sound: false, colors: {}, alertDesigns: {
+    default: { look: "neon" },
+    follow: { look: "cyber", text: "wave", effect: "confetti", template: "{name} joined with {amount}!", imageUrl: "/memes/hi.gif", layout: "side" },
+  } });
+  const ad2 = t.dom.window.document; await sleep(120);
+  t.push({ platform: "twitch", category: "follow", name: "<b>Evil</b>", amount: "<i>5</i>", message: "" }); await sleep(120);
+  al = ad2.querySelector(".alert");
+  ok(al.className.includes("style-cyber") && al.textContent.includes("<b>Evil</b> joined with <i>5</i>!") && !al.querySelector("b,i"), "an alert type gets its own design, and its wording stays plain text");
+  ok(al.querySelectorAll(".name .ch").length === "<b>Evil</b>".length && al.querySelectorAll(".spark.bit").length > 0, "text animation splits the name, and particles appear");
+  ok(al.querySelector("img.pic").getAttribute("src") === "/memes/hi.gif" && al.className.includes("lay-side"), "the alert shows its picture");
+  t.dom.window.close();
+  t = make(require("path").join(__dirname, "out", "alert.html"), { seconds: 5, showMessage: true, sound: false, colors: {}, alertDesigns: {
+    default: { look: "royal", template: "<img src=x onerror=window.hacked=1> {name}", imageUrl: "https://evil.example/x.png", font: "x');}<style>" },
+  } });
+  const ad3 = t.dom.window.document; await sleep(120);
+  t.push({ platform: "tip", category: "tip", name: "Sam", amount: "", message: "" }); await sleep(120);
+  ok(!ad3.querySelector(".alert img") && !t.dom.window.hacked && ![...ad3.querySelectorAll("link")].length, "bad wording, outside pictures and bad font names do nothing");
+  t.dom.window.close();
   // ---- chat ----
   t = make(require("path").join(__dirname, "out", "chat.html"), { chatSeconds: 0.4, maxLines: 8, colors: {} });
   const d3 = t.dom.window.document; await sleep(120);

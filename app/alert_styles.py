@@ -1,0 +1,134 @@
+"""Alert designs: every look, animation, effect and font an on-screen alert can use, and the ready-made packs.
+
+The overlay page (overlay_html.py) has one CSS rule per value here, so add a value in both places."""
+import os
+import re
+import urllib.parse
+
+LOOKS = (("Neon energy", "neon"), ("Cherry blossom", "sakura"), ("Brush / ink", "brush"), ("Sharp frame", "frame"),
+         ("Frosted glass", "glass"), ("Comic pop", "comic"), ("Cyber grid", "cyber"), ("Clean minimal", "minimal"),
+         ("Arcade pixels", "arcade"), ("Royal gold", "royal"), ("Ribbon banner", "ribbon"), ("Paper note", "paper"),
+         ("Hacker terminal", "terminal"), ("Soft bubble", "bubble"), ("Event ticket", "ticket"), ("Hologram", "holo"),
+         ("Lava", "lava"), ("Ice crystal", "ice"))
+ENTERS = (("Pop in", "pop"), ("Slide from left", "left"), ("Slide from right", "right"), ("Drop from top", "drop"),
+          ("Rise from below", "rise"), ("Flip over", "flip"), ("Zoom in", "zoom"), ("Spin in", "spin"), ("Bounce in", "bounce"),
+          ("Glitch in", "glitch"), ("Blur in", "blur"), ("Swing in", "swing"), ("Unfold", "unfold"), ("Warp in", "warp"))
+EXITS = (("Float away", "out"), ("Fade out", "fade"), ("Slide left", "left"), ("Slide right", "right"), ("Fall down", "drop"),
+         ("Fly up", "rise"), ("Shrink", "zoom"), ("Spin away", "spin"), ("Blur out", "blur"), ("Flip away", "flip"))
+IDLES = (("Gentle float", "float"), ("Pulse", "pulse"), ("Wobble", "wobble"), ("Glow", "glow"), ("Tilt", "tilt"),
+         ("Breathe", "breathe"), ("Jitter", "jitter"), ("Stay still", "none"))
+TEXT_FX = (("No text animation", "none"), ("Wave", "wave"), ("Bouncing letters", "bounce"), ("Typewriter", "type"),
+           ("Rainbow", "rainbow"), ("Shake", "shake"), ("Glow", "glow"), ("Letters pop in", "pop"), ("Flicker", "flicker"),
+           ("Letters slide in", "slide"))
+EFFECTS = (("Sparkles", "sparkles"), ("Confetti", "confetti"), ("Hearts", "hearts"), ("Stars", "stars"), ("Money", "money"),
+           ("Fire", "fire"), ("Party", "party"), ("Snow", "snow"), ("Flowers", "flowers"), ("Lightning", "bolts"), ("None", "none"))
+# Google Fonts names, loaded by the overlay. The ones marked (Hindi) also have Devanagari letters.
+FONTS = (("Poppins (built in)", "Poppins"), ("Baloo 2 (Hindi)", "Baloo 2"), ("Mukta (Hindi)", "Mukta"), ("Hind (Hindi)", "Hind"),
+         ("Teko (Hindi)", "Teko"), ("Rozha One (Hindi)", "Rozha One"), ("Yatra One (Hindi)", "Yatra One"), ("Bangers", "Bangers"),
+         ("Bebas Neue", "Bebas Neue"), ("Anton", "Anton"), ("Orbitron", "Orbitron"), ("Press Start 2P", "Press Start 2P"),
+         ("Russo One", "Russo One"), ("Audiowide", "Audiowide"), ("Righteous", "Righteous"), ("Lobster", "Lobster"),
+         ("Pacifico", "Pacifico"), ("Permanent Marker", "Permanent Marker"), ("Creepster", "Creepster"), ("Cinzel", "Cinzel"),
+         ("Fredoka", "Fredoka"), ("Oswald", "Oswald"), ("Montserrat", "Montserrat"), ("VT323", "VT323"))
+POSITIONS = (("Top centre", "top-center"), ("Top left", "top-left"), ("Top right", "top-right"), ("Middle", "mid-center"),
+             ("Middle left", "mid-left"), ("Middle right", "mid-right"), ("Bottom centre", "bottom-center"),
+             ("Bottom left", "bottom-left"), ("Bottom right", "bottom-right"))
+LAYOUTS = (("Picture above the text", "above"), ("Picture beside the text", "side"), ("Picture behind the text", "behind"))
+ALERT_TYPES = (("Tips", "tip"), ("Super Chats and Bits", "superchat"), ("Memberships", "membership"), ("YouTube subscribers", "subscriber"),
+               ("Follows", "follow"), ("Subscriptions", "subscription"), ("Gifted subs", "gift"), ("Raids", "raid"))
+TYPE_KEYS = tuple(v for _, v in ALERT_TYPES)
+
+DEFAULT = {"look": "neon", "enter": "pop", "exit": "out", "idle": "float", "text": "none", "effect": "sparkles", "font": "Poppins",
+           "size": 100, "position": "top-center", "layout": "above", "useColors": False, "c1": "#8b5cf6", "c2": "#22d3ee", "c3": "#f472b6",
+           "template": "", "image": "", "sound": "", "seconds": 0}
+CHOICES = {"look": LOOKS, "enter": ENTERS, "exit": EXITS, "idle": IDLES, "text": TEXT_FX, "effect": EFFECTS, "font": FONTS,
+           "position": POSITIONS, "layout": LAYOUTS}
+
+SAMPLES = {
+    "tip": {"platform": "tip", "category": "tip", "name": "Rahul", "amount": "₹100", "message": "Great stream bhai, keep it up!"},
+    "superchat": {"platform": "youtube", "category": "superchat", "name": "Neha", "amount": "₹500", "message": "Clutch tha yaar!"},
+    "membership": {"platform": "youtube", "category": "membership", "name": "Aman", "amount": "Level 1", "message": ""},
+    "subscriber": {"platform": "youtube", "category": "subscriber", "name": "Priya", "amount": "", "message": ""},
+    "follow": {"platform": "twitch", "category": "follow", "name": "sneha_plays", "amount": "", "message": ""},
+    "subscription": {"platform": "twitch", "category": "subscription", "name": "kickviewer", "amount": "Tier 1", "message": ""},
+    "gift": {"platform": "twitch", "category": "gift", "name": "BigBoss", "amount": "5 subs", "message": ""},
+    "raid": {"platform": "twitch", "category": "raid", "name": "FriendlyStreamer", "amount": "120 viewers", "message": ""},
+}
+
+# One click sets the whole look. Fonts and text are chosen to match each pack.
+PACKS = (
+    ("Neon night", {"look": "neon", "enter": "pop", "exit": "out", "idle": "float", "text": "glow", "effect": "sparkles", "font": "Orbitron"}),
+    ("Desi festival", {"look": "royal", "enter": "unfold", "exit": "fade", "idle": "glow", "text": "pop", "effect": "flowers", "font": "Rozha One"}),
+    ("Comic hit", {"look": "comic", "enter": "bounce", "exit": "drop", "idle": "wobble", "text": "bounce", "effect": "stars", "font": "Bangers"}),
+    ("Retro arcade", {"look": "arcade", "enter": "drop", "exit": "drop", "idle": "jitter", "text": "flicker", "effect": "stars", "font": "Press Start 2P"}),
+    ("Cyber breach", {"look": "cyber", "enter": "glitch", "exit": "blur", "idle": "jitter", "text": "shake", "effect": "bolts", "font": "Audiowide"}),
+    ("Terminal", {"look": "terminal", "enter": "unfold", "exit": "fade", "idle": "none", "text": "type", "effect": "none", "font": "VT323"}),
+    ("Cherry blossom", {"look": "sakura", "enter": "rise", "exit": "fade", "idle": "breathe", "text": "wave", "effect": "flowers", "font": "Pacifico"}),
+    ("Royal gold", {"look": "royal", "enter": "zoom", "exit": "zoom", "idle": "glow", "text": "glow", "effect": "money", "font": "Cinzel"}),
+    ("Lava burst", {"look": "lava", "enter": "warp", "exit": "drop", "idle": "pulse", "text": "shake", "effect": "fire", "font": "Anton"}),
+    ("Ice cold", {"look": "ice", "enter": "blur", "exit": "blur", "idle": "breathe", "text": "slide", "effect": "snow", "font": "Montserrat"}),
+    ("Party time", {"look": "bubble", "enter": "spin", "exit": "spin", "idle": "tilt", "text": "rainbow", "effect": "party", "font": "Fredoka"}),
+    ("Clean pro", {"look": "minimal", "enter": "left", "exit": "left", "idle": "none", "text": "none", "effect": "none", "font": "Montserrat"}),
+    ("Hologram", {"look": "holo", "enter": "flip", "exit": "flip", "idle": "float", "text": "flicker", "effect": "sparkles", "font": "Russo One"}),
+    ("Street ink", {"look": "brush", "enter": "swing", "exit": "right", "idle": "tilt", "text": "pop", "effect": "confetti", "font": "Permanent Marker"}),
+)
+HEX = re.compile(r"#[0-9a-fA-F]{6}")
+
+
+def clean(raw, base=None):
+    """A complete, safe design. Anything unknown (say, from a newer or older version) falls back to the base design."""
+    base = base or DEFAULT
+    raw = raw if isinstance(raw, dict) else {}
+    out = dict(base)
+    for key, options in CHOICES.items():
+        if raw.get(key) in [v for _, v in options]:
+            out[key] = raw[key]
+    for key in ("c1", "c2", "c3"):
+        if HEX.fullmatch(str(raw.get(key) or "")):
+            out[key] = raw[key]
+    if "useColors" in raw:
+        out["useColors"] = bool(raw["useColors"])
+    for key, low, high in (("size", 60, 160), ("seconds", 0, 60)):
+        try:
+            out[key] = min(high, max(low, int(raw.get(key, out[key]))))
+        except (TypeError, ValueError):
+            pass
+    for key, limit in (("template", 160), ("image", 220), ("sound", 220)):
+        if key in raw:
+            out[key] = str(raw.get(key) or "")[:limit]
+    return out
+
+
+def main_design(settings):
+    return clean(settings.get("ov_alert_design"), dict(DEFAULT, look=settings.get("ov_alert_style") or "neon"))
+
+
+def custom_designs(settings):
+    saved = settings.get("ov_alert_custom")
+    return {k: v for k, v in saved.items() if k in TYPE_KEYS and isinstance(v, dict)} if isinstance(saved, dict) else {}
+
+
+def design_for(settings, kind):
+    main, custom = main_design(settings), custom_designs(settings)
+    return clean(custom[kind], main) if kind in custom else main
+
+
+def _inside(folder, name):
+    """Only a plain file directly in the folder may reach the overlay."""
+    name = os.path.basename(name or "")
+    path = os.path.realpath(os.path.join(folder, name))
+    return bool(name) and os.path.dirname(path) == os.path.realpath(folder) and os.path.isfile(path)
+
+
+def for_overlay(design, sounds_dir, memes_dir):
+    d = dict(design)
+    d["imageUrl"] = "/memes/" + urllib.parse.quote(os.path.basename(d["image"])) if _inside(memes_dir, d["image"]) else ""
+    d["soundUrl"] = "/sounds/" + urllib.parse.quote(os.path.basename(d["sound"])) if _inside(sounds_dir, d["sound"]) else ""
+    del d["image"], d["sound"]
+    return d
+
+
+def overlay_designs(settings, sounds_dir, memes_dir):
+    out = {"default": for_overlay(main_design(settings), sounds_dir, memes_dir)}
+    for kind in custom_designs(settings):
+        out[kind] = for_overlay(design_for(settings, kind), sounds_dir, memes_dir)
+    return out

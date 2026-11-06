@@ -1,5 +1,8 @@
 """Chat commands: custom !commands that answer in chat or aloud, and !memes that play a clip, show a picture or read a line."""
+import ast
+import operator
 import os
+import random
 import re
 import shutil
 import time
@@ -15,7 +18,16 @@ VARIABLES = (("{user}", "the viewer who typed the command"),
              ("{touser}", "the first word after the command (like @friend), or the viewer"),
              ("{args}", "everything typed after the command"),
              ("{count}", "how many times the command has been used"),
-             ("{platform}", "YouTube, Twitch or Kick"))
+             ("{platform}", "YouTube, Twitch or Kick"),
+             ("{points}", "the viewer's points"),
+             ("{level}", "the viewer's level"),
+             ("{uptime}", "how long you have been live"),
+             ("{random:1-100}", "a random number between two numbers"),
+             ("{pick:yes|no|maybe}", "one of the choices at random"),
+             ("{math:2*(3+4)}", "the answer to a sum"),
+             ("{counter:death}", "the value of one of your counters"))
+MATH_OPS = {ast.Add: operator.add, ast.Sub: operator.sub, ast.Mult: operator.mul, ast.Div: operator.truediv,
+            ast.FloorDiv: operator.floordiv, ast.Mod: operator.mod}
 
 
 def clean_name(name):
@@ -24,11 +36,54 @@ def clean_name(name):
     return name if NAME_RX.fullmatch(name) else ""
 
 
-def render(template, m, args="", count=0):
+def safe_math(text):
+    """Plain arithmetic only. This walks the sum itself, so nothing typed here can ever run as code."""
+    def walk(node):
+        if isinstance(node, ast.Constant) and type(node.value) in (int, float):
+            return node.value
+        if isinstance(node, ast.UnaryOp) and isinstance(node.op, (ast.USub, ast.UAdd)):
+            return -walk(node.operand) if isinstance(node.op, ast.USub) else walk(node.operand)
+        if isinstance(node, ast.BinOp) and type(node.op) in MATH_OPS:
+            return MATH_OPS[type(node.op)](walk(node.left), walk(node.right))
+        raise ValueError("not a sum")
+    try:
+        answer = walk(ast.parse(text[:80], mode="eval").body)
+    except (ValueError, SyntaxError, ZeroDivisionError, OverflowError, RecursionError):
+        return "?"
+    return str(int(answer)) if float(answer).is_integer() else "%.2f" % answer
+
+
+def _special(kind, value, extra):
+    if kind == "random":
+        found = re.fullmatch(r"\s*(-?\d{1,9})\s*-\s*(-?\d{1,9})\s*", value)
+        if found:
+            low, high = sorted((int(found.group(1)), int(found.group(2))))
+            return str(random.randint(low, high))
+    elif kind == "pick":
+        choices = [c.strip() for c in value.split("|") if c.strip()]
+        if choices:
+            return random.choice(choices)
+    elif kind == "math":
+        return safe_math(value)
+    elif kind == "counter":
+        return str(extra.get("counters", {}).get(clean_name(value), 0))
+    return None
+
+
+def render(template, m, args="", count=0, extra=None):
+    extra = extra or {}
     words = args.split()
     values = {"user": m.author, "touser": words[0].lstrip("@") if words else m.author, "args": args,
-              "count": str(count), "platform": PLATFORM_NAMES.get(m.platform, m.platform.title())}
-    text = re.sub(r"\{(\w+)\}", lambda x: values.get(x.group(1).lower(), x.group(0)), template or "")
+              "count": str(count), "platform": PLATFORM_NAMES.get(m.platform, m.platform.title()),
+              "points": str(extra.get("points", 0)), "level": str(extra.get("level", 1)), "uptime": extra.get("uptime", "not live"),
+              "random": str(random.randint(1, 100))}
+
+    def fill(x):
+        if x.group(2) is not None:
+            answer = _special(x.group(1).lower(), x.group(2), extra)
+            return x.group(0) if answer is None else answer
+        return values.get(x.group(1).lower(), x.group(0))
+    text = re.sub(r"\{(\w+)(?::([^{}]*))?\}", fill, template or "")
     return text.strip().lstrip("!").strip()        # a reply that starts with ! could set off another command
 
 
@@ -50,6 +105,7 @@ class Commands:
         self.last_used = {}          # ("command" | "meme", name) -> time
         self.last_meme = -1e9        # any meme, for the gap between two memes
         self.points = None           # loyalty points (set by the main window) for memes that cost points
+        self.values = None           # gives {points}, {level}, {uptime} and {counter:x} for a viewer (set by the main window)
 
     def items(self, kind):
         """kind is 'commands' or 'memes'; always a fresh list, so callers can edit and save it."""
@@ -107,7 +163,7 @@ class Commands:
             return self._result("command", name, why)
         self.last_used[("command", name)] = now
         count = self._count("commands", name)
-        text = render(cmd.get("response"), m, args, count)
+        text = render(cmd.get("response"), m, args, count, self.values(m) if self.values else None)
         mode = cmd.get("mode") or "reply"
         return self._result("command", name, "" if text else "empty reply",
                             reply=text if mode in ("reply", "both") else "", speak=text if mode in ("speak", "both") else "")

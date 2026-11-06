@@ -40,7 +40,11 @@ CHATDOOM VOICE AND LOOK
 CHATDOOM COMMANDS AND TOOLS
 - The Commands page makes !commands and memes with sounds, pictures and speech.
 - To add a timer: open the Stream tools page, turn on Timers, then press Add timer.
-- The Stream tools page has loyalty points (!points, !gamble, !top), polls (!vote), giveaways (!join), counters, welcome messages, timers, song requests (!sr), hotkeys and a stream summary.
+- Loyalty points (!points, !gamble, !top) are on the Loyalty page, and polls (!vote), giveaways (!join) and counters are on the Engage page. The Stream tools page has welcome messages, timers, song requests (!sr), hotkeys and a stream summary.
+- The Alerts page designs on-screen alerts with a live preview: looks, animations, particles, fonts, ready-made packs, wording, pictures, sounds and position. Each alert type can have its own design. Fonts other than Poppins need internet in OBS.
+- The Loyalty page has points, levels (!level) and a points shop (!shop, !buy). The streamer delivers shop rewards themselves.
+- The Engage page has polls, predictions (!bet 1 100), giveaways, a viewer queue (!queue, !place, !leave, and !next for moderators), counters and goals.
+- The Stream tools page also has paid read-aloud (!say). !uptime shows how long the stream has been live.
 - Commands, timers and welcomes post in chat only while CHATDOOM is open. A chat reply needs a signed-in account, or the YouTube bot.
 
 YOUTUBE MODERATOR BOT
@@ -54,7 +58,7 @@ YOUTUBE MODERATOR BOT
 OBS
 - To put the voice on stream: start CHATDOOM first. In OBS add Sources, Application Audio Capture, and pick CHATDOOM. It needs Windows 10 version 2004 or newer and OBS 28 or newer. Otherwise use Audio Output Capture or Desktop Audio.
 - Viewers hearing an echo: use headphones, or your microphone picks the voice up again and viewers hear an echo.
-- Overlays are OBS Browser sources shown on the OBS overlays page: /alert, /chat, /music and /meme.
+- Overlays are OBS Browser sources shown on the OBS overlays page: /alert, /chat, /music, /meme and /widgets (counters, goals, polls, predictions, giveaway and queue).
 
 DISCORD AND PAYMENTS IN CHATDOOM
 - The Discord page adds the bot, then creates roles and invite links in one click.

@@ -12,7 +12,7 @@ from PySide6.QtWidgets import (QDialog, QFileDialog, QHBoxLayout, QLabel, QListW
 from .music import import_downloads, scan
 from .settings import data_dir
 from .theme import DEFAULT_THEME, THEMES
-from .ui_kit import (FormScrollArea, bind_switch, copy_row, field_row, hrow, info_box, make_badge, meter_row,
+from .ui_kit import (SubPage, bind_switch, copy_row, field_row, hrow, info_box, make_badge, meter_row,
                      option_switch_row, section_card, set_badge, status_row)
 
 
@@ -99,19 +99,14 @@ class _MusicCatalogDialog(QDialog):
             self.status.setText("The download did not complete.")
 
 
-class MusicPage(FormScrollArea):
+class MusicPage(SubPage):
     def __init__(self, settings, player, overlay):
         super().__init__()
         self.s, self.player = settings, player
         self.sound_player = QMediaPlayer(self)
         self.sound_output = QAudioOutput(self)
         self.sound_player.setAudioOutput(self.sound_output)
-        inner = QWidget()
-        inner.setObjectName("page")
-        self.setWidget(inner)
-        lay = QVBoxLayout(inner)
-        lay.setContentsMargins(0, 8, 12, 12)
-        lay.setSpacing(14)
+        lay = self.add_tab("Player")
         accent = THEMES.get(self.s.get("theme"), THEMES[DEFAULT_THEME])["a1"]
 
         # ---------- now playing ----------
@@ -138,6 +133,7 @@ class MusicPage(FormScrollArea):
         lay.addWidget(c)
 
         # ---------- StreamBeats download library ----------
+        lay = self.add_tab("Get music")
         c, cl = section_card(
             "Get StreamBeats music",
             "Browse the official StreamBeats catalog inside CHATDOOM. Supported audio and album ZIP downloads are added to your music library automatically.",
@@ -164,6 +160,7 @@ class MusicPage(FormScrollArea):
         cl.addWidget(hrow(self.import_btn, self.import_status))
         lay.addWidget(c)
 
+        lay = self.add_tab("Soundboard")
         c, cl = section_card(
             "Soundboard",
             "Import short effects you are allowed to use, then play them over your background music. Each sound uses the license chosen by you.",
@@ -193,6 +190,7 @@ class MusicPage(FormScrollArea):
         self._reload_sounds()
 
         # ---------- local library ----------
+        lay = self.add_tab("Your music")
         c, cl = section_card("Your music", "Choose a folder with songs you are allowed to use. Name files like \"Artist - Title.mp3\" to show them nicely.")
         self.folder = QLabel(self.s.get("music_folder") or "No folder chosen")
         self.folder.setObjectName("settingNote")
@@ -216,6 +214,7 @@ class MusicPage(FormScrollArea):
         lay.addWidget(c)
 
         # ---------- mixing ----------
+        lay = self.add_tab("Mix and stream")
         c, cl = section_card("Mix with your voice", "Keep the music under the chat voice so viewers hear both.")
         vol = QSlider(Qt.Horizontal)
         vol.setRange(0, 100)
@@ -239,6 +238,7 @@ class MusicPage(FormScrollArea):
         lay.addWidget(c)
 
         # ---------- finding music ----------
+        lay = self.add_tab("More sources")
         c, cl = section_card("Other music sources", "Licenses vary by track and provider; check the permissions for your platform and keep proof.")
         cl.addWidget(info_box(
             "\u2022 <a href='https://www.youtube.com/audiolibrary'>YouTube Audio Library</a> \u2014 YouTube states its Audio Library tracks are copyright-safe on YouTube; this does not establish Twitch rights.<br>"
@@ -250,7 +250,7 @@ class MusicPage(FormScrollArea):
             "follow its license, and keep a copy of the permission and download details. Do not redistribute music files from CHATDOOM.",
             "Stay safe"))
         lay.addWidget(c)
-        lay.addStretch(1)
+        self.finish()
 
         player.changed.connect(self.refresh)
         self.refresh(reload_list=True)

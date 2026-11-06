@@ -1,4 +1,4 @@
-VERSION = "1.2.1"       # the number the updater compares (keep it in step with installer.iss and version_info.txt)
+VERSION = "1.3.0"       # the number the updater compares (keep it in step with installer.iss and version_info.txt)
 STAGE = "Released"
 CREATOR = "ZUNIMILABS"
 PRODUCT_NAME = "CHATDOOM"
