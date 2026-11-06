@@ -339,7 +339,7 @@ class ViewerQueue:
         return self.people.pop(0) if self.people else None
 
     def state(self):
-        return {"open": self.open, "count": len(self.people), "names": [p[1] for p in self.people[:5]]}
+        return {"open": self.open, "count": len(self.people), "names": [p[1] for p in self.people[:10]]}
 
 
 class SessionStats:

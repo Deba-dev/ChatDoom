@@ -379,7 +379,7 @@ for name in THEMES:
 w.apply_theme("Sunset"); w.goto(0); wait(120); w.grab().save(os.path.join(os.environ["APPDATA"], "sunset_connect.png")); wait(500)
 w.apply_theme("Neon Violet"); w.goto(4); wait(150); w.grab().save(os.path.join(os.environ["APPDATA"], "violet_discord_midanim.png")); wait(600); w.grab().save(os.path.join(os.environ["APPDATA"], "violet_discord.png"))
 for i in range(w.stack.count()): w.goto(i); wait(60); w.grab()
-ok(w.stack.count() == 15, "all 15 pages render without errors")
+ok(w.stack.count() == 16, "all 16 pages render without errors")
 n = len(w.fx.items)
 ok(n == 0, "buttons use a quiet hover instead of a glow")
 w._lite(True); wait(100); ok(w.fx.enabled is False, "Lite mode turns motion off")
@@ -545,7 +545,7 @@ from app.version import label, CREATOR, STAGE
 from PySide6.QtWidgets import QLabel as _QL
 texts = [l.text() for l in w.findChildren(_QL)]
 ok(label() == "v%s \u00b7 Released" % VERSION and STAGE == "Released" and CREATOR == "ZUNIMILABS", "version label reads: %s" % label())
-ok(label() in texts and "Developed by ZUNIMILABS" in texts, "sidebar shows the version label and the company")
+ok(label() in texts and "Developed and powered by ZUNIMILABS." in texts, "the app shows the version label and the company")
 ok(w.windowTitle() == "CHATDOOM", "window title: %s" % w.windowTitle())
 ok(b"ZUNIMILABS" in urllib.request.urlopen("http://127.0.0.1:%d/" % w.overlay.port).read() if w.overlay.server else True, "overlay start page carries the credit")
 
@@ -647,9 +647,9 @@ ok(st["state"] == {"title": "Second", "artist": "Bo", "playing": True}, "the OBS
 ok(b'data-mode="music"' in urllib.request.urlopen(w.overlay.url("music")).read() and w.musicpage.music_url.text().endswith("/music"), "now-playing overlay page exists and its address is on the Music page")
 w.music.stop(); ok(ov("/poll?type=music&after=-1")["state"]["playing"] is False, "stopping hides it on stream")
 w.goto(8); wait(300); w.grab().save(os.path.join(os.environ["APPDATA"], "music.png")); shutil.rmtree(folder, ignore_errors=True); shutil.rmtree(library, ignore_errors=True)
-ok(len([b for b in w.findChildren(__import__("PySide6.QtWidgets", fromlist=["QPushButton"]).QPushButton) if b.objectName() == "nav"]) == 15 and w.nav.button(8).text().strip() == "Music" and not w.nav.button(8).icon().isNull()
+ok(len([b for b in w.findChildren(__import__("PySide6.QtWidgets", fromlist=["QPushButton"]).QPushButton) if b.objectName() == "nav"]) == 16 and w.nav.button(8).text().strip() == "Music" and not w.nav.button(8).icon().isNull()
    and w.nav.button(9).text().strip() == "Commands" and w.nav.button(10).text().strip() == "Stream tools" and not w.nav.button(10).icon().isNull(),
-   "sidebar has all 15 pages, each with a drawn icon (Music, Commands and Stream tools included)")
+   "sidebar has all 16 pages, each with a drawn icon (Music, Commands and Stream tools included)")
 
 # ===== L. multi-stream, commands and memes =====
 print("--- L. multi-stream, commands and memes ---")
@@ -1036,7 +1036,7 @@ ok("AppVersion=%s" % VERSION in version_files[0] and "'ProductVersion', '%s'" % 
 w.goto(0); wait(100)
 ok(not w.statbar.isVisible() and w.num_total.parent().objectName() == "stat", "the Connect page shows its own stat cards")
 for i in range(1, w.stack.count()):
-    if i in (11, 14): continue               # the design pages use the room for their preview
+    if i in (11, 14, 15): continue           # the design pages and Settings use the room for themselves
     w.goto(i); wait(30)
     shown = [c.num.text() for c in w.stat_cards]
     ok(w.statbar.isVisible() and all(shown) and all(c.cap.text() for c in w.stat_cards), "%s shows three live stats" % PAGES[i])
@@ -1056,9 +1056,9 @@ from app.commands import render, safe_math
 from app.ui_kit import SubPage
 
 nav_ids = [w.nav.id(b) for b in w.nav.buttons()]
-ok(sorted(nav_ids) == list(range(15)) and all(w.nav.button(i).text().strip() == PAGES[i] for i in range(15)), "every main page has a sidebar button")
+ok(sorted(nav_ids) == list(range(16)) and all(w.nav.button(i).text().strip() == PAGES[i] for i in range(16)), "every main page has a sidebar button")
 tabbed = [i for i in range(w.stack.count()) if isinstance(w.stack.widget(i), SubPage)]
-ok(set(tabbed) == set(range(2, 15)), "every settings page uses the horizontal submenu")
+ok(set(tabbed) == set(range(2, 16)), "every settings page uses the horizontal submenu")
 for i in tabbed:
     page = w.stack.widget(i); w.goto(i); wait(20)
     ok(page.subnav.isVisible() and len(page.tab_names()) >= 2 and page._tabs.width() > 0, "%s has a submenu: %s" % (PAGES[i], ", ".join(page.tab_names())))
@@ -1172,9 +1172,6 @@ ok("1h 1m" in render("{uptime}", V("a"), extra=T.command_values(Message("twitch"
 T.stats.reset()
 T.points.add(key("Sav"), 500, "Sav"); T.prediction.__init__(); T.prediction.start("Q?", ["A", "B"], 60, now); say("Sav", "!bet 1 200")
 
-ok(not w.settings_box.isVisibleTo(w), "the sidebar settings start folded away")
-w.settings_btn.setChecked(True); ok(w.settings_box.isVisibleTo(w) and w.theme_combo.isVisibleTo(w), "the Settings button opens them"); w.settings_btn.setChecked(False)
-
 # overlay styles: chat, now playing, memes and widgets
 from app import overlay_styles as OS
 P = w.stylespage
@@ -1204,6 +1201,111 @@ ok(all(c["designs"][k]["skin"] == "royal" for k in OS.KIND_KEYS) and c["alertDes
 n0 = ov("/poll?type=chat&after=-1")["latest"]; P.target.setCurrentIndex(0); P.load(); P.send_test()
 ok(len(ov("/poll?type=chat&after=%d" % n0)["events"]) == len(OS.SAMPLES["chat"]), "the chat test sends sample lines")
 w.s.set("ov_designs", {}); w.s.set("ov_alert_design", {}); w.s.set("ov_alert_style", "neon"); P.load()
+
+# every fine-detail option
+from app import style_fields as SF
+for kind in SF.ALL:
+    rows = SF.fields_for(kind)
+    ok(len(rows) >= 23, "%s has %d detail options" % (kind, len(rows)))
+for key, kind_of, default, _l, _n, extra, kinds, _c in SF.FIELDS:
+    assert key in PAGE or key in ("css", "youtubeColour", "twitchColour", "kickColour"), "the overlay never uses " + key   # platform colours are read as platform + "Colour"
+    if kind_of == "num": assert extra[0] <= default <= extra[1], key
+    if kind_of == "choice": assert default in [v for _, v in extra], key
+ok(True, "every detail option is used by the overlay, and its default is valid")
+bad = OS.clean("chat", {"radius": 9999, "bgColor": "red;}", "shadow": "x", "css": "a" * 9000, "tagStyle": "nope", "useBg": 1, "panelWidth": 500})
+ok(bad["radius"] == 70 and bad["bgColor"] == "#0c0a20" and bad["shadow"] == "skin" and len(bad["css"]) == SF.CSS_LIMIT and bad["tagStyle"] == "full" and bad["useBg"] is True and "panelWidth" not in bad,
+   "detail options are limited and checked when saved")
+ok(AS.clean({"radius": 12, "lineGap": 9})["radius"] == 12 and "lineGap" not in AS.clean({"lineGap": 9}), "alerts take the shared options only")
+P.target.setCurrentIndex(0); P.load()
+ok("Box" in P.tab_names() and "Custom CSS" in P.tab_names() and "My styles" in P.tab_names() and "Box" in A.tab_names() and "My styles" in A.tab_names(), "both design pages have the new tabs")
+P.field_widgets["radius"][1].spin.setValue(24); P.field_widgets["useBg"][1].setChecked(True); P.field_widgets["tagStyle"][1].setCurrentIndex(2)
+c = ov("/poll?type=chat&after=-1")["cfg"]["designs"]["chat"]
+ok(c["radius"] == 24 and c["useBg"] is True and c["tagStyle"] == "dot", "detail controls reach OBS")
+visible = lambda page: {c.findChild(__import__("PySide6.QtWidgets", fromlist=["QLabel"]).QLabel).text() for k, c in page.field_cards if not c.isHidden()}
+ok("Chat lines" in visible(P) and "What shows" not in visible(P), "only the options for this overlay show")
+P.target.setCurrentIndex(P.target.findData("widgets")); P.load()
+ok("What shows" in visible(P) and "Chat lines" not in visible(P), "switching overlay switches the options")
+P.target.setCurrentIndex(0); P.load()
+ok(P.save_my_style("Night mode") and P.my_list.findText("Night mode") >= 0, "a style can be saved")
+P.field_widgets["radius"][1].spin.setValue(3); P.my_list.setCurrentIndex(P.my_list.findText("Night mode")); P.use_my_style()
+ok(P.design()["radius"] == 24, "a saved style comes back with one click")
+styled = os.path.join(os.environ["APPDATA"], "chat-style.json"); P.export_style(styled)
+P.reset_design(); ok(P.design()["radius"] == -1 and P.design()["useBg"] is False, "Reset to default clears the design")
+ok(P.import_style(styled) and P.design()["radius"] == 24, "an exported style can be imported")
+P.target.setCurrentIndex(P.target.findData("meme")); P.load()
+ok(not P.import_style(styled) and "different overlay" in P.my_note.text(), "a style for another overlay is refused")
+junk = os.path.join(os.environ["APPDATA"], "junk.json"); open(junk, "w").write("[1,2]")
+ok(not P.import_style(junk) and "not a CHATDOOM" in P.my_note.text(), "a file that is not a style is refused")
+hostile = os.path.join(os.environ["APPDATA"], "bad.json"); json.dump({"chatdoomStyle": 1, "kind": "meme", "design": {"skin": "<x>", "radius": 99999, "bgColor": "url(x)"}}, open(hostile, "w"))
+ok(P.import_style(hostile) and P.design()["skin"] == "classic" and P.design()["radius"] == 70 and P.design()["bgColor"] == "#0c0a20", "values in an imported file are checked")
+P.target.setCurrentIndex(0); P.delete_my_style(); ok(P.my_list.findText("Night mode") < 0, "a saved style can be deleted")
+A.field_widgets["borderWidth"][1].spin.setValue(4); ok(ov("/poll?type=alert&after=-1")["cfg"]["alertDesigns"]["default"]["borderWidth"] == 4, "alert detail options reach OBS")
+A.reset_design(); ok(A.design()["borderWidth"] == 0, "alerts can be reset")
+w.s.set("ov_designs", {}); w.s.set("ov_my_styles", {}); P.load()
+
+# settings page
+from app import system as SY
+G15 = w.settingspage
+ok(G15.tab_names() == ["Appearance", "Startup and window", "Notifications", "Updates", "Data and backup", "About"], "the Settings page has its sections")
+w.goto(15); wait(30); ok(not w.statbar.isVisible() and w.title.text() == "Settings", "Settings opens as a page")
+G15.theme.setCurrentText("Ocean"); ok(w.s.get("theme") == "Ocean", "the theme can be changed there"); G15.theme.setCurrentText("Neon Violet")
+w.s.set("show_stats", False); w.goto(3); wait(20); ok(not w.statbar.isVisible(), "the stat cards can be hidden"); w.s.set("show_stats", True); w.goto(3); wait(20); ok(w.statbar.isVisible(), "and shown again")
+w.toasts.items.clear() if hasattr(w.toasts.items, "clear") else None
+w.s.set("start_page", 9); ok(w._first_page() == 9, "a chosen page opens first")
+w.goto(13); w.goto(15); w.s.set("start_page", -1); ok(w._first_page() == 13, "or the last page used, not Settings itself"); w.s.set("start_page", 0)
+w.s.set("start_page", 99); ok(w._first_page() == 0, "a page that no longer exists falls back"); w.s.set("start_page", 0)
+
+ok(SY.can_autostart() is False and SY.set_autostart(True) is False, "a copy run from the code never changes the Windows start list")
+fake = {}
+class FakeReg:
+    HKEY_CURRENT_USER, REG_SZ = 1, 1
+    class K:
+        def __enter__(s): return s
+        def __exit__(s, *a): return False
+    def CreateKey(s, *a): return s.K()
+    def OpenKey(s, *a):
+        return s.K()
+    def SetValueEx(s, k, name, z, t, value): fake[name] = value
+    def DeleteValue(s, k, name):
+        if name not in fake: raise FileNotFoundError()
+        del fake[name]
+    def QueryValueEx(s, k, name):
+        if name not in fake: raise FileNotFoundError()
+        return fake[name], 1
+real_reg, SY.winreg, sys.frozen = SY.winreg, FakeReg(), True
+ok(SY.set_autostart(True) and "--autostart" in fake["CHATDOOM"] and sys.executable in fake["CHATDOOM"] and SY.autostart_on(), "Start with Windows adds the app")
+ok(SY.set_autostart(False) and not SY.autostart_on() and SY.set_autostart(False), "and removes it, even twice")
+SY.winreg = real_reg; del sys.frozen
+
+w.s.set("cloud_token", "SECRET-TOKEN"); w.s.set("webhook_url", "https://discord.com/api/webhooks/9/private"); w.s.set("yt_bot_token", "BOT-TOKEN"); w.s.set("ov_seconds", 11); w.s.set("timers", [{"message": "hi", "minutes": 5}])
+w.s.set("ov_designs", {"chat": {"skin": "lava"}})
+pack = os.path.join(os.environ["APPDATA"], "backup.json"); G15.save_backup(pack); text = open(pack, encoding="utf-8").read(); saved = json.loads(text)["settings"]
+ok(not any(x in text for x in ("SECRET-TOKEN", "webhooks", "BOT-TOKEN")) and not any(SY.PRIVATE.search(k) for k in saved), "a backup never holds sign-ins or private links")
+ok(saved["ov_seconds"] == 11 and saved["timers"] and saved["ov_designs"]["chat"]["skin"] == "lava", "a backup holds your settings and designs")
+w.s.set("ov_seconds", 5); w.s.set("timers", []); w.s.set("ov_designs", {})
+ok(G15.load_backup(pack) and w.s.get("ov_seconds") == 11 and w.s.get("timers") and "Restored" in G15.backup_note.text(), "a backup restores them")
+evil = os.path.join(os.environ["APPDATA"], "evil.json")
+json.dump({"chatdoomBackup": 1, "settings": {"cloud_url": "https://evil.example", "update_repo": "evil/app", "yt_bot_url": "https://evil.example", "cloud_token": "x", "ov_seconds": "bad", "nothing": 1, "ov_port": 9000}}, open(evil, "w"))
+before = (w.s.get("cloud_url"), w.s.get("update_repo"), w.s.get("yt_bot_url"), w.s.get("ov_seconds"))
+G15.load_backup(evil)
+ok((w.s.get("cloud_url"), w.s.get("update_repo"), w.s.get("yt_bot_url"), w.s.get("ov_seconds")) == before and w.s.get("cloud_token") == "SECRET-TOKEN" and w.s.get("nothing") is None, "a backup can never change servers, sign-ins or wrong-type values")
+w.s.set("ov_port", 8795)
+ok(not G15.load_backup(junk) and "not a CHATDOOM" in G15.backup_note.text(), "other files are refused")
+G15.reset_btn.click(); ok(G15.reset_btn.text() == "Click again to reset" and w.s.get("ov_seconds") == 11, "the first click only asks")
+keep_port = w.s.get("ov_port"); G15.reset_btn.click()
+ok(w.s.get("ov_seconds") == 8 and w.s.get("cloud_token") == "SECRET-TOKEN" and w.s.get("yt_bot_token") == "BOT-TOKEN" and not w.s.get("ov_designs"), "reset clears settings but keeps sign-ins")
+w.s.set("ov_port", keep_port); w.s.set("cloud_token", ""); w.s.set("webhook_url", ""); w.s.set("yt_bot_token", ""); G15.restart_row.hide()
+two = settings_module.Settings(os.path.join(os.environ["APPDATA"], "many.json")); two.update({"ov_seconds": 13, "theme": "Ocean"})
+three = settings_module.Settings(os.path.join(os.environ["APPDATA"], "many.json")); ok(three.get("ov_seconds") == 13 and three.get("theme") == "Ocean", "many settings save together")
+
+class FakeTray:
+    def isVisible(s): return True
+real_tray, w.tray = w.tray, FakeTray()
+from PySide6.QtGui import QCloseEvent
+ev = QCloseEvent(); w.closeEvent(ev); ok(not ev.isAccepted() and not w.isVisible(), "with the tray on, closing keeps the app running"); w.show(); wait(30)
+w.tray = real_tray
+ok("[Registry]" in open(os.path.join(here, "installer.iss"), encoding="utf-8").read() and "uninsdeletevalue" in open(os.path.join(here, "installer.iss"), encoding="utf-8").read(), "uninstalling removes the start-with-Windows entry")
+main_src = open(os.path.join(here, "main.py"), encoding="utf-8").read(); ok("QT_SCALE_FACTOR" in main_src and "start_window" in main_src, "the app uses the interface size and hidden start")
 
 w.goto(11); wait(200); w.grab().save(os.path.join(os.environ["APPDATA"], "alerts.png"))
 w.goto(0); wait(600)

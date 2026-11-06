@@ -2,11 +2,11 @@
 [Setup]
 AppId=ChatVoice
 AppName=CHATDOOM
-AppVersion=1.3.1
+AppVersion=1.3.2
 AppPublisher=ZUNIMILABS
 AppCopyright=Developed and powered by ZUNIMILABS
-AppVerName=CHATDOOM 1.3.1
-VersionInfoVersion=1.3.1.0
+AppVerName=CHATDOOM 1.3.2
+VersionInfoVersion=1.3.2.0
 VersionInfoCompany=ZUNIMILABS
 VersionInfoDescription=CHATDOOM installer
 DefaultDirName={autopf}\ChatVoice
@@ -36,6 +36,9 @@ Source: "dist\CHATDOOM\*"; DestDir: "{app}"; Flags: recursesubdirs ignoreversion
 Type: files; Name: "{app}\ChatVoice.exe"
 ; Files from the previous version must not mix with the new ones. Settings are safe: they live in %APPDATA%\ChatVoice.
 Type: filesandordirs; Name: "{app}\_internal"
+
+[Registry]
+Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueName: "CHATDOOM"; Flags: dontcreatekey uninsdeletevalue
 
 [Icons]
 Name: "{autoprograms}\CHATDOOM"; Filename: "{app}\CHATDOOM.exe"

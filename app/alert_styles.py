@@ -5,6 +5,8 @@ import os
 import re
 import urllib.parse
 
+from . import style_fields
+
 LOOKS = (("Neon energy", "neon"), ("Cherry blossom", "sakura"), ("Brush / ink", "brush"), ("Sharp frame", "frame"),
          ("Frosted glass", "glass"), ("Comic pop", "comic"), ("Cyber grid", "cyber"), ("Clean minimal", "minimal"),
          ("Arcade pixels", "arcade"), ("Royal gold", "royal"), ("Ribbon banner", "ribbon"), ("Paper note", "paper"),
@@ -39,7 +41,7 @@ TYPE_KEYS = tuple(v for _, v in ALERT_TYPES)
 
 DEFAULT = {"look": "neon", "enter": "pop", "exit": "out", "idle": "float", "text": "none", "effect": "sparkles", "font": "Poppins",
            "size": 100, "position": "top-center", "layout": "above", "useColors": False, "c1": "#8b5cf6", "c2": "#22d3ee", "c3": "#f472b6",
-           "template": "", "image": "", "sound": "", "seconds": 0}
+           "template": "", "image": "", "sound": "", "seconds": 0, **style_fields.defaults_for("alert")}
 CHOICES = {"look": LOOKS, "enter": ENTERS, "exit": EXITS, "idle": IDLES, "text": TEXT_FX, "effect": EFFECTS, "font": FONTS,
            "position": POSITIONS, "layout": LAYOUTS}
 
@@ -95,7 +97,7 @@ def clean(raw, base=None):
     for key, limit in (("template", 160), ("image", 220), ("sound", 220)):
         if key in raw:
             out[key] = str(raw.get(key) or "")[:limit]
-    return out
+    return style_fields.clean_fields(raw, out, "alert")
 
 
 def main_design(settings):

@@ -8,6 +8,8 @@ from PySide6.QtGui import QColor
 from PySide6.QtWidgets import QCheckBox, QColorDialog, QComboBox, QGridLayout, QLabel, QPushButton, QSlider, QSpinBox, QWidget
 
 from . import overlay_styles as styles
+from . import style_fields
+from .design_tools import DesignTools
 from .ui_kit import SubPage, field_row, hrow, section_card
 
 
@@ -18,7 +20,7 @@ def _combo(options):
     return box
 
 
-class OverlayDesignPage(SubPage):
+class OverlayDesignPage(DesignTools, SubPage):
     def __init__(self, settings, overlay):
         super().__init__()
         self.s, self.overlay = settings, overlay
@@ -127,6 +129,7 @@ class OverlayDesignPage(SubPage):
         cl.addWidget(field_row("Polls, predictions, giveaway and queue", "", self._choice("panelSide")))
         self.only.append((("widgets",), c))
         lay.addWidget(c)
+        self.add_design_tools(style_fields.OVERLAYS)
         self.finish()
         self.load()
 
@@ -165,6 +168,13 @@ class OverlayDesignPage(SubPage):
     def design(self):
         return styles.design_for(self.s, self.kind)
 
+    def tool_kind(self):
+        return self.kind
+
+    def reset_design(self):
+        styles.reset_design(self.s, self.kind)
+        self.load()
+
     def _set(self, key, value):
         if not self._loading:
             self._apply({key: value})
@@ -202,6 +212,7 @@ class OverlayDesignPage(SubPage):
             widget.setVisible(self.kind in kinds)
         self.text_row.setVisible(self.kind != "widgets")
         self.test.setVisible(self.kind != "widgets")
+        self.load_design_tools(d)
         self._loading = False
         self.show_preview()
 

@@ -7,7 +7,7 @@ from PySide6.QtCore import QTimer
 from PySide6.QtGui import QFontDatabase, QIcon, QImage
 from PySide6.QtWidgets import QApplication, QMessageBox
 
-from app.settings import data_dir
+from app.settings import Settings, data_dir
 from app.version import PRODUCT_NAME, VERSION
 
 
@@ -53,6 +53,9 @@ def selftest(win):
 def main():
     sys.excepthook = lambda exc, value, tb: log_crash("error", exc, value, tb)
     lower_priority()
+    scale = int(Settings().get("ui_scale") or 100)
+    if scale != 100:                              # must be set before the app starts
+        os.environ["QT_SCALE_FACTOR"] = str(scale / 100)
     app = QApplication(sys.argv)
     app.setApplicationName(PRODUCT_NAME)
     app.setStyle("Fusion")
@@ -66,7 +69,7 @@ def main():
         app.setWindowIcon(QIcon(icon))
     from app.ui import MainWindow          # after the crash log is ready, so a failed import is written down too
     win = MainWindow()
-    win.show()
+    win.start_window("--autostart" in sys.argv and "--selftest" not in sys.argv)
     if "--selftest" in sys.argv:
         QTimer.singleShot(2500, lambda: selftest(win))
     sys.exit(app.exec())

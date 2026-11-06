@@ -100,6 +100,47 @@ function make(file, cfg) {
   t.music({ title: "x", artist: "", playing: false }); await sleep(150);
   ok(!mb.classList.contains("on") && mb.classList.contains("out"), "now playing leaves with its exit animation");
   t.dom.window.close();
+  // ---- detail options ----
+  t = make(require("path").join(__dirname, "out", "chat.html"), { chatSeconds: 5, maxLines: 8, colors: {}, designs: { chat: {
+    skin: "glass", useBg: true, bgColor: "#102030", bgOpacity: 50, borderWidth: 3, borderColor: "red;}body{display:none", radius: 12, shadow: "glow", shadowColor: "#00ff00", weight: "800", textCase: "uppercase",
+    textShadow: "outline", speed: 200, offsetX: 20, offsetY: -10, tilt: 4, tagStyle: "short", nameEnd: "colon", showTime: true, lineGap: 11, nameSize: 150, stacked: true, useMsgColour: true, msgColour: "#abcdef",
+    usePlatformColours: true, twitchColour: "#111111", highlightMods: true, modColour: "#00ff00", highlightWord: "boss", wordColour: "#ff0000", hideLinks: true, hideUsers: "Nightbot, spammer", maxChars: 10, css: ".m{letter-spacing:1px}" } } });
+  const dd = t.dom.window.document; await sleep(120);
+  t.push({ platform: "twitch", name: "ana", text: "hello there everyone", mod: true });
+  t.push({ platform: "twitch", name: "bo", text: "hey Boss" });
+  t.push({ platform: "twitch", name: "NIGHTBOT", text: "bot line" });
+  t.push({ platform: "twitch", name: "cy", text: "go to evil.com now" });
+  await sleep(200);
+  const rows = dd.querySelectorAll("#chatbox .m"), sheet = dd.getElementById("css-chat").textContent;
+  ok(rows.length === 2 && rows[0].querySelector(".tag").textContent === "TW" && rows[0].querySelector("b").textContent === "ana:" && rows[0].querySelector(".tm"), "tag style, name ending and time work, and hidden viewers and links stay out");
+  ok(rows[0].querySelector(".tx").textContent === "hello ther\u2026" && rows[0].querySelector(".tag").style.background.includes("17, 17, 17"), "long messages are cut and platform colours apply");
+  ok(rows[0].style.outline.includes("rgb(0, 255, 0)") || rows[0].style.outline.includes("#00ff00"), "moderators are highlighted");
+  ok(rows[1].style.outline.includes("rgb(255, 0, 0)") || rows[1].style.outline.includes("#ff0000"), "lines with the word are highlighted");
+  ok(sheet.includes("rgba(16,32,48,0.5)") && sheet.includes("border-radius:12px") && sheet.includes("0 0 22px #00ff00") && sheet.includes("font-weight:800") && sheet.includes("text-transform:uppercase") && sheet.includes("translate:20px -10px") && sheet.includes("rotate:4deg") && sheet.includes("gap:11px") && sheet.includes(".m{letter-spacing:1px}"), "box, text, motion and custom CSS options all become rules");
+  ok(!sheet.includes("body{display:none") && sheet.includes("#22d3ee"), "a bad colour cannot add its own CSS");
+  t.dom.window.close();
+  t = make(require("path").join(__dirname, "out", "widgets.html"), { colors: {}, designs: { widgets: { showPoll: false, showGiveaway: false, showCounters: true, showGoals: true, showLatest: false, panelWidth: 600, barStyle: "stripes", barHeight: 20, barRadius: 2, goalText: "percent", countersRow: true, counterOrder: "label", queueNames: 2, groupGap: 30 } } });
+  const dw = t.dom.window.document; await sleep(120);
+  t.music({ counters: [{ label: "Wins", value: 1 }], poll: { question: "Hidden?", active: true, total: 1, endsIn: 9, result: "", options: [{ text: "A", votes: 1 }, { text: "B", votes: 0 }] }, giveaway: { keyword: "join", open: true, entries: 1, winner: "" },
+            goals: [{ title: "Subs", value: 32, target: 50 }], latest: [{ label: "Latest tip", value: "x" }], queue: { open: true, count: 4, names: ["a", "b", "c", "d"] } });
+  await sleep(150);
+  const wsheet = dw.getElementById("css-widgets").textContent;
+  ok(dw.getElementById("pollbox").hidden && dw.getElementById("givebox").hidden && !dw.querySelector(".late") && dw.querySelector(".counter"), "each widget can be switched off");
+  ok(dw.querySelector(".goal .gl").textContent.includes("64%") && dw.querySelectorAll("#queuebox .opt").length === 2, "goal numbers and the queue length follow the design");
+  ok(wsheet.includes("min(600px,92vw)") && wsheet.includes("repeating-linear-gradient") && wsheet.includes("height:20px") && wsheet.includes("flex-direction:row") && wsheet.includes("row-reverse"), "panel size, bar style and counter layout are applied");
+  t.dom.window.close();
+  t = make(require("path").join(__dirname, "out", "music.html"), { colors: {}, designs: { music: { prefix: "<b>Now playing</b>", maxWidth: 800, titleSize: 150, marquee: true, eqBars: 7, autoHide: 1 } } });
+  const dn = t.dom.window.document, nb = dn.getElementById("musicbox"); await sleep(120);
+  t.music({ title: "Song", artist: "A", playing: true }); await sleep(150);
+  ok(nb.querySelector(".mp").textContent === "<b>Now playing</b>" && nb.querySelectorAll(".eq i").length === 7 && nb.querySelector(".mt").classList.contains("marq") && nb.classList.contains("on"), "label, bars and scrolling title work");
+  await sleep(1100); ok(!nb.classList.contains("on"), "now playing can hide itself after a while");
+  t.dom.window.close();
+  t = make(require("path").join(__dirname, "out", "meme.html"), { memeSeconds: 3, colors: {}, designs: { meme: { captionAt: "above", pictureRadius: 40, pictureGlow: false, captionSize: 150 } } });
+  const dq = t.dom.window.document; await sleep(120);
+  t.push({ name: "m", user: "U", image: "/memes/a.gif", caption: "Top" }); await sleep(150);
+  const qs = dq.getElementById("css-meme").textContent;
+  ok(dq.querySelector(".meme").firstChild.className.includes("cap") && qs.includes("border-radius:40px") && qs.includes("box-shadow:none"), "meme caption place and picture options work");
+  t.dom.window.close();
   // ---- now playing ----
   t = make(require("path").join(__dirname, "out", "music.html"), { colors: {} });
   const d4 = t.dom.window.document, box = d4.getElementById("musicbox"); await sleep(120);

@@ -444,9 +444,10 @@ class Toasts:
     def __init__(self, canvas, settings):
         self.canvas, self.s, self.items = canvas, settings, []
 
-    def show(self, text, kind="info", seconds=4.0):
+    def show(self, text, kind="info", seconds=None):
         if not self.s.get("toasts"):
             return None
+        seconds = float(self.s.get("toast_seconds") or 4) if seconds is None else seconds
         box = QFrame(self.canvas)
         box.setObjectName("toast")
         box.setProperty("kind", kind)

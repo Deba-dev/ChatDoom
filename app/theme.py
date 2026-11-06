@@ -111,7 +111,7 @@ QPushButton#subArrow { background: rgba($c1,0.22); border: none; border-radius: 
 QPushButton#subArrow:hover { background: rgba($c1,0.45); }
 QPushButton#subTab { background: transparent; border: none; border-radius: 10px; padding: 7px 14px; color: $text; font-weight: 500; }
 QPushButton#subTab:hover { background: rgba($c1,0.20); color: #ffffff; }
-QPushButton#subTab:checked { background: rgba($c1,0.42); color: #ffffff; font-weight: 600; }
+QPushButton#subTab:checked { background: rgba($c1,0.42); color: #ffffff; }
 QPushButton#quiet { background: rgba(0,0,0,0.25); border: 1px solid rgba($c1,0.42); }
 QPushButton#quiet:hover { background: rgba($c1,0.22); border: 1px solid rgba($c1,0.80); }
 QPushButton#quiet:checked { background: rgba(255,255,255,0.10); border: 1px solid $a1; color: #ffffff; }

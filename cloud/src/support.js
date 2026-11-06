@@ -23,7 +23,7 @@ CHATDOOM BASICS
 - Windows desktop app. Download from zunimilabs.online/chatdoom. It works with YouTube, Twitch and Kick only. It reads chat and does not stream video. Android and iPhone versions are coming later, with no date yet.
 - Reads YouTube, Twitch and Kick live chat aloud in Hindi, Hinglish and English, with moderation, commands, stream tools, Discord tools, payment alerts, OBS overlays and music.
 - Windows may show "Windows protected your PC" because the app is not code-signed: click More info, then Run anyway. Some antivirus programs wrongly flag it.
-- Updates: a banner appears when a new version is out, or press Check for updates in the sidebar. Settings are kept.
+- Updates: a banner appears when a new version is out, or press Check for updates on the Settings page. Settings are kept.
 - Settings are stored in %APPDATA%\\ChatVoice.
 
 CHATDOOM CONNECT
@@ -35,7 +35,7 @@ CHATDOOM CONNECT
 CHATDOOM VOICE AND LOOK
 - The Voice page sets voices, speed, volume, translation and all-chat or paid-only reading. Neural voices need internet; without it the app uses Windows voices.
 - The Moderation page chooses what is read aloud: link, command, bot and repeat filters, plus blocked words.
-- The sidebar has themes, backgrounds and Lite mode. Lite mode turns off motion for slow PCs or gaming. Press Customize look in the sidebar for a colour picker and built-in pictures, or press Use my own picture there.
+- The Settings page has themes, backgrounds and Lite mode. Lite mode turns off motion for slow PCs or gaming. Press Customize colours and pictures there for a colour picker and built-in pictures, or press Use my own picture there.
 
 CHATDOOM COMMANDS AND TOOLS
 - The Commands page makes !commands and memes with sounds, pictures and speech.
@@ -43,6 +43,8 @@ CHATDOOM COMMANDS AND TOOLS
 - Loyalty points (!points, !gamble, !top) are on the Loyalty page, and polls (!vote), giveaways (!join) and counters are on the Engage page. The Stream tools page has welcome messages, timers, song requests (!sr), hotkeys and a stream summary.
 - The Alerts page designs on-screen alerts with a live preview: looks, animations, particles, fonts, ready-made packs, wording, pictures, sounds and position. Each alert type can have its own design. Fonts other than Poppins need internet in OBS.
 - The Overlay styles page does the same for chat, now playing, memes and widgets: style packs, skins, animations, fonts, colours and layout, with a live preview. Use this style everywhere gives all overlays and alerts one look.
+- Both design pages also have Box, Custom CSS and My styles tabs: background, border, shadow, text detail, position, your own CSS, and saved styles you can export, import or reset.
+- The Settings page, at the bottom of the sidebar, has theme and background, interface size, start with Windows, keep running in the tray, always on top, notifications, updates, backup and restore, the overlay port, reset and About. Backups never include sign-ins, private links or viewer points.
 - The Loyalty page has points, levels (!level) and a points shop (!shop, !buy). The streamer delivers shop rewards themselves.
 - The Engage page has polls, predictions (!bet 1 100), giveaways, a viewer queue (!queue, !place, !leave, and !next for moderators), counters and goals.
 - The Stream tools page also has paid read-aloud (!say). !uptime shows how long the stream has been live.

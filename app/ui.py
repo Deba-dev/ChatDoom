@@ -7,11 +7,11 @@ import urllib.parse
 
 from PySide6.QtCore import Property, QEasingCurve, QEvent, QParallelAnimationGroup, QPoint, QPropertyAnimation, QSize, Qt, QTimer, QUrl, QVariantAnimation
 from PySide6.QtGui import QColor, QDesktopServices, QFont, QFontDatabase, QIcon, QPainter, QPalette, QPen, QPixmap, QTextBlockFormat, QTextCursor, QTextOption
-from PySide6.QtWidgets import (QApplication, QButtonGroup, QCheckBox, QColorDialog, QComboBox, QDialog, QDialogButtonBox, QFrame, QGraphicsDropShadowEffect, QGraphicsOpacityEffect, QGridLayout, QHBoxLayout, QMenu,
+from PySide6.QtWidgets import (QMenu, QMessageBox, QSystemTrayIcon, QApplication, QButtonGroup, QCheckBox, QColorDialog, QComboBox, QDialog, QDialogButtonBox, QFrame, QGraphicsDropShadowEffect, QGraphicsOpacityEffect, QGridLayout, QHBoxLayout, QMenu,
                                QLabel, QLineEdit, QPlainTextEdit, QPushButton, QScrollArea, QSlider, QSpinBox, QStackedWidget,
                                QTextEdit, QVBoxLayout, QWidget)
 
-from . import alert_styles, hinglish, overlay_styles
+from . import alert_styles, hinglish, overlay_styles, system
 from .commands import PLATFORM_NAMES, Commands
 from .commands_page import CommandsPage
 from .discord import Bridge, Cloud, LinkManager, post_webhook, run_bg
@@ -39,17 +39,18 @@ from .theme import CUSTOM_THEME, DEFAULT_THEME, FX, THEMES, build_qss, set_custo
 from .tools import Tools
 from .alerts_page import AlertsPage
 from .overlay_design_page import OverlayDesignPage
+from .settings_page import SettingsPage
 from .tools_page import ToolsPage
 from .ui_kit import SubPage, platform_mark, section_card
 from .visuals import BACKGROUNDS, Backdrop, CardGlow, HeroCard, Motion, NavIndicator, StatCard, Toasts, count_to, stagger_in
 from .updater import Updater
-from .version import CREATOR, PRODUCT_NAME, VERSION, label
+from .version import PRODUCT_NAME, VERSION, label
 
 COLORS = {"youtube": "#ff4d4d", "twitch": "#9146ff", "kick": "#53fc18", "test": "#00d4ff", "tip": "#ffd24d"}
 TAGS = {"youtube": "YT", "twitch": "TW", "kick": "KICK", "test": "TEST", "tip": "TIP"}
 PAGES = ("Connect", "Live chat", "Voice", "Moderation", "Discord", "Payments", "YouTube mod", "OBS overlays", "Music", "Commands", "Stream tools",
-         "Alerts", "Loyalty", "Engage", "Overlay styles")
-NAV_MARK = ("◎", "☰", "♫", "⌗", "◈", "₹", "▶", "▣", "♪", "!", "≡", "◉", "$", "?", "◧")
+         "Alerts", "Loyalty", "Engage", "Overlay styles", "Settings")
+NAV_MARK = ("◎", "☰", "♫", "⌗", "◈", "₹", "▶", "▣", "♪", "!", "≡", "◉", "$", "?", "◧", "⚙")
 STREAM_END_GRACE = 180000          # ms with no stream connected before the stream counts as over (reconnects are not an end)
 MAX_EXTRA_STREAMS = 8
 PAGE_BLURB = (
@@ -68,6 +69,7 @@ PAGE_BLURB = (
     "Points, levels and a shop that keep viewers coming back.",
     "Polls, predictions, giveaways, the viewer queue, counters and goals.",
     "Style packs, skins, animations and fonts for chat, now playing, memes and widgets.",
+    "How CHATDOOM looks, starts, behaves and updates, plus backups.",
 )
 MARKS = {"youtube": ("YT", "#ff4d4d"), "twitch": ("TW", "#9146ff"), "kick": ("KK", "#53fc18")}
 CHAT_FONTS = ("Poppins", "Arial", "Segoe UI", "Calibri", "Verdana", "Tahoma", "Consolas", "Cascadia Mono", "Inter", "Roboto", "DM Sans", "Space Grotesk", "JetBrains Mono")
@@ -633,6 +635,8 @@ class MainWindow(QWidget):
         self._hotkeys_applied = False
         self.updater = Updater(self.s)
         self.pending_update = None
+        self._quitting = False
+        self.tray = None
 
         root = QHBoxLayout(self)
         root.setContentsMargins(0, 0, 0, 0)
@@ -642,6 +646,8 @@ class MainWindow(QWidget):
         canvas.setObjectName("canvas")
         self.canvas = canvas
         self.toasts = Toasts(canvas, self.s)
+        self.settingspage = SettingsPage(self.s, self, [(i, PAGES[i]) for i in (0, 1, 11, 14, 7, 9, 12, 13, 10, 2, 8, 3, 6, 4, 5)])
+        self.theme_combo, self.backdrop_combo = self.settingspage.theme, self.settingspage.backdrop
         right = QVBoxLayout(canvas)
         right.setContentsMargins(28, 18, 28, 18)
         right.setSpacing(14)
@@ -659,7 +665,7 @@ class MainWindow(QWidget):
         right.addWidget(self.statbar)
         self.stack = QStackedWidget()
         for page in (self._page_connect(), self._page_feed(), self._page_voice(), self._page_mod(), self.discord, self.payments, self.ytpage, self.ovpage, self.musicpage, self.cmdpage, self.toolspage,
-                     self.alertspage, self.toolspage.loyalty, self.toolspage.engage, self.stylespage):
+                     self.alertspage, self.toolspage.loyalty, self.toolspage.engage, self.stylespage, self.settingspage):
             self.stack.addWidget(page)
         right.addWidget(self.stack, 1)
         root.addWidget(canvas, 1)
@@ -706,12 +712,18 @@ class MainWindow(QWidget):
         self.updater.status.connect(self._update_status)
         self.updater.message.connect(lambda t: self.feed.append("<span style='color:#7cf0c0'>Update: %s</span>" % esc(t)))
         self.updater.progress.connect(self.banner_text.setText)
-        self.updater.quit_now.connect(lambda: QTimer.singleShot(400, QApplication.quit))
+        self.updater.quit_now.connect(lambda: QTimer.singleShot(400, self.quit_app))
         QTimer.singleShot(3000, self.updater.after_start)
         QTimer.singleShot(6000, self._auto_update)
         self.apply_theme(self.s.get("theme"))
-        self.goto(0)
+        self.goto(self._first_page())
         self.tools_changed()
+        self.set_always_on_top(bool(self.s.get("always_on_top")), show=False)
+        self.sync_tray()
+        if self.s.get("start_muted"):
+            self.mute_btn.setChecked(True)
+        if self.s.get("auto_connect"):
+            QTimer.singleShot(1200, self._connect_saved)
 
     # ---------- layout ----------
     def _build_sidebar(self):
@@ -727,7 +739,7 @@ class MainWindow(QWidget):
         self.logo.setContentsMargins(4, 0, 4, 4)
         logo = QPixmap(os.path.join(ROOT, "assets", "chatdoom-logo.png"))
         if not logo.isNull():
-            self.logo.setPixmap(logo.scaled(84, 84, Qt.KeepAspectRatio, Qt.SmoothTransformation))
+            self.logo.setPixmap(logo.scaled(76, 76, Qt.KeepAspectRatio, Qt.SmoothTransformation))
         else:
             self.logo.setText(PRODUCT_NAME)
         lay.addWidget(self.logo)
@@ -737,7 +749,7 @@ class MainWindow(QWidget):
         navlay.setSpacing(0)
         self.nav = QButtonGroup(self)
         self.nav.setExclusive(True)
-        groups = (("Stream", (0, 1, 11, 14, 7)), ("Community", (9, 12, 13, 10)), ("Sound", (2, 8)), ("Safety and links", (3, 6, 4, 5)))
+        groups = (("Stream", (0, 1, 11, 14, 7)), ("Community", (9, 12, 13, 10)), ("Sound", (2, 8)), ("Safety and links", (3, 6, 4, 5)), ("App", (15,)))
         for title, indexes in groups:
             g = QLabel(title.upper())
             g.setObjectName("group")
@@ -761,70 +773,11 @@ class MainWindow(QWidget):
         self.nav_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)    # on a short window, a visible bar shows there is more
         self.nav_scroll.setWidget(navbox)
         lay.addWidget(self.nav_scroll, 1)
-        self.settings_btn = QPushButton("Settings")     # folded away so every main page fits in the sidebar
-        self.settings_btn.setObjectName("quiet")
-        self.settings_btn.setCheckable(True)
-        self.settings_btn.setCursor(Qt.PointingHandCursor)
-        toggle = QWidget()
-        tl = QVBoxLayout(toggle)
-        tl.setContentsMargins(16, 6, 16, 2)
-        tl.addWidget(self.settings_btn)
-        lay.addWidget(toggle)
-        box = QWidget()
-        bl = QVBoxLayout(box)
-        bl.setContentsMargins(16, 4, 16, 4)
-        bl.setSpacing(6)
-        box.hide()
-        self.settings_btn.toggled.connect(box.setVisible)
-        self.settings_box = box
-        theme = QComboBox()
-        theme.setObjectName("sideCombo")
-        theme.addItems(list(THEMES))
-        theme.setCurrentText(self.s.get("theme") if self.s.get("theme") in THEMES else DEFAULT_THEME)
-        theme.currentTextChanged.connect(self.apply_theme)
-        backdrop = QComboBox()
-        backdrop.setObjectName("sideCombo")
-        for text, value in BACKGROUNDS:
-            backdrop.addItem(text, value)
-        backdrop.setCurrentIndex(max(0, backdrop.findData(self.s.get("background"))))
-        backdrop.setToolTip("Background behind the pages. The aurora moves only while CHATDOOM is the active window.")
-        backdrop.currentIndexChanged.connect(lambda _: (self.s.set("background", backdrop.currentData()), self.canvas.sync()))
-        looks = QHBoxLayout()
-        looks.setSpacing(6)
-        looks.addWidget(theme, 3)
-        looks.addWidget(backdrop, 2)
-        bl.addLayout(looks)
-        self.theme_combo, self.backdrop_combo = theme, backdrop
-        customize = QPushButton("Customize look")
-        customize.setObjectName("quiet")
-        customize.setCursor(Qt.PointingHandCursor)
-        customize.clicked.connect(self._open_appearance)
-        bl.addWidget(customize)
-        lite = Switch()
-        lite.setToolTip("Turns off fade and hover motion. Use it on slow PCs or while gaming.")
-        lite.setChecked(bool(self.s.get("lite_mode")))
-        lite.toggled.connect(self._lite)
-        lite_row = QHBoxLayout()
-        lite_row.setSpacing(10)
-        lite_row.addWidget(lite)
-        lite_row.addWidget(QLabel("Lite mode"), 1)
-        bl.addLayout(lite_row)
-        upd = QPushButton("Check for updates")
-        upd.setObjectName("primary")
-        upd.setCursor(Qt.PointingHandCursor)
-        upd.clicked.connect(lambda: self.updater.check(True))
-        bl.addWidget(upd)
-        lay.addWidget(box)
         ver = QLabel(label())
         ver.setObjectName("hint")
         ver.setAlignment(Qt.AlignCenter)
         ver.setContentsMargins(12, 4, 12, 0)
-        by = QLabel("Developed by %s" % CREATOR)
-        by.setObjectName("hint")
-        by.setAlignment(Qt.AlignCenter)
-        by.setContentsMargins(12, 0, 12, 0)
         lay.addWidget(ver)
-        lay.addWidget(by)
         return side
 
     def _build_banner(self):
@@ -1010,8 +963,9 @@ class MainWindow(QWidget):
 
     def _refresh_stats(self):
         i = self.stack.currentIndex()
-        self.statbar.setVisible(i not in (0, 11, 14))    # Connect has its own cards, and the two design pages need the room for a preview
-        if i in (0, 11, 14):
+        shown = i not in (0, 11, 14, 15) and bool(self.s.get("show_stats"))   # Connect has its own cards; the design pages and Settings need the room
+        self.statbar.setVisible(shown)
+        if not shown:
             return
         try:
             for card, stat in zip(self.stat_cards, self._page_stats(i)):
@@ -1283,6 +1237,8 @@ class MainWindow(QWidget):
 
     def _push_alert(self, alert):
         self.overlay.push("alert", alert)
+        if self.s.get("flash_paid") and alert.get("category") in ("tip", "superchat", "membership", "subscription", "gift", "raid"):
+            QApplication.alert(self, 2000)
         self.tools.note_alert(alert)
         self.tools_changed()
 
@@ -1805,6 +1761,8 @@ class MainWindow(QWidget):
         self._end_anim()
         self.nav.button(i).setChecked(True)
         self.title.setText(PAGES[i])
+        if i != 15 and self.s.get("last_page") != i:
+            self.s.set("last_page", i)
         self.blurb.setText(PAGE_BLURB[i])
         page = self.stack.widget(i)
         self.stack.setCurrentIndex(i)
@@ -1818,6 +1776,8 @@ class MainWindow(QWidget):
             self.alertspage.load()
         elif page is self.stylespage:
             self.stylespage.load()
+        elif page is self.settingspage:
+            self.settingspage.refresh()
         if self.s.get("lite_mode"):
             self.title_line.setFixedWidth(72)
             return
@@ -1941,7 +1901,7 @@ class MainWindow(QWidget):
                 self._welcome(m, welcome)
             self.speaker.say(m.author, m.text, m.amount if m.kind == "super" else "")
             if m.platform != "tip":
-                self.overlay.push("chat", {"platform": m.platform, "name": m.author, "text": m.text})
+                self.overlay.push("chat", {"platform": m.platform, "name": m.author, "text": m.text, "mod": bool(m.mod)})
             if m.kind in ("super", "member"):
                 category = "membership" if m.kind == "member" else ("tip" if m.platform == "tip" else "superchat")
                 self._push_alert({"platform": m.platform, "category": category,
@@ -2322,7 +2282,66 @@ class MainWindow(QWidget):
             self.on_message(m)
         self.goto(1)
 
+    # ---------- window and app behaviour (Settings page) ----------
+    def _first_page(self):
+        wanted = int(self.s.get("start_page"))
+        wanted = int(self.s.get("last_page")) if wanted < 0 else wanted
+        return wanted if 0 <= wanted < self.stack.count() else 0
+
+    def _connect_saved(self):
+        for card in list(self.cards.values()) + list(self.extra_cards.values()):
+            if card.edit.text().strip() and not card.source.running:
+                card.toggle()
+
+    def set_always_on_top(self, on, show=True):
+        shown = self.isVisible()
+        self.setWindowFlag(Qt.WindowStaysOnTopHint, bool(on))
+        if show and shown:
+            self.show()
+
+    def sync_tray(self):
+        wanted = bool(self.s.get("close_to_tray")) and QSystemTrayIcon.isSystemTrayAvailable()
+        if wanted and self.tray is None:
+            self.tray = QSystemTrayIcon(QApplication.windowIcon() or self.windowIcon(), self)
+            self.tray.setToolTip(PRODUCT_NAME)
+            menu = QMenu(self)
+            menu.addAction("Open %s" % PRODUCT_NAME, self.show_from_tray)
+            menu.addAction("Quit", self.quit_app)
+            self.tray.setContextMenu(menu)
+            self.tray.activated.connect(lambda why: self.show_from_tray() if why == QSystemTrayIcon.Trigger else None)
+        if self.tray is not None:
+            self.tray.setVisible(wanted)
+
+    def show_from_tray(self):
+        self.show()
+        self.raise_()
+        self.activateWindow()
+
+    def start_window(self, autostart=False):
+        """Called once at launch. Only Windows' own start can begin hidden, and only if there is a tray icon to get back."""
+        if autostart and self.s.get("start_hidden") and self.tray is not None and self.tray.isVisible():
+            return
+        self.show()
+
+    def quit_app(self):
+        self._quitting = True
+        self.close()
+        QApplication.quit()
+
+    def restart_app(self):
+        system.restart()
+        self.quit_app()
+
     def closeEvent(self, e):
+        if not self._quitting and self.tray is not None and self.tray.isVisible():
+            e.ignore()
+            self.hide()
+            return
+        if not self._quitting and self.s.get("confirm_quit") and self.connected:
+            ask = QMessageBox.question(self, PRODUCT_NAME, "You are still connected. Close CHATDOOM and stop the voice and overlays?")
+            if ask != QMessageBox.Yes:
+                e.ignore()
+                return
         self.links.save()
         if self.tools.prediction.active:              # nobody loses points because the app was closed
             self.tools.settle_prediction(self.tools.prediction.refund()[0])

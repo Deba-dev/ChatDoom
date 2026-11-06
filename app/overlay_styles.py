@@ -2,6 +2,7 @@
 plus one set of skins, so all overlays can match. Every skin has a CSS rule in overlay_html.py."""
 import re
 
+from . import style_fields
 from .alert_styles import ENTERS, EXITS, FONTS, IDLES, LOOKS, PACKS, TEXT_FX, EFFECTS
 
 KINDS = (("Chat", "chat"), ("Now playing", "music"), ("Memes", "meme"), ("Widgets", "widgets"))
@@ -26,6 +27,8 @@ DEFAULTS = {
     "meme": dict(COMMON, exit="out", effect="none", position="mid-center", picture=100, showCaption=True, showWho=True),
     "widgets": dict(COMMON, countersAt="top-left", panelSide="right", goalsAt="bottom-left", latestAt="bottom-right"),
 }
+for _kind, _design in DEFAULTS.items():
+    _design.update(style_fields.defaults_for(_kind))
 CHOICES = {"skin": SKINS, "enter": ENTERS_ALL, "exit": EXITS, "idle": IDLES, "text": TEXT_FX, "font": FONTS, "effect": EFFECTS, "align": ALIGNS,
            "edge": EDGES, "newest": NEWEST, "nameColour": NAME_COLOURS, "panelSide": SIDES, "countersAt": CORNERS, "goalsAt": CORNERS, "latestAt": CORNERS}
 POSITION_CHOICES = {"music": CORNERS, "meme": SPOTS}
@@ -66,7 +69,7 @@ def clean(kind, raw, base=None):
                 out[key] = min(high, max(low, int(raw.get(key, out[key]))))
             except (TypeError, ValueError):
                 pass
-    return out
+    return style_fields.clean_fields(raw, out, kind)
 
 
 def design_for(settings, kind):
@@ -90,6 +93,13 @@ def save_design(settings, kind, design):
     settings.set("ov_designs", saved)
     if kind == "chat" and saved[kind]["skin"] in ("glass", "compact", "panel", "sakura"):
         settings.set("ov_chat_style", saved[kind]["skin"])
+
+
+def reset_design(settings, kind):
+    saved = settings.get("ov_designs")
+    saved = dict(saved) if isinstance(saved, dict) else {}
+    saved.pop(kind, None)
+    settings.set("ov_designs", saved)
 
 
 def pack_for(kind, values):

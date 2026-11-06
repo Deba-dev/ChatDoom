@@ -10,6 +10,7 @@ from PySide6.QtWidgets import (QCheckBox, QColorDialog, QComboBox, QFileDialog, 
 
 from . import alert_styles as styles
 from .commands import MEME_IMAGES, import_file
+from .design_tools import DesignTools
 from .music import scan
 from .settings import data_dir
 from .theme import DEFAULT_THEME, THEMES
@@ -26,7 +27,7 @@ def _combo(options):
     return box
 
 
-class AlertsPage(SubPage):
+class AlertsPage(DesignTools, SubPage):
     def __init__(self, settings, overlay):
         super().__init__()
         self.s, self.overlay = settings, overlay
@@ -165,6 +166,7 @@ class AlertsPage(SubPage):
             cl.addWidget(option_switch_row(title, note, bind_switch(self.s, key, accent)))
         lay.addWidget(c)
         lay.addWidget(info_box("Add <b>/alert</b> to OBS as a Browser source. Its address is on the OBS overlays page.", "Show it on stream"))
+        self.add_design_tools(("alert",))
         self.finish()
         self.reload_sounds()
         self.load()
@@ -178,6 +180,19 @@ class AlertsPage(SubPage):
 
     def design(self):
         return styles.design_for(self.s, self.kind) if self.kind else styles.main_design(self.s)
+
+    def tool_kind(self):
+        return "alert"
+
+    def reset_design(self):
+        if self.kind:
+            custom = styles.custom_designs(self.s)
+            custom.pop(self.kind, None)
+            self.s.set("ov_alert_custom", custom)
+        else:
+            self.s.set("ov_alert_design", {})
+            self.s.set("ov_alert_style", "neon")
+        self.load()
 
     def _has_own(self):
         return self.kind in styles.custom_designs(self.s)
@@ -240,6 +255,7 @@ class AlertsPage(SubPage):
             b.setStyleSheet("background:%s;border-radius:8px;" % d[key])
         self.image_label.setText(os.path.basename(d["image"]) or "No picture")
         self.sound.setCurrentIndex(max(0, self.sound.findData(d["sound"])))
+        self.load_design_tools(d)
         self._loading = False
         self.show_preview()
 

@@ -44,6 +44,7 @@ def nav_icon(index):
         _nav_loyalty,
         _nav_engage,
         _nav_styles,
+        _nav_settings,
     )
     if 0 <= index < len(drawers):
         return _pix(drawers[index])
@@ -268,6 +269,12 @@ def _nav_loyalty(p):
     p.drawLine(8, 5, 8, 11)
     p.drawLine(6, 7, 10, 7)
     p.drawLine(6, 9, 10, 9)
+
+
+def _nav_settings(p):
+    p.drawEllipse(5, 5, 6, 6)
+    for x1, y1, x2, y2 in ((8, 1, 8, 4), (8, 12, 8, 15), (1, 8, 4, 8), (12, 8, 15, 8), (3, 3, 5, 5), (11, 11, 13, 13), (13, 3, 11, 5), (5, 11, 3, 13)):
+        p.drawLine(x1, y1, x2, y2)
 
 
 def _nav_styles(p):
