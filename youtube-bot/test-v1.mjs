@@ -161,7 +161,7 @@ test("timeouts send a temporary ban; a missing moderator role gives a clear mess
     let r = await h.call("POST", "/v1/moderate", { videoId: VID, items: [{ action: "timeout", channelId: VIEWER, author: "Troll", seconds: 99999 }] }, token);
     assert.equal(y.bans.length, 1);
     const b = y.bans[0].snippet;
-    assert.deepEqual([b.type, b.banDurationSeconds, b.bannedUserInfo.channelId, b.liveChatId], ["temporary", 3600, VIEWER, "CHAT1"], "length is capped at one hour");
+    assert.deepEqual([b.type, b.banDurationSeconds, b.bannedUserDetails.channelId, b.liveChatId], ["temporary", 3600, VIEWER, "CHAT1"], "length is capped at one hour");
     y.deleteStatus = 403;
     h.advance(2000);
     y.say(VIEWER, "bad www.x.com");

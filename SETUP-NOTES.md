@@ -1,3 +1,10 @@
+# V1.4.0 release steps (2026-11-06)
+1. Kick developer portal: tick the new scopes on the app BEFORE deploying: channel:read, moderation:ban, moderation:chat_message:manage.
+   Without them Kick sign-in fails, because the cloud now asks for them.
+2. In cloud/: npx wrangler deploy
+3. Release the app (V1.4.0). Streamers sign out and in again on Twitch and Kick for moderation and go-live detection. YouTube needs no new sign-in.
+Test on a real stream: Shorts or Long detection, owner actions on all three platforms, Kick emote pictures.
+
 # CHATDOOM setup notes
 
 Notes from the 2026-11-02 session: hosting, YouTube login, the bot account, the VPS, and what is still open.

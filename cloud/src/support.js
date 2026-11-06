@@ -29,6 +29,12 @@ CHATDOOM BASICS
 CHATDOOM CONNECT
 - On the Connect page paste a YouTube live link or video ID, or a Twitch or Kick channel name, then press Connect. Reading chat needs no login.
 - Add stream reads more chats at once, such as a second YouTube stream or another Twitch or Kick channel.
+- After Login on a platform card, the app finds your live streams by itself and connects them, including a second YouTube stream. Streams found this way show your account name, and on YouTube Long or Shorts. YouTube does not say which is which, so the app guesses, and a list on the card corrects it. The Add stream links still work and show short tags like YT2.
+- On the Live chat page, click a message for Reply, Remove message, Time out, Ban (Hide user from channel on YouTube), Undo, Translate this message, Stop reading this viewer, Choose a voice for this viewer and Viewer details. Owner actions need Login and work on your own channel. YouTube has no reply for apps, so Reply starts the message with @name. Pinning a message and YouTube slow mode are not available to apps. Twitch slow, follower, subscriber and emote modes, announcements and Clear chat are under Chat controls.
+- The Live chat page can filter by stream, kind of message and search, and show the time. Options has Words to highlight and Save chat to a file.
+- The Voice page has over 300 neural voices in many languages, with Play to hear one. It sets voices by role, platform and viewer, speed, pitch, styles, your own wording, an output device, and whether emoji are read aloud or skipped.
+- Translation: turn it on or off with the Translate button on the Live chat page or on the Voice page under Translate, and tick the languages there. Russian, Korean, Chinese and Japanese are ticked at first. It needs the Discord cloud connection, and all users share a daily limit.
+- The Alerts page has a Sounds tab with built-in sounds, a Play button, volume, a sound for each alert type and sound packs.
 - Login on a platform card lets the app post in that chat. YouTube and Twitch login also allow polls from the app. Kick has no polls for apps. Twitch login adds follower, subscription, gift and raid alerts.
 - If Kick says "Kick blocked the lookup": open https://kick.com/api/v2/channels/YOURNAME in a browser, find "chatroom":{"id":NUMBER and paste that number into the chatroom ID box on the Kick card.
 

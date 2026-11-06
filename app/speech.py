@@ -1,6 +1,7 @@
 """Speech queue: neural voices (edge-tts, online) with Windows voices (offline) as fallback."""
 import asyncio
 import os
+import re
 import tempfile
 import threading
 import time
@@ -8,24 +9,35 @@ import zlib
 from collections import deque
 
 from PySide6.QtCore import QLocale, QObject, QTimer, QUrl, Signal
-from PySide6.QtMultimedia import QAudioOutput, QMediaPlayer
+from PySide6.QtMultimedia import QAudioOutput, QMediaDevices, QMediaPlayer
 
-from . import hinglish
-from .translation import translate_to_english
+from . import hinglish, voices
+from .translation import script_language, translate_to_english
 
 try:
     from PySide6.QtTextToSpeech import QTextToSpeech
 except Exception:  # offline voices unavailable
     QTextToSpeech = None
 
-VOICES = [
-    ("Hindi female - Swara", "hi-IN-SwaraNeural"),
-    ("Hindi male - Madhur", "hi-IN-MadhurNeural"),
-    ("Indian English female - Neerja", "en-IN-NeerjaNeural"),
-    ("Indian English male - Prabhat", "en-IN-PrabhatNeural"),
-]
+VOICES = list(voices.FAVOURITES)
 POOL_HI = ["hi-IN-SwaraNeural", "hi-IN-MadhurNeural"]
 POOL_ALL = [v for _, v in VOICES]
+READ_FORMAT = "{name}: {message}"
+PAID_FORMAT = "{name} sent {amount}. {message}"
+GAP_MS = 150
+LETTER_RUN = re.compile(r"(\w)\1{3,}")
+NAME_TAIL = re.compile(r"[\W_]*\d+[\W_]*$")
+
+
+def fill(template, name, message, amount=""):
+    """Plain replacing, so a stray { in the streamer's wording can never break speech."""
+    return template.replace("{name}", name).replace("{message}", message).replace("{amount}", amount).strip()
+
+
+def speakable_name(name):
+    """Rahul_1234 is read as Rahul."""
+    cleaned = NAME_TAIL.sub("", name or "").replace("_", " ").strip()
+    return cleaned or name
 
 
 class Speaker(QObject):
@@ -53,19 +65,52 @@ class Speaker(QObject):
         self.watchdog.timeout.connect(self._on_watchdog)
 
     # ----- public -----
-    def say(self, author, text, amount=""):
-        """Queue a message. Oldest are dropped when chat is faster than speech."""
-        translate = bool(self.s.get("translate_chat")) and bool((text or "").strip())
-        text = (text or "").strip()
+    def say(self, author, text, amount="", who=None):
+        """Queue a message. Oldest are dropped when chat is faster than speech. who: platform, mod, member and emotes, for choosing the voice."""
+        who = who or {}
+        text = self._tidy((text or "").strip(), who)
+        speak_translation = self.s.get("translate_speak")
+        translate = bool(self.s.get("translate_chat")) and speak_translation is not False and bool(text)
         if not translate:
             text = hinglish.normalize(text).strip()
         if not text and not amount:
             return
         if self.s.get("muted"):
             return
-        self.queue.append((author, text, amount, translate, ""))
+        self.queue.append((author, text, amount, translate, "", who))
         self._trim()
         self._pump()
+
+    def _tidy(self, text, who):
+        if self.s.get("say_emoji") == "skip":
+            text = hinglish.strip_emoji(text, who.get("emotes"))
+        else:
+            text = hinglish.squeeze_emoji(text)
+        if self.s.get("say_squeeze"):
+            text = LETTER_RUN.sub(r"\1\1\1", text)
+        return text
+
+    def preview(self, voice, text=""):
+        """Plays a voice now, in front of the queue, whichever engine is chosen."""
+        if self.s.get("muted"):
+            self.note.emit("Voice is muted. Click Unmute to hear a preview.")
+            return
+        self.queue.appendleft(("", text or voices.sample_for(voice), "", False, "", {"voice": voice}))
+        self._pump()
+
+    def windows_voices(self):
+        """Names of the voices installed in Windows, for the voice page."""
+        if QTextToSpeech is None:
+            return []
+        try:
+            engine = self.tts or QTextToSpeech(self)
+            self.tts = engine
+            if not getattr(self, "_tts_hooked", False):
+                engine.stateChanged.connect(self._on_tts_state)
+                self._tts_hooked = True
+            return [v.name() for v in engine.availableVoices()]
+        except Exception:
+            return []
 
     def announce(self, text="", sound=""):
         """Queue a command answer or meme: the sound clip first, then the line in the chat voice (no name, never translated)."""
@@ -73,9 +118,9 @@ class Speaker(QObject):
             return
         text = hinglish.normalize(text or "").strip()
         if sound:
-            self.queue.append(("", "", "", False, sound))
+            self.queue.append(("", "", "", False, sound, {}))
         if text:
-            self.queue.append(("", text, "", False, ""))
+            self.queue.append(("", text, "", False, "", {"alert": True}))
         self._trim()
         self._pump()
 
@@ -100,16 +145,36 @@ class Speaker(QObject):
         self.skip()
 
     # ----- internals -----
-    def _voice_for(self, author, spoken):
+    def _chosen_voice(self, author, who):
+        """A voice set for this viewer, then for their role, then for their platform. Empty when none applies."""
+        if who.get("voice"):
+            return who["voice"]
+        own = self.s.get("viewer_voices")
+        if isinstance(own, dict) and own.get((author or "").lower()):
+            return own[(author or "").lower()]
+        for flag, key in (("alert", "voice_alerts"), ("paid", "voice_paid"), ("member", "voice_member"), ("mod", "voice_mod")):
+            if who.get(flag) and self.s.get(key):
+                return self.s.get(key)
+        return self.s.get("voice_" + who["platform"]) if who.get("platform") else ""
+
+    def _voice_for(self, author, spoken, who=None):
+        chosen = self._chosen_voice(author, who or {})
+        if chosen:
+            return chosen
+        if self.s.get("voice_match_language"):
+            match = voices.for_language(script_language(spoken)) if script_language(spoken) not in ("", "hi") else ""
+            if match:
+                return match
         if self.s.get("per_viewer"):
-            pool = POOL_HI if hinglish.has_devanagari(spoken) else POOL_ALL
+            mine = self.s.get("voice_pool") or POOL_ALL
+            pool = (POOL_HI if hinglish.has_devanagari(spoken) else None) or mine
             return pool[zlib.crc32(author.encode("utf-8")) % len(pool)]
         return self.s.get("hi_voice") if hinglish.has_devanagari(spoken) else self.s.get("en_voice")
 
     def _pump(self):
         if self.busy or not self.queue:
             return
-        author, text, amount, translate, sound = self.queue.popleft()
+        author, text, amount, translate, sound, who = self.queue.popleft()
         self.busy = True
         self.busy_changed.emit(True)
         self.token += 1
@@ -119,20 +184,22 @@ class Speaker(QObject):
             self.current_spoken = ""
             return self._play_clip(sound)
         self.current_spoken = self._format_spoken(author, text, amount)
-        if self.s.get("engine") != "neural" and not translate:
+        if self.s.get("engine") != "neural" and not translate and not who.get("voice"):
             return self._speak_windows(self.current_spoken)
-        threading.Thread(target=self._generate, args=(self.token, author, text, amount, translate),
+        threading.Thread(target=self._generate, args=(self.token, author, text, amount, translate, who),
                          daemon=True).start()
 
     def _format_spoken(self, author, text, amount):
         text = hinglish.normalize(text).strip()
         if len(text) > self.s.get("max_len"):
             text = text[:self.s.get("max_len")] + "..."
+        name = speakable_name(author) if self.s.get("say_clean_names") else author
         if amount:
-            return "%s sent %s. %s" % (author, amount, text)
-        return ("%s: %s" % (author, text)) if self.s.get("read_name") and author else text
+            return fill(self.s.get("say_paid_format") or PAID_FORMAT, name, text, amount)
+        return fill(self.s.get("say_format") or READ_FORMAT, name, text) if self.s.get("read_name") and author else text
 
-    def _generate(self, token, author, text, amount, translate):
+    def _generate(self, token, author, text, amount, translate, who=None):
+        who = who or {}
         translated = False
         if translate:
             try:
@@ -142,15 +209,16 @@ class Speaker(QObject):
                 self.note.emit("Translation unavailable (%s). Speaking the original message." % str(error)[:100])
                 text = hinglish.normalize(text).strip()
         spoken = self._format_spoken(author, text, amount)
-        voice = self.s.get("en_voice") if translated else self._voice_for(author, spoken)
-        if self.s.get("engine") != "neural":
+        voice = self._voice_for(author, spoken, who)
+        if self.s.get("engine") != "neural" and not who.get("voice"):
             self._generated.emit(token, "", "", spoken)
             return
         path = os.path.join(tempfile.gettempdir(), "chatvoice_%d_%d.mp3" % (os.getpid(), int(time.time() * 1000)))
         try:
             import edge_tts
-            pct = int(self.s.get("rate")) * 10
-            asyncio.run(edge_tts.Communicate(spoken, voice, rate="%+d%%" % pct).save(path))
+            pct = int(self.s.get("rate") or 0) * 10
+            pitch = int(self.s.get("pitch") or 0)
+            asyncio.run(edge_tts.Communicate(spoken, voice, rate="%+d%%" % pct, pitch="%+dHz" % pitch).save(path))
             self._generated.emit(token, path, "", spoken)
         except Exception as e:
             self._generated.emit(token, "", str(e)[:80], spoken)
@@ -181,6 +249,12 @@ class Speaker(QObject):
             self.player.mediaStatusChanged.connect(self._on_status)
             self.player.errorOccurred.connect(self._on_player_error)
         self.audio.setVolume(self.s.get("volume") / 100.0)
+        wanted = self.s.get("voice_device")
+        if wanted:                                # for example a virtual cable, to keep the voice on its own OBS track
+            for device in QMediaDevices.audioOutputs():
+                if device.description() == wanted:
+                    self.audio.setDevice(device)
+                    break
 
     def _play_clip(self, path):
         """A meme sound: played as it is, and never deleted afterwards (it lives in the memes folder)."""
@@ -240,16 +314,19 @@ class Speaker(QObject):
         if self.tts is None:
             self.tts = QTextToSpeech(self)
             self.tts.stateChanged.connect(self._on_tts_state)
+            self._tts_hooked = True
         if self.tts.state() == QTextToSpeech.State.Error or not self.tts.availableVoices():
             self.note.emit("No Windows voice found - add one in Windows Settings > Speech")
             return self._finish()
         self.tts.setVolume(self.s.get("volume") / 100.0)
         self.tts.setRate(max(-1.0, min(1.0, self.s.get("rate") / 5.0)))
+        self.tts.setPitch(max(-1.0, min(1.0, int(self.s.get("pitch") or 0) / 50.0)))
         want = "hi" if hinglish.has_devanagari(spoken) else "en"
-        for v in self.tts.availableVoices():
-            if v.locale().name().lower().startswith(want):
-                self.tts.setVoice(v)
-                break
+        named = self.s.get("win_voice")
+        installed = self.tts.availableVoices()
+        for v in [x for x in installed if x.name() == named] or [x for x in installed if x.locale().name().lower().startswith(want)]:
+            self.tts.setVoice(v)
+            break
         self._tts_started = False
         self.tts.say(spoken)
 
@@ -280,4 +357,5 @@ class Speaker(QObject):
         self.watchdog.stop()
         if was:
             self.busy_changed.emit(False)
-        QTimer.singleShot(150, self._pump)
+        gap = self.s.get("say_gap_ms")
+        QTimer.singleShot(GAP_MS if gap is None else int(gap), self._pump)

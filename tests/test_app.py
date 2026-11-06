@@ -102,7 +102,7 @@ ok(not spoken and "Click Unmute" in w.feed.toPlainText(), "test voice explains w
 w.mute_btn.setChecked(False)
 ok(not w.s.get("muted") and w.mute_btn.text() == "Mute", "unmuting restores chat reading")
 w.on_message(Message("test", "Test", "speech routing works"))
-ok(spoken == [("Test", "speech routing works", "")], "an allowed incoming chat message reaches the voice queue")
+ok(spoken[0][:3] == ("Test", "speech routing works", ""), "an allowed incoming chat message reaches the voice queue")
 w.mute_btn.setChecked(True)
 w.mod.blocked = []
 profile = QWebEngineProfile()
@@ -152,7 +152,7 @@ translation_module.urllib.request.urlopen = lambda request, timeout: (
 translated_text, did_translate = translate_to_english(
     "こんにちは、配信を見ています",
     type("TranslationSettings", (), {"get": lambda self, key: {
-        "cloud_url": "https://chatvoice.example", "cloud_token": "APP_SERVER_KEY"
+        "cloud_url": "https://chatvoice.example", "cloud_token": "APP_SERVER_KEY", "translate_langs": ["ja"], "translate_others": False, "translate_target": "en"
     }[key]})())
 translation_module.urllib.request.urlopen = old_urlopen
 ok(translated_text == "Hello from the stream!" and did_translate
@@ -1306,6 +1306,267 @@ ev = QCloseEvent(); w.closeEvent(ev); ok(not ev.isAccepted() and not w.isVisible
 w.tray = real_tray
 ok("[Registry]" in open(os.path.join(here, "installer.iss"), encoding="utf-8").read() and "uninsdeletevalue" in open(os.path.join(here, "installer.iss"), encoding="utf-8").read(), "uninstalling removes the start-with-Windows entry")
 main_src = open(os.path.join(here, "main.py"), encoding="utf-8").read(); ok("QT_SCALE_FACTOR" in main_src and "start_window" in main_src, "the app uses the interface size and hidden start")
+
+# ===== P. voices, live chat, owner controls, stream detection, emoji, translation, alert sounds =====
+print("--- P. the big live chat and voice update ---")
+from types import SimpleNamespace
+from app import alert_sounds as AS, alert_styles as AST, hinglish as HG, translation as TR, voices as VC
+from app.chat_feed import ChatView, Line, allowed_emote, mentions, with_emotes
+from app.platforms import parse_kick_event, parse_twitch_line, youtube_id, youtube_text
+from app.speech import Speaker, fill, speakable_name
+from app.stream_watch import plan_youtube, stream_format
+
+# emoji: the chat shows the emoji, not its name
+chat = SimpleNamespace(message="hi :thumbs_up::hand-pink-waving:", messageEx=["hi ", {"id": "👍", "txt": ":thumbs_up:", "url": "https://yt3.ggpht.com/a"},
+                                                                               {"id": "UCkszU2WH9gy1mb0dV-11UJg/abc", "txt": ":hand-pink-waving:", "url": "https://yt3.ggpht.com/b"}])
+words, em = youtube_text(chat)
+ok(words == "hi 👍:hand-pink-waving:" and em == {":hand-pink-waving:": "https://yt3.ggpht.com/b"}, "a YouTube emoji shows as the emoji, and a picture emote keeps its picture")
+ok(youtube_text(SimpleNamespace(message="plain"))[0] == "plain", "a message with no emoji data still reads")
+tw = parse_twitch_line("@emotes=25:0-4;id=abc;user-id=9 :x!x@x PRIVMSG #c :Kappa nice")
+ok(tw.emotes == {"Kappa": "https://static-cdn.jtvnw.net/emoticons/v2/25/default/dark/1.0"} and tw.event_id == "abc", "Twitch emotes get their pictures")
+kk = parse_kick_event("App\\Events\\ChatMessageEvent", {"id": "u-1", "content": "yo [emote:37:KEKW]", "sender": {"id": 5, "username": "k"}})
+ok(kk.text == "yo KEKW" and kk.emotes == {"KEKW": "https://files.kick.com/emotes/37/fullsize"} and kk.event_id == "u-1", "Kick emotes get their pictures and messages keep their id")
+pic = type("P", (), {"size": 20, "__call__": lambda self, url: "emote:1" if url else ""})()
+shown = with_emotes("<b> Kappa Kappas :yt:", {"Kappa": "u", ":yt:": "v"}, pic)
+ok(shown.count("<img") == 2 and "&lt;b&gt;" in shown and "Kappas" in shown, "emote pictures replace whole words only and chat text stays escaped")
+ok(allowed_emote("https://yt3.ggpht.com/a") and not allowed_emote("http://yt3.ggpht.com/a") and not allowed_emote("https://evil.example/a") and not allowed_emote("https://kick.com.evil.example/a"),
+   "emote pictures only come from the platforms, over https")
+
+# reading emoji aloud
+ok("smiling face" in HG.normalize("hi 😊"), "emoji are read aloud by name")
+ok(HG.squeeze_emoji("wow 😂😂😂 nice 😂 😂") == "wow 😂 nice 😂", "a row of the same emoji is read once")
+ok(HG.strip_emoji("hi 😂 :hand-pink-waving: Kappa yo", {"Kappa": "u"}) == "hi yo", "Skip emoji removes emoji, :names: and emotes")
+
+class VS(dict):
+    def get(self, k, d=None):
+        return dict.get(self, k, d)
+
+base = {"engine": "neural", "volume": 100, "queue_max": 6, "max_len": 150, "read_name": True, "hi_voice": "hi-IN-SwaraNeural", "en_voice": "en-IN-NeerjaNeural", "rate": 0}
+sp = Speaker(VS(base, say_emoji="skip")); sp._pump = lambda: None
+sp.say("V", "😂😂"); ok(not sp.queue, "with Skip emoji, an emoji-only message stays silent")
+sp = Speaker(VS(base, say_squeeze=True)); sp._pump = lambda: None
+sp.say("V", "heyyyyyyy"); ok(sp.queue[0][1] == "heyyy", "stretched words are shortened")
+
+# voices
+ok(len(VC.BY_ID) > 300 and len(VC.languages()) > 100 and VC.languages()[0] == "Hindi (India)", "every neural voice is in the catalog, Hindi first")
+ok(all(v in VC.BY_ID for _, v in VC.FAVOURITES) and VC.for_language("ko").startswith("ko-") and not VC.for_language("xx"), "the catalog finds voices by language")
+sp = Speaker(VS(base, voice_paid="en-US-AriaNeural", voice_mod="en-GB-RyanNeural", voice_twitch="en-AU-NatashaNeural", voice_alerts="ja-JP-NanamiNeural", viewer_voices={"rahul": "ko-KR-SunHiNeural"}))
+ok(sp._voice_for("Rahul", "hi", {"paid": True}) == "ko-KR-SunHiNeural", "a viewer's own voice comes first")
+ok(sp._voice_for("A", "hi", {"paid": True, "platform": "twitch"}) == "en-US-AriaNeural", "a role voice beats the platform voice")
+ok(sp._voice_for("A", "hi", {"mod": True}) == "en-GB-RyanNeural" and sp._voice_for("A", "hi", {"platform": "twitch"}) == "en-AU-NatashaNeural" and sp._voice_for("A", "hi", {"alert": True}) == "ja-JP-NanamiNeural", "moderator, platform and alert voices work")
+ok(sp._voice_for("A", "hi", {"platform": "kick"}) == "en-IN-NeerjaNeural" and sp._voice_for("A", "नमस्ते", {}) == "hi-IN-SwaraNeural", "with nothing set the normal voices speak")
+sp = Speaker(VS(base, voice_match_language=True))
+ok(sp._voice_for("A", "안녕하세요").startswith("ko-") and sp._voice_for("A", "hello") == "en-IN-NeerjaNeural", "Match the viewer's language picks a voice of that language")
+sp = Speaker(VS(base, per_viewer=True, voice_pool=["en-US-AriaNeural", "en-GB-RyanNeural"]))
+ok(sp._voice_for("A", "hi") in ("en-US-AriaNeural", "en-GB-RyanNeural") and sp._voice_for("A", "hi") == sp._voice_for("A", "hi"), "each viewer keeps a voice from the streamer's list")
+sp = Speaker(VS(base, say_format="{name} says {message}", say_paid_format="Wow {amount} from {name}", say_clean_names=True))
+ok(sp._format_spoken("Rahul_1234", "hi", "") == "Rahul says hi" and sp._format_spoken("Neha", "gg", "₹50") == "Wow ₹50 from Neha", "the streamer's own wording is used")
+ok(fill("{oops} {name}", "A", "b") == "{oops} A" and speakable_name("1234") == "1234", "odd wording or names never break speech")
+captured = {}
+class FakeComm:
+    def __init__(self, text, voice, **kw): captured.update(kw, voice=voice)
+    async def save(self, path): open(path, "wb").close()
+import edge_tts
+real_comm, edge_tts.Communicate = edge_tts.Communicate, FakeComm
+sp = Speaker(VS(base, rate=2, pitch=-25)); sp.token = 1
+sp._generate(1, "A", "hello", "", False, {"voice": "en-US-AriaNeural"})
+edge_tts.Communicate = real_comm
+ok(captured == {"rate": "+20%", "pitch": "-25Hz", "voice": "en-US-AriaNeural"}, "speed and pitch reach the voice")
+sp = Speaker(VS(base)); sp._pump = lambda: None; sp.queue.append(("x", "y", "", False, "", {}))
+sp.preview("en-US-AriaNeural"); ok(sp.queue[0][5] == {"voice": "en-US-AriaNeural"} and sp.queue[0][1], "a preview jumps the queue with a sample line")
+ok(w.voice_page.tab_names() == ["Voices", "Who speaks", "Reading", "Playback", "Translate", "Word list"], "the Voice page has its new tabs")
+
+# translation: an on/off switch and only the chosen languages
+ok([TR.script_language(x) for x in ("안녕", "こんにちは", "你好", "Привет", "नमस्ते", "hello")] == ["ko", "ja", "zh", "ru", "hi", ""], "the writing system settles Korean, Japanese and Chinese")
+ok(TR.detect_source_language("你好") == "zh-cn" and TR.detect_source_language("Привет") == "ru", "very short Chinese and Russian are recognised")
+ts = {"cloud_url": "https://c.example", "cloud_token": "K", "translate_langs": ["ru", "ko", "zh", "ja"], "translate_others": False, "translate_target": "en"}
+asked = []
+real_cloud = TR._cloud_translate
+TR._cloud_translate = lambda text, source, target, settings: asked.append((source, target)) or "Hello"
+ok(TR.translate_message("Привет всем", ts)[2] and TR.translate_message("안녕하세요", ts)[2] and TR.translate_message("你好世界", ts)[2] and TR.translate_message("こんにちは", ts)[2], "Russian, Korean, Chinese and Japanese are translated")
+ok(not TR.translate_message("नमस्ते दोस्तों", ts)[2], "Hindi stays Hindi unless Any other language is on")
+ok(TR.translate_message("नमस्ते दोस्तों", ts, force=True)[2], "Translate this message works on any language")
+ok(not TR.translate_message("Привет всем", dict(ts, translate_langs=["ko"]))[2], "an unticked language is left alone")
+n = len(asked); TR.translate_message("안녕하세요", ts); ok(len(asked) == n, "a repeated message costs no second translation")
+TR.translate_message("Привет снова", dict(ts, translate_target="hi")); ok(asked[-1] == ("ru", "hi"), "the target language is used")
+TR._cloud_translate = real_cloud
+w.s.set("translate_chat", False); w.sync_translate_button(); ok(w.translate_btn.text() == "Translate: off", "the Live chat button shows translation is off")
+w.translate_btn.setChecked(True); ok(w.s.get("translate_chat") is True and w.translate_switch.isChecked() and w.translate_btn.text() == "Translate: on", "the Live chat button turns translation on, and the Voice page follows")
+w.translate_switch.click(); ok(w.s.get("translate_chat") is False and w.translate_btn.text() == "Translate: off", "the Voice page switch turns it off, and the button follows")
+w.s.set("translate_chat", True); w.s.set("translate_show", True)
+tid = w.feed.append("line", "chat", Message("youtube", "V", "Привет"), "youtube")
+w._chat_done("feed:translate:%d" % tid, {"text": "Hello", "source": "ru", "done": True}); ok("Hello (ru)" in w.feed.toPlainText(), "a translation appears under the message")
+w.feed.redraw(); ok("Hello (ru)" in w.feed.toPlainText(), "a translation survives a filter change")
+w.s.set("translate_chat", False)
+
+# live chat
+ch = Line(1, "", "chat", Message("twitch", "Neha", "hello world", mod=True), "twitch")
+paid = Line(2, "", "chat", Message("youtube", "Aman", "gg", "super", "₹5"), "extra:2", True, True)
+sk = Line(3, "", "skipped", Message("kick", "Bot", "spam"), "kick")
+sysline = Line(4, "note")
+ok(all(ChatView().shows(x) for x in (ch, paid, sk, sysline)), "everything shows by default")
+ok(ChatView(stream="twitch").shows(ch) and not ChatView(stream="twitch").shows(paid) and not ChatView(stream="twitch").shows(sysline), "filtering by stream works")
+ok(ChatView(show="paid").shows(paid) and not ChatView(show="paid").shows(ch) and ChatView(show="mods").shows(ch) and ChatView(show="skipped").shows(sk) and ChatView(show="new").shows(paid) and ChatView(show="mentions").shows(paid), "filtering by kind works")
+ok(ChatView(words="neha").shows(ch) and ChatView(words="WORLD").shows(ch) and not ChatView(words="zzz").shows(ch), "searching finds names and words")
+ok(not ChatView(hide_skipped=True).shows(sk) and ChatView(hide_skipped=True, show="skipped").shows(sk), "skipped lines can be hidden")
+ok(mentions("hey Drxshi!", ["drxshi"]) and not mentions("drxshi2", ["drxshi"]), "mentions match whole words")
+w.feed.clear(); w.s.set("chat_mark_new", True)
+w.on_message(Message("twitch", "Brandnew", "first hello", uid="b1")); w.on_message(Message("twitch", "Brandnew", "second hello there", uid="b1"))
+txt = w.feed.toPlainText(); ok(txt.count("★") == 1, "a first-time chatter is marked once")
+w.feed.set_view(words="second"); ok("second" in w.feed.toPlainText() and "first hello" not in w.feed.toPlainText(), "search redraws the chat")
+w.feed.set_view(words=""); ok("first hello" in w.feed.toPlainText(), "clearing the search brings everything back")
+w.s.set("chat_show_time", True); w.on_message(Message("twitch", "Timed", "tick tock", uid="t1")); w.s.set("chat_show_time", False)
+import re as _re
+ok(_re.search(r"\d\d:\d\d TW", w.feed.toPlainText()), "the time can be shown")
+w.s.set("chat_muted", ["twitch:m1"]); said = len(spoken); w.on_message(Message("twitch", "Muted", "do not read me", uid="m1"))
+ok(len(spoken) == said and "stopped reading this viewer" in w.feed.toPlainText(), "a muted viewer is not read"); w.s.set("chat_muted", [])
+
+# clicking a message
+w.goto(1); wait(120)
+w.feed.clear(); line_id = w.feed.append("<b>Viewer</b>: click me", "chat", Message("youtube", "Viewer", "click me", uid="UC" + "a" * 22), "youtube")
+wait(30)
+spot = w.feed.cursorRect(__import__("PySide6.QtGui", fromlist=["QTextCursor"]).QTextCursor(w.feed.document().firstBlock())).center()
+found = w.feed.line_at(spot); ok(found is not None and found.id == line_id, "a click finds the message under the mouse")
+from PySide6.QtCore import QPoint
+ok(w.feed.line_at(QPoint(spot.x(), w.feed.viewport().height() - 4)) is None, "a click in the empty space finds nothing")
+
+# owner controls
+w.s.set("platform_youtube_session", "S"); w.s.set("platform_twitch_session", "S"); w.s.set("platform_kick_session", "S")
+w.s.set("platform_youtube_name", "Drxshi"); w.s.set("platform_twitch_name", "drx"); w.s.set("platform_kick_name", "drxk")
+w.s.set("platform_twitch_login", "drx"); w.s.set("platform_kick_login", "drxk")
+w.cards["youtube"].edit.setText("https://www.youtube.com/watch?v=abcdefghijk"); w.cards["twitch"].edit.setText("drx"); w.cards["kick"].edit.setText("someoneelse")
+yt = Message("youtube", "Rude", "bad", uid="UC" + "b" * 22, stream="youtube")
+ok(w._mod_target(yt) == ("abcdefghijk", ""), "owner controls know the YouTube stream")
+ok(w._mod_target(Message("twitch", "T", "x", uid="1", stream="twitch"))[0] == "", "owner controls work on your own Twitch channel")
+ok(w._mod_target(Message("kick", "T", "x", uid="1", stream="kick"))[0] is None, "owner controls refuse someone else's Kick channel")
+ok(w._mod_target(Message("tip", "T", "x"))[0] is None, "tips have no owner controls")
+def labels(menu):
+    out = {}
+    for a in menu.actions():
+        out[a.text()] = a
+        if a.menu():
+            out.update({a.text() + ">" + b.text(): b for b in a.menu().actions()})
+    return out
+L = labels(w.build_chat_menu(Line(9, "", "chat", yt, "youtube")))
+ok(L["Remove message"].isEnabled() and L["Time out"].isEnabled() and L["Hide user from channel"].isEnabled() and L["Reply"].isEnabled() and L["Make moderator"].isEnabled(), "a viewer's menu has the owner actions")
+ok("Time out>5 minutes" in L and "Time out>24 hours" in L and "Time out>Custom..." in L, "time-outs come in several lengths")
+ok(not L["Undo time-out or ban"].isEnabled(), "YouTube undo waits until there is a ban to undo")
+L = labels(w.build_chat_menu(Line(9, "", "chat", Message("youtube", "Mod", "x", mod=True, uid="UC" + "c" * 22, stream="youtube"), "youtube")))
+ok(not L["Remove message"].isEnabled() and not L["Hide user from channel"].isEnabled(), "moderators cannot be moderated from the menu")
+L = labels(w.build_chat_menu(Line(9, "", "chat", Message("twitch", "T", "x", uid="1", stream="twitch"), "twitch")))
+ok("Shoutout" in L and "Ban" in L and L["Undo time-out or ban"].isEnabled(), "Twitch has Ban, Undo and Shoutout")
+sent_mod = []
+real_action = w.platform_auth._action; w.platform_auth._action = lambda *a: sent_mod.append(a)
+w.mod_action(yt, "timeout", seconds=300, label="5 minutes")
+ok(sent_mod[-1][1] == "moderate" and sent_mod[-1][2]["videoId"] == "abcdefghijk" and sent_mod[-1][2]["userId"] == yt.uid and sent_mod[-1][2]["seconds"] == 300, "a time-out goes to the right stream and viewer")
+job = int(sent_mod[-1][3].rsplit(":", 1)[1])
+w.platform_auth.on_done("platform:mod:%d" % job, {"ok": True, "banId": "BAN-9"})
+ok("Timed out Rude for 5 minutes" in w.feed.toPlainText() and w.bans[viewer_key(yt)] == "BAN-9", "the feed confirms it and the ban can be undone")
+lid = w.feed.append("line to remove", "chat", yt, "youtube"); w.mod_action(yt, "delete", line_id=lid)
+job = int(sent_mod[-1][3].rsplit(":", 1)[1]); w.platform_auth.on_done("platform:mod:%d" % job, {"ok": True})
+ok("(removed)" in w.feed.toPlainText(), "a removed message is marked in the feed")
+w.mod_action(yt, "ban"); job = int(sent_mod[-1][3].rsplit(":", 1)[1]); w.platform_auth.on_done("platform:mod:%d" % job, {"error": "Forbidden"})
+ok("Could not do that: Forbidden" in w.feed.toPlainText(), "a refused action says why")
+# replying
+w.start_reply(yt); ok(w.message_edit.text() == "@Rude " and w.action_platform.currentData() == "youtube" and w.reply_cancel.isVisibleTo(w), "a YouTube reply starts with @name")
+sent_msgs = []
+real_send = w.platform_auth.send_message; w.platform_auth.send_message = lambda *a, **k: sent_msgs.append((a, k))
+w.message_edit.setText("@Rude please stop"); w.send_typed()
+ok(sent_msgs[-1][0][:2] == ("youtube", "@Rude please stop") and w.message_edit.text() == "" and w.reply_to is None, "sending clears the box and the reply")
+twm = Message("twitch", "T", "x", uid="1", stream="twitch", event_id="tw-1")
+w.start_reply(twm); w.message_edit.setText("thanks"); w.send_typed()
+ok(sent_msgs[-1][1]["reply_to"] == "tw-1" and sent_msgs[-1][0][0] == "twitch", "a Twitch reply carries the message id")
+w.message_edit.setText("   "); n = len(sent_msgs); w.send_typed(); ok(len(sent_msgs) == n, "an empty message is not sent")
+# polls
+w.platform_auth.on_done("platform:poll:youtube", {"ok": True, "id": "POLL-7"})
+w.action_platform.setCurrentIndex(w.action_platform.findData("youtube"))
+acts = labels(w._chat_controls_menu()); ok(acts["End my poll"].isEnabled(), "a running poll can be ended")
+w.platform_auth.end_poll("youtube", {"action": "endPoll"}); ok(sent_mod[-1][2]["pollId"] == "POLL-7" and sent_mod[-1][2]["action"] == "endPoll", "ending sends the poll's id")
+job = int(sent_mod[-1][3].rsplit(":", 1)[1]); w.platform_auth.on_done("platform:mod:%d" % job, {"ok": True})
+ok("youtube" not in w.platform_auth.polls and "Poll ended" in w.feed.toPlainText(), "the poll is forgotten once ended")
+w.action_platform.setCurrentIndex(w.action_platform.findData("twitch"))
+acts = labels(w._chat_controls_menu()); ok("Slow mode>Turn on" in acts and "Send an announcement..." in acts and "Clear all chat..." in acts, "Twitch has chat modes")
+w.platform_auth._action = real_action; w.platform_auth.send_message = real_send
+
+# stream detection
+L1 = {"id": "longlonglon", "title": "Main", "format": "long", "live": True}
+S1 = {"id": "shortshorts", "title": "Vert", "format": "shorts", "live": True}
+main, add, gone = plan_youtube([S1, L1], "", "", False, "", [])
+ok(main == L1 and add == [S1] and gone == [], "the long stream takes the main card and Shorts gets its own")
+main, add, gone = plan_youtube([L1], "handpastedv", "", False, "https://youtu.be/handpastedv", [])
+ok(main is None and add == [L1], "a link typed by hand is never replaced")
+main, add, gone = plan_youtube([L1], "oldstream01", "oldstream01", False, "x", [])
+ok(main == L1 and add == [], "last stream's detected link is replaced by the new one")
+main, add, gone = plan_youtube([L1], "oldstream01", "oldstream01", True, "x", [])
+ok(main is None and add == [L1], "a connected main card is left alone")
+main, add, gone = plan_youtube([L1], "longlonglon", "", True, "x", [("shortshorts", "extra:2", True, False), ("handpastedv", "extra:3", False, False), ("runningonee", "extra:4", True, True)])
+ok(main is None and add == [] and gone == ["extra:2"], "an ended auto stream is removed; hand-added and running ones stay")
+for c in list(w.extra_cards.values()):
+    w._remove_stream(c)
+w.cards["youtube"].edit.setText(""); w.s.set("youtube", ""); w.s.set("youtube_auto_id", ""); w.s.set("auto_connect_live", True)
+toggled = []
+for c in (w.cards["youtube"], w.cards["twitch"], w.cards["kick"]):
+    c.toggle = lambda c=c: toggled.append(c.key)
+from app import ui as UI
+real_extra_toggle = UI.ExtraStreamCard.toggle
+UI.ExtraStreamCard.toggle = lambda self: toggled.append(self.key)
+w.on_live_streams("youtube", {"account": "Drxshi", "streams": [S1, L1]})
+extra = list(w.extra_cards.values())
+ok(youtube_id(w.cards["youtube"].edit.text()) == "longlonglon" and len(extra) == 1 and extra[0].auto and youtube_id(extra[0].edit.text()) == "shortshorts", "going live fills the cards, Shorts in an added card")
+ok(toggled == ["youtube", extra[0].key], "both streams connect by themselves")
+w.on_live_streams("youtube", {"account": "Drxshi", "streams": [S1, L1]}); ok(len(toggled) == 2 and len(w.extra_cards) == 1, "a second check changes nothing")
+# item 6: the name and which stream is which
+ok(w._tag(Message("youtube", "V", "x", stream="youtube")) == "YT Drxshi · Long" and w._tag(Message("youtube", "V", "x", stream=extra[0].key)) == "YT Drxshi · Shorts", "signed-in streams show the account and Long or Shorts")
+names = [w.action_platform.itemText(i) for i in range(w.action_platform.count())]
+ok("YouTube — Drxshi · Long" in names and "YouTube — Drxshi · Shorts" in names and "All my chats" in names, "the send box lists each stream by name")
+ok(w.cards["youtube"].badge.isVisibleTo(w.cards["youtube"]) and "Live on Drxshi: Main" in w.cards["youtube"].badge.text.text(), "the card says what is live")
+w.cards["youtube"].badge.format.setCurrentIndex(w.cards["youtube"].badge.format.findData("shorts"))
+ok(stream_format(w.s, L1) == "shorts" and w._tag(Message("youtube", "V", "x", stream="youtube")) == "YT Drxshi · Shorts 1", "a wrong guess can be corrected, and two of a kind are numbered")
+w.s.set("yt_stream_formats", {})
+link_card = w._add_stream({"id": 40, "platform": "youtube", "target": "https://youtu.be/othervideo1"})
+ok(w._tag(Message("youtube", "V", "x", stream=link_card.key)).startswith("YT") and "Drxshi" not in w._tag(Message("youtube", "V", "x", stream=link_card.key)), "a stream added by link keeps its short tag")
+w._remove_stream(link_card)
+w.on_live_streams("youtube", {"account": "Drxshi", "streams": []})
+ok(not w.extra_cards and w.cards["youtube"].detected is None and w.cards["youtube"].badge.isHidden(), "when the stream ends the added card goes away")
+UI.ExtraStreamCard.toggle = real_extra_toggle
+w.cards["twitch"].edit.setText(""); toggled.clear()
+w.on_live_streams("twitch", {"account": "Drx", "channel": "drx", "streams": [{"id": "1", "title": "T", "live": True, "format": "long"}]})
+ok(w.cards["twitch"].edit.text() == "drx" and toggled == ["twitch"] and w._tag(Message("twitch", "V", "x", stream="twitch")) == "TW Drx", "Twitch fills in the channel, connects and shows the name")
+toggled.clear(); w.on_live_streams("twitch", {"account": "Drx", "channel": "drx", "streams": [{"id": "1", "title": "T", "live": True, "format": "long"}]})
+ok(toggled == [], "after you press Disconnect, the same stream stays disconnected")
+w.cards["kick"].edit.setText("otherchannel"); toggled.clear()
+w.on_live_streams("kick", {"account": "K", "channel": "drxk", "streams": [{"id": "drxk", "title": "T", "live": True}]})
+ok(toggled == [] and w.cards["kick"].edit.text() == "otherchannel", "someone else's Kick channel typed by hand is left alone")
+w.on_live_streams("kick", {"needsLogin": True, "account": "K"}); ok("sign in to Kick again" in w.feed.toPlainText(), "an old Kick sign-in is asked to sign in again")
+w.s.set("auto_connect_live", False); w.cards["twitch"].set_detected(None); toggled.clear()
+w.on_live_streams("twitch", {"account": "Drx", "channel": "drx", "streams": [{"id": "2", "title": "T", "live": True}]})
+ok(toggled == [], "connecting by itself can be turned off"); w.s.set("auto_connect_live", True)
+for c in (w.cards["youtube"], w.cards["twitch"], w.cards["kick"]):
+    del c.toggle
+    c.set_detected(None)
+    c.edit.setText("")
+for p in ("youtube", "twitch", "kick"):
+    w.s.set("platform_%s_session" % p, ""); w.s.set("platform_%s_name" % p, ""); w.s.set("platform_%s_login" % p, "")
+w._refresh_targets()
+
+# alert sounds
+ok(len(AS.SOUNDS) >= 25 and all(AS.wav_bytes(k)[:4] == b"RIFF" for k in AS.BY_KEY), "every built-in sound makes a real WAV file")
+ok(AS.wav_bytes("nope") is None and AS.url_for("builtin:nope") == "" and all(v in AS.BY_KEY for _, p in AS.PACKS for v in p.values()), "unknown sounds are refused and every pack uses real sounds")
+import urllib.request as _ur, urllib.error as _ue
+got = _ur.urlopen(w.overlay.url("alert").split("/alert")[0] + "/builtin-sound/coin.wav").read(); ok(got[:4] == b"RIFF", "OBS can load a built-in sound")
+try:
+    _ur.urlopen(w.overlay.url("alert").split("/alert")[0] + "/builtin-sound/nope.wav"); ok(False, "an unknown sound is a 404")
+except _ue.HTTPError as e:
+    ok(e.code == 404, "an unknown sound is a 404")
+ok(AST.sound_for_overlay("builtin:coin", "x") == {"soundUrl": "/builtin-sound/coin.wav"} and AST.sound_for_overlay("none", "x")["noSound"] and len(AST.sound_for_overlay("builtin:random", "x")["soundRandom"]) == len(AS.SOUNDS), "the overlay gets built-in, silent and random sounds")
+A = w.alertspage
+ok("Sounds" in A.tab_names() and A.main_sound.findData("builtin:level-up") >= 0 and A.sound.findData("none") >= 0 and A.type_boxes["raid"].findData("builtin:boom") >= 0, "the Alerts page lists the sounds")
+A.use_sound_pack(AS.PACKS[0][1]); ok(w._overlay_cfg()["typeSounds"]["tip"]["soundUrl"] == "/builtin-sound/coin.wav" and A.type_boxes["tip"].currentData() == "builtin:coin", "a sound pack gives each alert type a sound")
+A.type_boxes["tip"].setCurrentIndex(A.type_boxes["tip"].findData("none")); ok(w._overlay_cfg()["typeSounds"]["tip"].get("noSound"), "one alert type can be silent")
+A.use_sound_pack({}); ok(not w._overlay_cfg()["typeSounds"], "Clear all removes them")
+w.s.set("ov_sound", True); w.s.set("ov_sound_file", "builtin:chime"); ok(w._overlay_cfg()["soundUrl"] == "/builtin-sound/chime.wav", "a built-in can be the normal alert sound"); w.s.set("ov_sound", False); w.s.set("ov_sound_file", "")
+A._set("soundVolume", 40); ok(AST.main_design(w.s)["soundVolume"] == 40 and A.sound_volume.value() == 40, "alert sound volume is saved"); A._set("soundVolume", 80)
+ok(os.path.isfile(A.play_sound("builtin:coin")) and A.play_sound("none") is None, "Play makes the sound in the app")
 
 w.goto(11); wait(200); w.grab().save(os.path.join(os.environ["APPDATA"], "alerts.png"))
 w.goto(0); wait(600)

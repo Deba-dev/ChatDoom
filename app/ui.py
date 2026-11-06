@@ -11,7 +11,9 @@ from PySide6.QtWidgets import (QMenu, QMessageBox, QSystemTrayIcon, QApplication
                                QLabel, QLineEdit, QPlainTextEdit, QPushButton, QScrollArea, QSlider, QSpinBox, QStackedWidget,
                                QTextEdit, QVBoxLayout, QWidget)
 
-from . import alert_styles, hinglish, overlay_styles, system
+from . import alert_sounds, alert_styles, hinglish, overlay_styles, system
+from .chat_actions import ALL_CHATS, ChatActions, compact
+from .chat_feed import ChatFeed
 from .commands import PLATFORM_NAMES, Commands
 from .commands_page import CommandsPage
 from .discord import Bridge, Cloud, LinkManager, post_webhook, run_bg
@@ -29,11 +31,12 @@ from .music_page import MusicPage
 from .ytmod import YtModerator
 from .ytmod_page import YtModPage
 from PySide6.QtCore import QSize
-from .models import Message
+from .models import Message, viewer_key
 from .moderation import KNOWN_BOTS, Moderator
 from .platforms import SOURCES, Hub, KickSource, TwitchSource, YouTubeSource, youtube_id
 from .settings import Settings, data_dir
-from .speech import VOICES, Speaker
+from .speech import Speaker
+from .stream_watch import FORMATS, StreamWatch, stream_format
 from .appearance import AppearanceDialog
 from .theme import CUSTOM_THEME, DEFAULT_THEME, FX, THEMES, build_qss, set_custom_theme
 from .tools import Tools
@@ -42,6 +45,7 @@ from .overlay_design_page import OverlayDesignPage
 from .settings_page import SettingsPage
 from .tools_page import ToolsPage
 from .ui_kit import SubPage, platform_mark, section_card
+from .voice_ui import fill_voice_page
 from .visuals import BACKGROUNDS, Backdrop, CardGlow, HeroCard, Motion, NavIndicator, StatCard, Toasts, count_to, stagger_in
 from .updater import Updater
 from .version import PRODUCT_NAME, VERSION, label
@@ -94,24 +98,6 @@ def edit_icon():
     painter.drawLine(2, 14, 5, 11)
     painter.end()
     return QIcon(pix)
-
-
-class ChatFeed(QTextEdit):
-    """Live chat text. The hint is drawn in the full box so a large font wraps instead of being clipped."""
-
-    def __init__(self, parent=None):
-        super().__init__(parent)
-        self.hint = ""
-
-    def paintEvent(self, event):
-        super().paintEvent(event)
-        if not self.hint or not self.document().isEmpty():
-            return
-        painter = QPainter(self.viewport())
-        painter.setPen(self.palette().color(QPalette.ColorRole.PlaceholderText))
-        painter.setFont(self.font())
-        margin = int(self.document().documentMargin())
-        painter.drawText(self.viewport().rect().adjusted(margin, margin, -margin, -margin), Qt.TextWordWrap | Qt.AlignTop, self.hint)
 
 
 class ChatStage(QWidget):
@@ -293,6 +279,8 @@ class PlatformCard(QFrame):
         self.setObjectName("tile")
         self.key, self.source, self.s = key, source, settings
         self.platform_auth = platform_auth
+        self.detected = None
+        self.on_format = None
         lay = QVBoxLayout(self)
         lay.setContentsMargins(18, 16, 18, 16)
         lay.setSpacing(10)
@@ -320,6 +308,8 @@ class PlatformCard(QFrame):
         self.edit = QLineEdit(settings.get(key))
         self.edit.setPlaceholderText(placeholder)
         lay.addWidget(self.edit)
+        self.badge = StreamBadge(self)
+        lay.addWidget(self.badge)
         self.extra = None
         if extra:
             box = QFrame()
@@ -346,6 +336,7 @@ class PlatformCard(QFrame):
             auth_row = QHBoxLayout()
             self.auth_label = QLabel("Account not connected")
             self.auth_label.setObjectName("hint")
+            self.auth_label.setWordWrap(True)
             auth_row.addWidget(self.auth_label, 1)
             self.find_btn = None
             if key == "youtube":
@@ -363,6 +354,10 @@ class PlatformCard(QFrame):
             lay.addLayout(auth_row)
             platform_auth.changed.connect(self._auth_changed)
             self._auth_changed(key)
+
+    def set_detected(self, info):
+        self.detected = info
+        self.badge.show_stream(info, self.s, self.key == "youtube")
 
     def toggle_auth(self):
         if self.platform_auth.is_connected(self.key):
@@ -402,6 +397,7 @@ class PlatformCard(QFrame):
         link = "https://www.youtube.com/watch?v=" + b["id"]
         self.edit.setText(link)
         self.s.set(self.key, link)
+        self.s.set("youtube_auto_id", b["id"])    # chosen, not typed: going live on another stream may replace it
         if b.get("live"):
             self.platform_auth.notice.emit("Using your live stream \"%s\". Press Connect." % b.get("title", ""))
         else:
@@ -489,10 +485,13 @@ class ExtraStreamCard(QFrame):
 
     PLACEHOLDERS = {"youtube": "Paste a live link or video ID", "twitch": "Channel name", "kick": "Channel name"}
 
-    def __init__(self, hub, data, on_change, on_remove):
+    def __init__(self, hub, data, on_change, on_remove, settings=None, on_format=None):
         super().__init__()
         self.setObjectName("tile")
         self.hub, self.on_change = hub, on_change
+        self.s, self.on_format = settings, on_format
+        self.detected = None
+        self.auto = bool(data.get("auto"))        # added by stream detection, so it goes away when the stream ends
         self.id = int(data["id"])
         self.key = "extra:%d" % self.id
         self.source = None
@@ -520,6 +519,8 @@ class ExtraStreamCard(QFrame):
         lay.addLayout(head)
         self.edit = QLineEdit(data.get("target", ""))
         lay.addWidget(self.edit)
+        self.badge = StreamBadge(self)
+        lay.addWidget(self.badge)
         self.room = QLineEdit(data.get("room", ""))
         self.room.setObjectName("optional")
         self.room.setPlaceholderText("Kick chatroom ID, only if the name lookup fails")
@@ -555,7 +556,11 @@ class ExtraStreamCard(QFrame):
 
     def data(self):
         return {"id": self.id, "platform": self.platform(), "target": self.edit.text().strip(),
-                "room": self.room.text().strip(), "label": self.label.text().strip()}
+                "room": self.room.text().strip(), "label": self.label.text().strip(), "auto": self.auto}
+
+    def set_detected(self, info):
+        self.detected = info
+        self.badge.show_stream(info, self.s, self.platform() == "youtube")
 
     def toggle(self):
         if self.source.running:
@@ -572,7 +577,43 @@ class ExtraStreamCard(QFrame):
         self.platform_box.setEnabled(not self.source.running)
 
 
-class MainWindow(QWidget):
+class StreamBadge(QWidget):
+    """Shown on a card when the stream was found through the signed-in account: its title and, on YouTube, Long or Shorts."""
+
+    def __init__(self, card):
+        super().__init__()
+        self.card = card
+        row = QHBoxLayout(self)
+        row.setContentsMargins(0, 0, 0, 0)
+        self.text = QLabel()
+        self.text.setObjectName("hint")
+        self.text.setWordWrap(True)
+        row.addWidget(self.text, 1)
+        self.format = QComboBox()
+        for name, value in FORMATS:
+            self.format.addItem(name, value)
+        self.format.setToolTip("YouTube does not say which is which, so CHATDOOM guesses. Correct it here.")
+        self.format.currentIndexChanged.connect(self._picked)
+        row.addWidget(self.format)
+        self.hide()
+
+    def show_stream(self, info, settings, youtube):
+        if not info:
+            self.hide()
+            return
+        self.text.setText("Live on %s: %s" % (info.get("account") or "your account", info.get("title") or "Untitled stream"))
+        self.format.setVisible(youtube)
+        self.format.blockSignals(True)
+        self.format.setCurrentIndex(max(0, self.format.findData(stream_format(settings, info))))
+        self.format.blockSignals(False)
+        self.show()
+
+    def _picked(self):
+        if self.card.detected and self.card.on_format:
+            self.card.on_format(self.card.detected["id"], self.format.currentData())
+
+
+class MainWindow(ChatActions, StreamWatch, QWidget):
     def __init__(self):
         super().__init__()
         self.setObjectName("root")
@@ -683,6 +724,8 @@ class MainWindow(QWidget):
         self.platform_auth.refresh("twitch")
         self.platform_auth.refresh("kick")
         self.platform_auth.find_youtube_streams()
+        self._start_chat()
+        self._start_stream_watch()
         self.speaker.note.connect(lambda t: self.feed.append("<span style='color:#ffb020'>%s</span>" % esc(t)))
         self.links.notice.connect(lambda t: self.feed.append("<span style='color:#7c9cff'>Discord: %s</span>" % esc(t)))
         self.sync = QTimer(self)                      # report activity to Discord once a minute
@@ -832,14 +875,17 @@ class MainWindow(QWidget):
         sound_name = os.path.basename(sound_path)
         sound_url = ""
         sound_dir = os.path.realpath(os.path.join(data_dir(), "Soundboard"))
-        if (self.s.get("ov_sound") and sound_name and os.path.isfile(sound_path) and
+        if self.s.get("ov_sound") and alert_sounds.is_builtin(sound_path):
+            sound_url = alert_sounds.url_for(sound_path)
+        elif (self.s.get("ov_sound") and sound_name and os.path.isfile(sound_path) and
                 os.path.dirname(os.path.realpath(sound_path)) == sound_dir):
             sound_url = "/sounds/" + urllib.parse.quote(sound_name)
         return {"colors": {"a1": t["a1"], "a2": t["a2"], "a3": t["a3"]}, "sound": bool(self.s.get("ov_sound")) and not sound_url,
                 "seconds": int(self.s.get("ov_seconds")), "showMessage": bool(self.s.get("ov_show_message")),
                 "chatSeconds": int(self.s.get("ov_chat_seconds")), "maxLines": 8,
                 "memeSeconds": int(self.s.get("meme_seconds")),
-                "soundUrl": sound_url,
+                "soundUrl": sound_url, "soundVolume": int(self.s.get("ov_sound_volume")),
+                "typeSounds": alert_styles.overlay_type_sounds(self.s, sound_dir),
                 "alertDesigns": alert_styles.overlay_designs(self.s, sound_dir, self.memes_dir),
                 "designs": overlay_styles.all_designs(self.s),
                 "alertStyle": self.s.get("ov_alert_style"), "chatStyle": self.s.get("ov_chat_style"),
@@ -1002,17 +1048,18 @@ class MainWindow(QWidget):
         lay.addLayout(stats)
         self.cards = {
             "youtube": PlatformCard("youtube", "YouTube Live", "Paste a live link or video ID", YouTubeSource(self.hub), self.s,
-                                    hint="Chat reading reconnects automatically. Sign in to send chat/polls and show public-subscriber alerts; memberships come from live chat.",
+                                    hint="Sign in and CHATDOOM finds your live streams by itself, Shorts and long format, and connects them. Or paste a link.",
                                     field="Stream link or video ID", platform_auth=self.platform_auth),
             "twitch": PlatformCard("twitch", "Twitch", "Channel name", TwitchSource(self.hub), self.s,
-                                   hint="Reads chat anonymously. Sign in for follower, subscription, gift, and raid alerts; new alert permissions are requested.",
+                                   hint="Reads chat anonymously. Sign in for alerts, moderation, and connecting by itself when you go live.",
                                    field="Channel name",
                                    platform_auth=self.platform_auth),
             "kick": PlatformCard("kick", "Kick", "Channel name", KickSource(self.hub), self.s,
                                  extra=("kick_room", "Chatroom ID, only if the name lookup fails"),
-                                 hint="Reads public chat by channel name. Sign in to post messages and command replies.",
+                                 hint="Reads public chat by channel name. Sign in to post, moderate, and connect by itself when you go live.",
                                  field="Channel name", platform_auth=self.platform_auth),
         }
+        self.cards["youtube"].on_format = self.set_stream_format
         grid = QGridLayout()
         grid.setSpacing(14)
         grid.addWidget(self.cards["youtube"], 0, 0)
@@ -1059,13 +1106,14 @@ class MainWindow(QWidget):
             return None
         if data is None:
             data = {"id": max([c.id for c in self.extra_cards.values()] + [1]) + 1, "platform": "youtube"}
-        card = ExtraStreamCard(self.hub, data, self._save_streams, self._remove_stream)
+        card = ExtraStreamCard(self.hub, data, self._save_streams, self._remove_stream, self.s, self.set_stream_format)
         self.extra_cards[card.key] = card
         self._layout_streams()
         if hasattr(self, "stack"):
             self.glow.watch(self.stack)
         if save:
             self._save_streams()
+        self._streams_changed()
         return card
 
     def _remove_stream(self, card):
@@ -1077,6 +1125,7 @@ class MainWindow(QWidget):
         self._layout_streams()
         self._save_streams()
         self._update_live()
+        self._streams_changed()
 
     def _layout_streams(self):
         while self.extra_grid.count():
@@ -1091,8 +1140,12 @@ class MainWindow(QWidget):
         self.s.set("extra_streams", [c.data() for c in self.extra_cards.values()])
 
     def _tag(self, m):
-        """Feed tag: YT / TW / KICK for the main streams, and YT2, TW·Vertical ... for added ones."""
+        """Feed tag: the account and format for a stream found through sign-in ("YT Drxshi · Shorts"). For one added by link,
+        YT / TW / KICK for the main streams, and YT2, TW·Vertical ... for added ones."""
         tag = TAGS.get(m.platform, "?")
+        name = self.stream_name(m.stream)
+        if name:
+            return "%s %s" % (tag, name)
         card = self.extra_cards.get(m.stream)
         if card is None:
             return tag
@@ -1112,8 +1165,8 @@ class MainWindow(QWidget):
         self.feed = ChatFeed(self.chat_box)
         self.feed.setObjectName("feed")
         self.feed.setReadOnly(True)
-        self.feed.document().setMaximumBlockCount(300)
-        self.feed.hint = "Chat messages appear here. Grey lines were skipped by moderation."
+        self.feed.document().setMaximumBlockCount(600)
+        self.feed.hint = "Chat messages appear here. Click a message to reply, time out and more. Grey lines were skipped by moderation."
         self.feed.setLineWrapMode(QTextEdit.LineWrapMode.WidgetWidth)
         self.feed.setWordWrapMode(QTextOption.WrapMode.WrapAtWordBoundaryOrAnywhere)
         self.feed.document().setDocumentMargin(12)
@@ -1139,17 +1192,21 @@ class MainWindow(QWidget):
         self.chat_popup = self._chat_style_popup()
         self.chat_box.popup = self.chat_popup
         self.chat_popup.hide()
+        lay.addWidget(self._chat_toolbar())
         lay.addWidget(self.chat_box, 1)
         controls = QFrame()
         controls.setObjectName("tile")
         row = QHBoxLayout(controls)
         row.setContentsMargins(12, 8, 12, 8)
         self.action_platform = QComboBox()
-        self.action_platform.addItem("YouTube", "youtube")
-        self.action_platform.addItem("Twitch", "twitch")
-        self.action_platform.addItem("Kick", "kick")
+        compact(self.action_platform, 15)
         self.action_platform.currentIndexChanged.connect(self._action_platform_changed)
+        self.reply_cancel = QPushButton("Cancel reply")
+        self.reply_cancel.setObjectName("quiet")
+        self.reply_cancel.clicked.connect(self.cancel_reply)
+        self.reply_cancel.hide()
         self.message_edit = QLineEdit()
+        self.message_edit.setMinimumWidth(110)
         self.message_edit.setPlaceholderText("Sign in, then type a chat message...")
         self.message_edit.returnPressed.connect(self._send_chat_message)
         self.send_chat_btn = QPushButton("Send")
@@ -1158,12 +1215,17 @@ class MainWindow(QWidget):
         self.poll_btn = QPushButton("Create poll")
         self.poll_btn.setObjectName("quiet")
         self.poll_btn.clicked.connect(self._create_chat_poll)
+        self.chat_controls_btn = QPushButton("Chat controls")
+        self.chat_controls_btn.setObjectName("quiet")
+        self.chat_controls_btn.clicked.connect(self._show_chat_controls)
         row.addWidget(self.action_platform)
+        row.addWidget(self.reply_cancel)
         row.addWidget(self.message_edit, 1)
         row.addWidget(self.send_chat_btn)
         row.addWidget(self.poll_btn)
+        row.addWidget(self.chat_controls_btn)
         lay.addWidget(controls)
-        self._action_platform_changed()
+        self._refresh_targets()
         QApplication.instance().installEventFilter(self)
         self._apply_chat_style()
         return page
@@ -1176,19 +1238,15 @@ class MainWindow(QWidget):
             self.message_edit.setMaxLength(200)
         else:
             self.message_edit.setMaxLength(500)
-        self.poll_btn.setEnabled(platform != "kick")
+        self.poll_btn.setEnabled(platform not in ("kick", ALL_CHATS))
         self.poll_btn.setToolTip("Kick does not offer polls to apps." if platform == "kick" else "")
 
     def _platform_account_changed(self, platform):
         if not hasattr(self, "action_platform") or platform not in self.platform_auth.SUPPORTED:
             return
-        index = self.action_platform.findData(platform)
-        if index < 0:
-            return
-        name = self.platform_auth.display_name(platform)
-        label = platform.title() + ((" — " + name) if self.platform_auth.is_connected(platform) and name
-                                    else (" — signed in" if self.platform_auth.is_connected(platform) else " — sign-in needed"))
-        self.action_platform.setItemText(index, label)
+        self._refresh_targets()
+        if self.platform_auth.is_connected(platform):
+            QTimer.singleShot(0, lambda: self.check_streams((platform,)))
         if platform == "twitch":
             if self.platform_auth.is_connected(platform):
                 self.twitch_events.start()
@@ -1248,7 +1306,7 @@ class MainWindow(QWidget):
                          (esc(alert.get("name") or "Someone"), esc(alert.get("category") or "event")))
 
     def _send_chat_message(self):
-        self.platform_auth.send_message(self.action_platform.currentData(), self.message_edit.text())
+        self.send_typed()
 
     def _create_chat_poll(self):
         platform = self.action_platform.currentData()
@@ -1279,7 +1337,7 @@ class MainWindow(QWidget):
         layout.addWidget(buttons)
         if dialog.exec() == QDialog.Accepted:
             self.platform_auth.create_poll(platform, question.text(), [item.text() for item in options],
-                                           duration.value() if platform == "twitch" else 60)
+                                           duration.value() if platform == "twitch" else 60, self._target_video())
 
     def _set_chat_style_open(self, open_):
         self.chat_style_btn.setChecked(open_)
@@ -1527,14 +1585,6 @@ class MainWindow(QWidget):
         sp.valueChanged.connect(lambda v: self.s.set(key, v))
         return sp
 
-    def _voice_combo(self, key):
-        cb = QComboBox()
-        for name, vid in VOICES:
-            cb.addItem(name, vid)
-        cb.setCurrentIndex(max(0, cb.findData(self.s.get(key))))
-        cb.currentIndexChanged.connect(lambda _: self.s.set(key, cb.currentData()))
-        return cb
-
     def _voice_section(self, title, detail):
         card = QFrame()
         card.setObjectName("tile")
@@ -1567,7 +1617,7 @@ class MainWindow(QWidget):
         lay.addWidget(widget)
         return wrap
 
-    def _voice_switch(self, title, detail, key):
+    def _voice_switch(self, title, detail, key, checked=None, on_toggle=None):
         row = QWidget()
         lay = QHBoxLayout(row)
         lay.setContentsMargins(0, 6, 0, 6)
@@ -1583,10 +1633,11 @@ class MainWindow(QWidget):
         text.addWidget(note)
         switch = Switch()
         switch.set_accent(THEMES.get(self.s.get("theme"), THEMES[DEFAULT_THEME])["a1"])
-        switch.setChecked(bool(self.s.get(key)))
-        switch.toggled.connect(lambda on, k=key: self.s.set(k, on))
+        switch.setChecked(bool(self.s.get(key)) if checked is None else checked)
+        switch.toggled.connect(on_toggle or (lambda on, k=key: self.s.set(k, on)))
         lay.addLayout(text, 1)
         lay.addWidget(switch, 0, Qt.AlignTop)
+        row.switch = switch
         return row
 
     def _voice_meter(self, title, detail, key, lo, hi, fmt):
@@ -1614,69 +1665,9 @@ class MainWindow(QWidget):
         return wrap
 
     def _page_voice(self):
-        page = SubPage()
-        self.voice_page = page
-
-        engine, engine_lay = self._voice_section("Voice engine", "Choose the speech engine used to read your chat.")
-        eng = QComboBox()
-        eng.addItem("Neural voices (online, best quality)", "neural")
-        eng.addItem("Windows voices (offline)", "windows")
-        eng.setCurrentIndex(max(0, eng.findData(self.s.get("engine"))))
-        eng.currentIndexChanged.connect(lambda _: self.s.set("engine", eng.currentData()))
-        engine_lay.addWidget(self._voice_field("Voice engine", "Neural voices need the internet. Windows voices work offline.", eng))
-
-        languages, lang_lay = self._voice_section("Language voices", "Pick who speaks each kind of message.")
-        lang_lay.addWidget(self._voice_field("Hindi", "Choose the voice for Devanagari messages.", self._voice_combo("hi_voice")))
-        lang_lay.setAlignment(Qt.AlignTop)
-        lang_lay.addWidget(self._voice_field("Hinglish / English", "Choose the voice for Latin-script messages.", self._voice_combo("en_voice")))
-
-        options, opt_lay = self._voice_section("Voice options", "Small choices for how messages are spoken.")
-        read_mode = QComboBox()
-        read_mode.addItem("Read every allowed chat message", "all")
-        read_mode.addItem("Read paid messages only", "paid")
-        read_mode.setCurrentIndex(max(0, read_mode.findData(self.s.get("read_mode") or "all")))
-        read_mode.currentIndexChanged.connect(lambda _: self.s.set("read_mode", read_mode.currentData()))
-        opt_lay.addWidget(self._voice_field(
-            "Chat reading mode", "Paid-only mode skips regular chat but still reads enabled Super Chats, Bits, memberships, and tips.",
-            read_mode))
-        opt_lay.addWidget(self._voice_switch("Different voice for each viewer", "Use a different voice when possible for each viewer.", "per_viewer"))
-        opt_lay.addWidget(self._voice_switch("Say the viewer's name first", "Speak the viewer's name before reading their message.", "read_name"))
-        opt_lay.addWidget(self._voice_switch("Read paid messages", "Allow Super Chats, Bits, memberships, and tips to be read.", "read_super"))
-        opt_lay.addWidget(self._voice_switch(
-            "Translate chat into English", "Detect and translate non-English messages through Cloudflare AI before speaking. Requires your Discord cloud connection; usage is shared and limited.",
-            "translate_chat"))
-
-        playback, play_lay = self._voice_section("Playback", "How fast and how loud the voice sounds.")
-        play_lay.addWidget(self._voice_meter("Speed", "Controls how quickly messages are spoken.", "rate", -5, 5, lambda v: "%.1f×" % (1 + v * 0.1)))
-        play_lay.addWidget(self._voice_meter("Volume", "Controls the voice output level.", "volume", 0, 100, lambda v: "%d%%" % v))
-
-        queue, queue_lay = self._voice_section("Message queue", "Controls how many chat messages can wait to be spoken.")
-        spin = self._bind_spin("queue_max", 1, 20)
-        spin.setMaximumWidth(88)
-        queue_lay.addWidget(self._voice_field("Maximum messages in queue", "Older messages are removed when chat becomes too fast.", spin))
-
-        words, word_lay = self._voice_section("Word list", "Manage words and pronunciation used when reading Hinglish chat.")
-        buttons = QHBoxLayout()
-        edit = QPushButton("Edit word list")
-        edit.setObjectName("primary")
-        edit.setCursor(Qt.PointingHandCursor)
-        edit.clicked.connect(lambda: QDesktopServices.openUrl(QUrl.fromLocalFile(self.words_path)))
-        reload_words = QPushButton("Reload word list")
-        reload_words.setObjectName("quiet")
-        reload_words.setCursor(Qt.PointingHandCursor)
-        reload_words.clicked.connect(lambda: self.feed.append("<span style='color:#8a93a8'>Loaded %d short-form words</span>"
-                                                               % hinglish.load_words(self.words_path)))
-        buttons.addWidget(edit)
-        buttons.addWidget(reload_words)
-        buttons.addStretch(1)
-        word_lay.addLayout(buttons)
-
-        for title, cards in (("Voices", (engine, languages)), ("Reading", (options,)), ("Playback", (playback, queue)), ("Word list", (words,))):
-            tab = page.add_tab(title)
-            for card in cards:
-                tab.addWidget(card)
-        page.finish()
-        return page
+        self.voice_page = SubPage()
+        fill_voice_page(self, self.voice_page)
+        return self.voice_page
 
     def _page_mod(self):
         page = SubPage()
@@ -1850,6 +1841,7 @@ class MainWindow(QWidget):
         was_live = bool(self.connected)
         (self.connected.add if ok else self.connected.discard)(key)
         self._sync_summary()
+        self._refresh_stream_filter()
         if self.connected and not was_live:
             self._stream_started()
         elif was_live and not self.connected:
@@ -1875,13 +1867,15 @@ class MainWindow(QWidget):
 
     def on_message(self, m):
         if self.ytmod.is_bot(m):                  # its reasons stay out of speech, stats and moderation
-            self.feed.append("<span style='color:#5d667d'>%s %s: %s</span>" % (esc(self._tag(m)), esc(m.author), esc(m.text)))
+            self.feed.append("<span style='color:#5d667d'>%s %s: %s</span>" % (esc(self._tag(m)), esc(m.author), esc(m.text)), "skipped", m, m.stream)
             return
         self.tools.stats.add_message(m)
         is_link = self.links.handle(m)
         if not is_link and self._run_command(m):
             return
         ok, reason = self.mod.check(m)
+        if ok and viewer_key(m) in (self.s.get("chat_muted") or []):
+            ok, reason = False, "you stopped reading this viewer"
         self.msg_seen += 1
         self.msg_read += bool(ok)
         self.msg_skipped += not ok
@@ -1895,13 +1889,13 @@ class MainWindow(QWidget):
         if ok:
             author = shape_chat_text(m.author, self.s.get("chat_transform"))
             text = shape_chat_text(m.text, self.s.get("chat_transform"))
-            self.feed.append("%s <b>%s</b>%s: %s" % (tag, esc(author), amt, esc(text)))
+            self.feed_message(m, tag, amt, author, text)
             welcome = self.tools.observe(m)
             if welcome:
                 self._welcome(m, welcome)
-            self.speaker.say(m.author, m.text, m.amount if m.kind == "super" else "")
+            self.speaker.say(m.author, m.text, m.amount if m.kind == "super" else "", self._who(m))
             if m.platform != "tip":
-                self.overlay.push("chat", {"platform": m.platform, "name": m.author, "text": m.text, "mod": bool(m.mod)})
+                self.overlay.push("chat", {"platform": m.platform, "name": m.author, "text": m.text, "mod": bool(m.mod), "emotes": m.emotes})
             if m.kind in ("super", "member"):
                 category = "membership" if m.kind == "member" else ("tip" if m.platform == "tip" else "superchat")
                 self._push_alert({"platform": m.platform, "category": category,
@@ -1913,8 +1907,7 @@ class MainWindow(QWidget):
         else:
             author = shape_chat_text(m.author, self.s.get("chat_transform"))
             text = shape_chat_text(m.text, self.s.get("chat_transform"))
-            self.feed.append("<span style='color:#5d667d'>%s %s: %s <i>(skipped: %s)</i></span>"
-                             % (esc(self._tag(m)), esc(author), esc(text), reason))
+            self.feed_skipped(m, esc(self._tag(m)), author, text, reason)
 
     # ---------- !commands and !memes ----------
     def _run_command(self, m):

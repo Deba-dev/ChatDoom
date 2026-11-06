@@ -120,6 +120,11 @@ QLineEdit, QComboBox, QSpinBox, QPlainTextEdit, QTextEdit { background: rgba(0,0
 QLineEdit:focus, QComboBox:focus, QSpinBox:focus, QPlainTextEdit:focus, QTextEdit:focus { border: 1px solid $a1; background: rgba(0,0,0,0.5); }
 QLineEdit#optional { background: transparent; border: 1px solid rgba(255,255,255,0.04); color: $mute; }
 QLineEdit:disabled, QComboBox:disabled, QSpinBox:disabled { color: $mute; background: rgba(0,0,0,0.16); }
+QMenu { background: $bg2; color: #f4f4f8; border: 1px solid rgba(255,255,255,0.14); padding: 6px; }
+QMenu::item { padding: 7px 26px 7px 12px; border-radius: 6px; background: transparent; }
+QMenu::item:selected { background: $a1; color: #ffffff; }
+QMenu::item:disabled { color: #8a93a8; }
+QMenu::separator { height: 1px; background: rgba(255,255,255,0.12); margin: 5px 8px; }
 QComboBox QAbstractItemView { background: $bg2; selection-background-color: $a1; border: 1px solid rgba(255,255,255,0.12); outline: 0; }
 QSlider::groove:horizontal { height: 7px; background: rgba(255,255,255,0.12); border-radius: 3px; }
 QSlider::sub-page:horizontal { border-radius: 3px; background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 $hi, stop:1 $a2); }

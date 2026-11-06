@@ -41,6 +41,8 @@ class PlatformAuth(QObject):
     notice = Signal(str)
     subscribers = Signal(object)
     broadcasts = Signal(object, bool)     # the channel's live and scheduled streams; True when the streamer asked
+    streams = Signal(str, object)         # a platform and what its signed-in account is streaming now
+    moderated = Signal(object, object)    # what was asked and the answer
 
     SUPPORTED = ("youtube", "twitch", "kick")
 
@@ -48,6 +50,9 @@ class PlatformAuth(QObject):
         super().__init__()
         self.s, self.bridge = settings, bridge
         self.loops = {}
+        self.polls = {}                   # platform -> id of the poll started from here
+        self.mod_jobs = {}
+        self._mod_seq = 0
         bridge.done.connect(self.on_done)
 
     def _base(self):
@@ -112,15 +117,34 @@ class PlatformAuth(QObject):
         run_bg(self.bridge, "platform:disconnect:%s" % platform,
                lambda: _request(self._base() + "/platform-auth/account", "DELETE", token=token))
 
-    def send_message(self, platform, text, video="", quiet=False):
-        """video: a YouTube link or ID to post in (the main YouTube stream when empty). quiet: only report failures."""
+    def send_message(self, platform, text, video="", quiet=False, reply_to=""):
+        """video: a YouTube link or ID to post in (the main YouTube stream when empty). quiet: only report failures.
+        reply_to: the message id on Twitch and Kick. YouTube has no replies for apps."""
         self._action(platform, "message", {
             "platform": platform,
             "text": text,
+            "replyTo": reply_to,
             "videoId": youtube_id(video or self.s.get("youtube") or "") if platform == "youtube" else "",
         }, "platform:reply" if quiet else "platform:action")
 
-    def create_poll(self, platform, question, options, duration):
+    def check_streams(self, platform):
+        """Asks what this account is streaming right now. Quiet: nothing is shown if it fails."""
+        token = self.s.get(self._session_key(platform))
+        if token and self._base():
+            run_bg(self.bridge, "platform:streams:%s" % platform, lambda: _request(self._base() + "/platform-auth/live-streams", token=token))
+
+    def moderate(self, platform, action, info=None, **fields):
+        """An owner action on the streamer's own chat. info comes back with the answer through moderated."""
+        self._mod_seq += 1
+        self.mod_jobs[self._mod_seq] = dict(info or {}, action=action)
+        self._action(platform, "moderate", dict(fields, platform=platform, action=action), "platform:mod:%d" % self._mod_seq)
+
+    def end_poll(self, platform, info=None):
+        poll = self.polls.get(platform)
+        if poll:
+            self.moderate(platform, "endPoll", dict(info or {}, pollId=poll), pollId=poll)
+
+    def create_poll(self, platform, question, options, duration, video=""):
         if platform == "kick":
             self.notice.emit("Kick does not offer polls to apps.")
             return
@@ -129,8 +153,8 @@ class PlatformAuth(QObject):
             "question": question,
             "options": options,
             "duration": duration,
-            "videoId": youtube_id(self.s.get("youtube") or "") if platform == "youtube" else "",
-        })
+            "videoId": youtube_id(video or self.s.get("youtube") or "") if platform == "youtube" else "",
+        }, "platform:poll:%s" % platform)
 
     def subscribe_eventsub(self, session_id):
         token = self.s.get(self._session_key("twitch"))
@@ -221,6 +245,7 @@ class PlatformAuth(QObject):
             if result.get("status") == 401:
                 self.s.set(self._session_key(platform), "")
                 self.s.set("platform_%s_name" % platform, "")
+                self.s.set("platform_%s_login" % platform, "")
                 self.notice.emit("%s login expired. Sign in again to send chat or polls." % platform.title())
             elif result.get("error"):
                 self.notice.emit("%s account check failed: %s" % (platform.title(), result["error"]))
@@ -236,8 +261,29 @@ class PlatformAuth(QObject):
                 return
             self.s.set(self._session_key(platform), "")
             self.s.set("platform_%s_name" % platform, "")
+            self.s.set("platform_%s_login" % platform, "")
             self.changed.emit(platform)
             self.notice.emit("Disconnected %s." % platform.title())
+            return
+
+        if tag.startswith("platform:streams:"):
+            self.streams.emit(tag.rsplit(":", 1)[1], result)
+            return
+
+        if tag.startswith("platform:mod:"):
+            job = self.mod_jobs.pop(int(tag.rsplit(":", 1)[1]), {})
+            if job.get("action") == "endPoll" and not result.get("error"):
+                self.polls = {k: v for k, v in self.polls.items() if v != job.get("pollId")}
+            self.moderated.emit(job, result)
+            return
+
+        if tag.startswith("platform:poll:"):
+            if result.get("error"):
+                self.notice.emit("Chat action failed: %s" % result["error"])
+            else:
+                if result.get("id"):
+                    self.polls[tag.rsplit(":", 1)[1]] = result["id"]
+                self.notice.emit("Poll started.")
             return
 
         if tag == "platform:reply":

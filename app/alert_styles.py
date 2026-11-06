@@ -5,7 +5,7 @@ import os
 import re
 import urllib.parse
 
-from . import style_fields
+from . import alert_sounds, style_fields
 
 LOOKS = (("Neon energy", "neon"), ("Cherry blossom", "sakura"), ("Brush / ink", "brush"), ("Sharp frame", "frame"),
          ("Frosted glass", "glass"), ("Comic pop", "comic"), ("Cyber grid", "cyber"), ("Clean minimal", "minimal"),
@@ -41,7 +41,7 @@ TYPE_KEYS = tuple(v for _, v in ALERT_TYPES)
 
 DEFAULT = {"look": "neon", "enter": "pop", "exit": "out", "idle": "float", "text": "none", "effect": "sparkles", "font": "Poppins",
            "size": 100, "position": "top-center", "layout": "above", "useColors": False, "c1": "#8b5cf6", "c2": "#22d3ee", "c3": "#f472b6",
-           "template": "", "image": "", "sound": "", "seconds": 0, **style_fields.defaults_for("alert")}
+           "template": "", "image": "", "sound": "", "soundVolume": 80, "seconds": 0, **style_fields.defaults_for("alert")}
 CHOICES = {"look": LOOKS, "enter": ENTERS, "exit": EXITS, "idle": IDLES, "text": TEXT_FX, "effect": EFFECTS, "font": FONTS,
            "position": POSITIONS, "layout": LAYOUTS}
 
@@ -89,7 +89,7 @@ def clean(raw, base=None):
             out[key] = raw[key]
     if "useColors" in raw:
         out["useColors"] = bool(raw["useColors"])
-    for key, low, high in (("size", 60, 160), ("seconds", 0, 60)):
+    for key, low, high in (("size", 60, 160), ("seconds", 0, 60), ("soundVolume", 0, 100)):
         try:
             out[key] = min(high, max(low, int(raw.get(key, out[key]))))
         except (TypeError, ValueError):
@@ -121,12 +121,32 @@ def _inside(folder, name):
     return bool(name) and os.path.dirname(path) == os.path.realpath(folder) and os.path.isfile(path)
 
 
+def sound_for_overlay(value, sounds_dir):
+    """What the overlay needs for a saved sound: a built-in, a Soundboard file, a random pick or no sound at all."""
+    if value == alert_sounds.SILENT:
+        return {"soundUrl": "", "noSound": True}
+    if value == alert_sounds.RANDOM:
+        return {"soundUrl": "", "soundRandom": alert_sounds.all_urls()}
+    if alert_sounds.is_builtin(value):
+        return {"soundUrl": alert_sounds.url_for(value)}
+    return {"soundUrl": "/sounds/" + urllib.parse.quote(os.path.basename(value)) if _inside(sounds_dir, value) else ""}
+
+
 def for_overlay(design, sounds_dir, memes_dir):
     d = dict(design)
     d["imageUrl"] = "/memes/" + urllib.parse.quote(os.path.basename(d["image"])) if _inside(memes_dir, d["image"]) else ""
-    d["soundUrl"] = "/sounds/" + urllib.parse.quote(os.path.basename(d["sound"])) if _inside(sounds_dir, d["sound"]) else ""
+    d.update(sound_for_overlay(d["sound"], sounds_dir))
     del d["image"], d["sound"]
     return d
+
+
+def type_sounds(settings):
+    saved = settings.get("ov_type_sounds")
+    return {k: str(v) for k, v in saved.items() if k in TYPE_KEYS and v} if isinstance(saved, dict) else {}
+
+
+def overlay_type_sounds(settings, sounds_dir):
+    return {kind: sound_for_overlay(value, sounds_dir) for kind, value in type_sounds(settings).items()}
 
 
 def overlay_designs(settings, sounds_dir, memes_dir):

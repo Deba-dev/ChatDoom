@@ -4,6 +4,7 @@ import json
 import re
 import threading
 import time
+import urllib.parse
 import urllib.request
 
 from PySide6.QtCore import QObject, Signal
@@ -26,6 +27,43 @@ def strip_twitch_emotes(text, emotes_tag):
     return re.sub(r"\s+", " ", "".join(chars)).strip()
 
 
+def twitch_emotes(text, emotes_tag):
+    """{"Kappa": image address} for the emotes Twitch marked in a message."""
+    found = {}
+    for group in (emotes_tag or "").split("/"):
+        emote, _, spots = group.partition(":")
+        first = spots.split(",")[0]
+        a, _, b = first.partition("-")
+        if emote and a.isdigit() and b.isdigit():
+            word = text[int(a):int(b) + 1]
+            if word:
+                found[word] = "https://static-cdn.jtvnw.net/emoticons/v2/%s/default/dark/1.0" % urllib.parse.quote(emote, safe="")
+    return found
+
+
+def youtube_text(chat):
+    """pytchat turns every emoji into its :name:. The real emoji is in messageEx, so the chat shows what the viewer sent.
+    YouTube's own picture emotes have no emoji character: they stay as :name: with their image address."""
+    parts = getattr(chat, "messageEx", None)
+    if not isinstance(parts, list) or not parts:
+        return chat.message or "", {}
+    text, emotes = "", {}
+    for part in parts:
+        if isinstance(part, str):
+            text += part
+        elif isinstance(part, dict):
+            emoji = str(part.get("id") or "")
+            if emoji and not emoji.isascii() and len(emoji) <= 12:
+                text += emoji
+                continue
+            word = str(part.get("txt") or "")
+            url = str(part.get("url") or "")
+            text += word
+            if word and url.startswith("https://"):
+                emotes[word] = url
+    return text, emotes
+
+
 def parse_twitch_line(line):
     m = re.match(r"^(?:@(?P<tags>\S+) )?:(?P<nick>[^!\s]+)![^ ]+ PRIVMSG #\S+ :(?P<msg>.*)$", line)
     if not m:
@@ -43,23 +81,27 @@ def parse_twitch_line(line):
     mod = tags.get("mod") == "1" or "broadcaster/" in badges or "moderator/" in badges
     author = tags.get("display-name") or m.group("nick")
     bits = tags.get("bits")
+    emotes = twitch_emotes(text, tags.get("emotes", ""))
     if bits:
         return Message("twitch", author, text, "super", "%s bits" % bits, mod, tags.get("user-id", ""),
-                       event_id=tags.get("id", ""))
+                       event_id=tags.get("id", ""), emotes=emotes)
     return Message("twitch", author, text, "chat", "", mod, tags.get("user-id", ""),
-                   event_id=tags.get("id", ""))
+                   event_id=tags.get("id", ""), emotes=emotes)
 
 
 def parse_kick_event(event, raw):
     if not event.endswith("ChatMessageEvent"):
         return None
     d = json.loads(raw) if isinstance(raw, str) else raw
-    text = re.sub(r"\[emote:\d+:([^\]]*)\]", r"\1", d.get("content", "")).strip()
+    content = d.get("content", "")
+    emotes = {name: "https://files.kick.com/emotes/%s/fullsize" % eid
+              for eid, name in re.findall(r"\[emote:(\d+):([^\]]*)\]", content) if name}
+    text = re.sub(r"\[emote:\d+:([^\]]*)\]", r"\1", content).strip()
     sender = d.get("sender") or {}
     badges = [b.get("type", "") for b in (sender.get("identity") or {}).get("badges", [])]
     mod = any(b in ("moderator", "broadcaster") for b in badges)
     return Message("kick", sender.get("username", "?"), text, "chat", "", mod, str(sender.get("id", "")),
-                   bool(sender.get("is_bot")))
+                   bool(sender.get("is_bot")), str(d.get("id", "") or ""), emotes=emotes)
 
 
 def youtube_id(s):
@@ -158,14 +200,15 @@ class YouTubeSource(Source):
                                                     "giftMembershipReceivedEvent")
                                 paid = c.type in ("superChat", "superSticker")
                                 a = c.author
+                                words, emotes = youtube_text(c)
                                 self._emit(Message(
-                                    "youtube", a.name, c.message or ("became a channel member" if member else ""),
+                                    "youtube", a.name, words or ("became a channel member" if member else ""),
                                     "member" if member else ("super" if paid else "chat"),
                                     getattr(c, "amountString", "") if paid else "",
                                     bool(getattr(a, "isChatModerator", False) or getattr(a, "isChatOwner", False)),
                                     str(getattr(a, "channelId", "") or ""),
                                     bool(getattr(a, "isChatBot", False)),
-                                    str(getattr(c, "id", "") or getattr(c, "messageId", "") or "")))
+                                    str(getattr(c, "id", "") or getattr(c, "messageId", "") or ""), emotes=emotes))
                     self.stop_evt.wait(1)
             except Exception as e:
                 if not self.stop_evt.is_set():

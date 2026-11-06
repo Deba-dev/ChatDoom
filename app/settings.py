@@ -61,6 +61,15 @@ DEFAULTS = {
     "role_verified": "", "role_regular": "", "role_supporter": "", "regular_msgs": 50, "dedupe_secs": 20, "user_cooldown": 4, "queue_max": 6,
     "chat_font": "", "chat_size": 13, "chat_weight": 400, "chat_color": "#f4f4f8",
     "chat_line": 10, "chat_track": 0, "chat_opacity": 100, "chat_transform": "normal", "chat_italic": False, "chat_align": "left",
+    "pitch": 0, "voice_paid": "", "voice_member": "", "voice_mod": "", "voice_alerts": "", "voice_youtube": "", "voice_twitch": "", "voice_kick": "",
+    "voice_pool": [], "viewer_voices": {}, "voice_match_language": False, "voice_device": "", "win_voice": "",
+    "say_format": "{name}: {message}", "say_paid_format": "{name} sent {amount}. {message}", "say_emoji": "read", "say_squeeze": True,
+    "say_clean_names": False, "say_gap_ms": 150,
+    "translate_langs": ["ru", "ko", "zh", "ja"], "translate_others": False, "translate_target": "en", "translate_speak": True, "translate_show": True,
+    "chat_show_time": False, "chat_highlights": [], "chat_mark_new": True, "chat_hide_skipped": False, "chat_muted": [],
+    "auto_detect_streams": True, "auto_connect_live": True, "yt_stream_formats": {}, "youtube_auto_id": "",
+    "platform_twitch_login": "", "platform_kick_login": "",
+    "ov_sound_volume": 80, "ov_type_sounds": {},
 }
 
 
