@@ -1,9 +1,9 @@
 """OBS overlays page: copy the addresses into OBS Browser sources, or bring your own StreamElements overlay."""
 from PySide6.QtCore import QUrl
 from PySide6.QtGui import QDesktopServices, QGuiApplication
-from PySide6.QtWidgets import QComboBox, QLabel, QLineEdit, QPushButton, QSpinBox
+from PySide6.QtWidgets import QLabel, QLineEdit, QPushButton
 
-from .ui_kit import SubPage, copy_row, field_row, hrow, info_box, section_card
+from .ui_kit import SubPage, copy_row, hrow, info_box, section_card
 
 
 class OverlayPage(SubPage):
@@ -48,11 +48,6 @@ class OverlayPage(SubPage):
                              "In OBS: Sources > + > Browser. Width 1280, Height 720. Meme sounds play from the app, like the voice.")
         wrap, self.meme_url = copy_row(overlay.url("meme"))
         cl.addWidget(wrap)
-        sp = QSpinBox()
-        sp.setRange(2, 30)
-        sp.setValue(int(self.s.get("meme_seconds")))
-        sp.valueChanged.connect(lambda v: self.s.set("meme_seconds", v))
-        cl.addWidget(field_row("Meme stays on screen", "Seconds before the meme picture clears.", sp))
         lay.addWidget(c)
 
         lay = self.add_tab("Widgets")
@@ -61,22 +56,6 @@ class OverlayPage(SubPage):
                              "and the viewer queue on the right. Set them up on the Engage page. In OBS: Sources > + > Browser. Width 1280, Height 720.")
         wrap, self.widgets_url = copy_row(overlay.url("widgets"))
         cl.addWidget(wrap)
-        lay.addWidget(c)
-
-        lay = self.add_tab("Options")
-        c, cl = section_card("Overlay options", "Changes apply to OBS within a second. Only this PC can open these addresses. Alert designs are on the Alerts page.")
-        sp = QSpinBox()
-        sp.setRange(5, 120)
-        sp.setValue(int(self.s.get("ov_chat_seconds")))
-        sp.valueChanged.connect(lambda v: self.s.set("ov_chat_seconds", v))
-        cl.addWidget(field_row("Chat lines stay", "Seconds before the overlay clears.", sp))
-        chat_style = QComboBox()
-        for label, value in (("Glass bubbles", "glass"), ("Compact", "compact"),
-                             ("Streamer panel", "panel"), ("Cherry blossom", "sakura")):
-            chat_style.addItem(label, value)
-        chat_style.setCurrentIndex(max(0, chat_style.findData(self.s.get("ov_chat_style"))))
-        chat_style.currentIndexChanged.connect(lambda _: self.s.set("ov_chat_style", chat_style.currentData()))
-        cl.addWidget(field_row("Chat look", "Chat overlay style inspired by the provided reference.", chat_style))
         lay.addWidget(c)
 
         lay = self.add_tab("StreamElements")

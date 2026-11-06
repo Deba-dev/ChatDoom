@@ -11,7 +11,7 @@ from PySide6.QtWidgets import (QApplication, QButtonGroup, QCheckBox, QColorDial
                                QLabel, QLineEdit, QPlainTextEdit, QPushButton, QScrollArea, QSlider, QSpinBox, QStackedWidget,
                                QTextEdit, QVBoxLayout, QWidget)
 
-from . import alert_styles, hinglish
+from . import alert_styles, hinglish, overlay_styles
 from .commands import PLATFORM_NAMES, Commands
 from .commands_page import CommandsPage
 from .discord import Bridge, Cloud, LinkManager, post_webhook, run_bg
@@ -38,6 +38,7 @@ from .appearance import AppearanceDialog
 from .theme import CUSTOM_THEME, DEFAULT_THEME, FX, THEMES, build_qss, set_custom_theme
 from .tools import Tools
 from .alerts_page import AlertsPage
+from .overlay_design_page import OverlayDesignPage
 from .tools_page import ToolsPage
 from .ui_kit import SubPage, platform_mark, section_card
 from .visuals import BACKGROUNDS, Backdrop, CardGlow, HeroCard, Motion, NavIndicator, StatCard, Toasts, count_to, stagger_in
@@ -47,8 +48,8 @@ from .version import CREATOR, PRODUCT_NAME, VERSION, label
 COLORS = {"youtube": "#ff4d4d", "twitch": "#9146ff", "kick": "#53fc18", "test": "#00d4ff", "tip": "#ffd24d"}
 TAGS = {"youtube": "YT", "twitch": "TW", "kick": "KICK", "test": "TEST", "tip": "TIP"}
 PAGES = ("Connect", "Live chat", "Voice", "Moderation", "Discord", "Payments", "YouTube mod", "OBS overlays", "Music", "Commands", "Stream tools",
-         "Alerts", "Loyalty", "Engage")
-NAV_MARK = ("◎", "☰", "♫", "⌗", "◈", "₹", "▶", "▣", "♪", "!", "≡", "◉", "$", "?")
+         "Alerts", "Loyalty", "Engage", "Overlay styles")
+NAV_MARK = ("◎", "☰", "♫", "⌗", "◈", "₹", "▶", "▣", "♪", "!", "≡", "◉", "$", "?", "◧")
 STREAM_END_GRACE = 180000          # ms with no stream connected before the stream counts as over (reconnects are not an end)
 MAX_EXTRA_STREAMS = 8
 PAGE_BLURB = (
@@ -66,6 +67,7 @@ PAGE_BLURB = (
     "How every alert looks, moves and sounds on stream, with a live preview.",
     "Points, levels and a shop that keep viewers coming back.",
     "Polls, predictions, giveaways, the viewer queue, counters and goals.",
+    "Style packs, skins, animations and fonts for chat, now playing, memes and widgets.",
 )
 MARKS = {"youtube": ("YT", "#ff4d4d"), "twitch": ("TW", "#9146ff"), "kick": ("KK", "#53fc18")}
 CHAT_FONTS = ("Poppins", "Arial", "Segoe UI", "Calibri", "Verdana", "Tahoma", "Consolas", "Cascadia Mono", "Inter", "Roboto", "DM Sans", "Space Grotesk", "JetBrains Mono")
@@ -626,6 +628,7 @@ class MainWindow(QWidget):
         self.commands.values = self.tools.command_values
         self.toolspage = ToolsPage(self.s, self.tools, self)
         self.alertspage = AlertsPage(self.s, self.overlay)
+        self.stylespage = OverlayDesignPage(self.s, self.overlay)
         self.hotkeys = Hotkeys()
         self._hotkeys_applied = False
         self.updater = Updater(self.s)
@@ -656,7 +659,7 @@ class MainWindow(QWidget):
         right.addWidget(self.statbar)
         self.stack = QStackedWidget()
         for page in (self._page_connect(), self._page_feed(), self._page_voice(), self._page_mod(), self.discord, self.payments, self.ytpage, self.ovpage, self.musicpage, self.cmdpage, self.toolspage,
-                     self.alertspage, self.toolspage.loyalty, self.toolspage.engage):
+                     self.alertspage, self.toolspage.loyalty, self.toolspage.engage, self.stylespage):
             self.stack.addWidget(page)
         right.addWidget(self.stack, 1)
         root.addWidget(canvas, 1)
@@ -724,7 +727,7 @@ class MainWindow(QWidget):
         self.logo.setContentsMargins(4, 0, 4, 4)
         logo = QPixmap(os.path.join(ROOT, "assets", "chatdoom-logo.png"))
         if not logo.isNull():
-            self.logo.setPixmap(logo.scaled(138, 138, Qt.KeepAspectRatio, Qt.SmoothTransformation))
+            self.logo.setPixmap(logo.scaled(84, 84, Qt.KeepAspectRatio, Qt.SmoothTransformation))
         else:
             self.logo.setText(PRODUCT_NAME)
         lay.addWidget(self.logo)
@@ -734,7 +737,7 @@ class MainWindow(QWidget):
         navlay.setSpacing(0)
         self.nav = QButtonGroup(self)
         self.nav.setExclusive(True)
-        groups = (("Stream", (0, 1, 11, 7)), ("Community", (9, 12, 13, 10)), ("Sound", (2, 8)), ("Safety and links", (3, 6, 4, 5)))
+        groups = (("Stream", (0, 1, 11, 14, 7)), ("Community", (9, 12, 13, 10)), ("Sound", (2, 8)), ("Safety and links", (3, 6, 4, 5)))
         for title, indexes in groups:
             g = QLabel(title.upper())
             g.setObjectName("group")
@@ -755,16 +758,25 @@ class MainWindow(QWidget):
         self.nav_scroll.setWidgetResizable(True)
         self.nav_scroll.setFrameShape(QFrame.NoFrame)
         self.nav_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-        self.nav_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self.nav_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)    # on a short window, a visible bar shows there is more
         self.nav_scroll.setWidget(navbox)
         lay.addWidget(self.nav_scroll, 1)
+        self.settings_btn = QPushButton("Settings")     # folded away so every main page fits in the sidebar
+        self.settings_btn.setObjectName("quiet")
+        self.settings_btn.setCheckable(True)
+        self.settings_btn.setCursor(Qt.PointingHandCursor)
+        toggle = QWidget()
+        tl = QVBoxLayout(toggle)
+        tl.setContentsMargins(16, 6, 16, 2)
+        tl.addWidget(self.settings_btn)
+        lay.addWidget(toggle)
         box = QWidget()
         bl = QVBoxLayout(box)
-        bl.setContentsMargins(16, 8, 16, 4)
+        bl.setContentsMargins(16, 4, 16, 4)
         bl.setSpacing(6)
-        lab = QLabel("SETTINGS")
-        lab.setObjectName("group")
-        bl.addWidget(lab)
+        box.hide()
+        self.settings_btn.toggled.connect(box.setVisible)
+        self.settings_box = box
         theme = QComboBox()
         theme.setObjectName("sideCombo")
         theme.addItems(list(THEMES))
@@ -876,6 +888,7 @@ class MainWindow(QWidget):
                 "memeSeconds": int(self.s.get("meme_seconds")),
                 "soundUrl": sound_url,
                 "alertDesigns": alert_styles.overlay_designs(self.s, sound_dir, self.memes_dir),
+                "designs": overlay_styles.all_designs(self.s),
                 "alertStyle": self.s.get("ov_alert_style"), "chatStyle": self.s.get("ov_chat_style"),
                 "showTips": bool(self.s.get("ov_alert_tips")),
                 "showSuperchats": bool(self.s.get("ov_alert_superchats")),
@@ -997,8 +1010,8 @@ class MainWindow(QWidget):
 
     def _refresh_stats(self):
         i = self.stack.currentIndex()
-        self.statbar.setVisible(i not in (0, 11))    # Connect has its own cards, and Alerts needs the room for its preview
-        if i in (0, 11):
+        self.statbar.setVisible(i not in (0, 11, 14))    # Connect has its own cards, and the two design pages need the room for a preview
+        if i in (0, 11, 14):
             return
         try:
             for card, stat in zip(self.stat_cards, self._page_stats(i)):
@@ -1802,6 +1815,9 @@ class MainWindow(QWidget):
             self.toolspage.refresh()
         elif page is self.alertspage:
             self.alertspage.reload_sounds()
+            self.alertspage.load()
+        elif page is self.stylespage:
+            self.stylespage.load()
         if self.s.get("lite_mode"):
             self.title_line.setFixedWidth(72)
             return
