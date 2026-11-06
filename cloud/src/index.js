@@ -540,9 +540,10 @@ async function api(request, env, url) {
       return json({ error: "Translation is not enabled on this Cloudflare Worker. Add the Workers AI binding and deploy again." }, 503);
     const text = typeof body.text === "string" ? body.text.trim() : "";
     const sourceLang = typeof body.source_lang === "string" ? body.source_lang.toLowerCase() : "";
-    if (!text || text.length > 500 || !TRANSLATION_LANGUAGES.has(sourceLang))
-      return json({ error: "Translation needs a message of 1-500 characters and a supported source language." }, 400);
-    if (sourceLang === "en") return json({ translation: text, unchanged: true });
+    const targetLang = typeof body.target_lang === "string" ? body.target_lang.toLowerCase() : "en";
+    if (!text || text.length > 500 || !TRANSLATION_LANGUAGES.has(sourceLang) || !TRANSLATION_LANGUAGES.has(targetLang))
+      return json({ error: "Translation needs a message of 1-500 characters and supported languages." }, 400);
+    if (sourceLang === targetLang) return json({ translation: text, unchanged: true });
 
     const day = new Date().toISOString().slice(0, 10);
     const quotaKey = "translate:usage:" + day;
@@ -552,7 +553,7 @@ async function api(request, env, url) {
     await env.KV.put(quotaKey, String(used + 1), { expirationTtl: 172800 });
 
     const result = await env.AI.run("@cf/meta/m2m100-1.2b", {
-      text, source_lang: sourceLang, target_lang: "en",
+      text, source_lang: sourceLang, target_lang: targetLang,
     });
     const translated = typeof result?.translated_text === "string" ? result.translated_text.trim() : "";
     if (!translated) return json({ error: "Cloudflare AI did not return a translation." }, 502);

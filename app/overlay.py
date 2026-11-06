@@ -7,6 +7,7 @@ import urllib.parse
 from collections import deque
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
+from . import alert_sounds
 from .overlay_html import INDEX, page
 
 STUDIO_ORIGIN = "https://zunimilabs.online"
@@ -104,6 +105,10 @@ class Overlay:
                         with open(f, "rb") as fh:
                             return self._send(200, fh.read(), "font/ttf")
                 sound_path = urllib.parse.unquote(u.path)
+                m = re.fullmatch(r"/builtin-sound/([a-z-]{1,40})\.wav", sound_path)
+                if m:
+                    data = alert_sounds.wav_bytes(m.group(1))
+                    return self._send(200, data, "audio/wav") if data else self._send(404, "not found", "text/plain")
                 m = re.fullmatch(r"/sounds/([^/\\]{1,220})", sound_path)
                 if m and overlay.sounds_dir:
                     name = m.group(1)

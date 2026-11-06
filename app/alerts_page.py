@@ -2,12 +2,14 @@
 import json
 import os
 import random
+import tempfile
 
-from PySide6.QtCore import Qt, QTimer
+from PySide6.QtCore import Qt, QTimer, QUrl
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (QCheckBox, QColorDialog, QComboBox, QFileDialog, QGridLayout, QLabel, QLineEdit, QPushButton, QSlider, QSpinBox,
                                QWidget)
 
+from . import alert_sounds
 from . import alert_styles as styles
 from .commands import MEME_IMAGES, import_file
 from .design_tools import DesignTools
@@ -32,6 +34,7 @@ class AlertsPage(DesignTools, SubPage):
         super().__init__()
         self.s, self.overlay = settings, overlay
         self.view = None
+        self.player = None
         self.kind = ""                          # "" is the design every alert uses; otherwise one alert type
         self._loading = False
         self.boxes = {}
@@ -126,14 +129,7 @@ class AlertsPage(DesignTools, SubPage):
         cl.addWidget(hrow(pick, clear, self.image_label))
         cl.addWidget(field_row("Picture position", "", self._choice("layout")))
         lay.addWidget(c)
-        c, cl = section_card("Sound and timing", "Import sounds on the Music page, then choose one here.")
-        self.sound = QComboBox()
-        self.sound.currentIndexChanged.connect(lambda _: self._set("sound", self.sound.currentData() or ""))
-        refresh = QPushButton("Refresh sounds")
-        refresh.setObjectName(BUTTON)
-        refresh.clicked.connect(self.reload_sounds)
-        cl.addWidget(field_row("Sound for this design", "Empty uses the sound below.", self.sound))
-        cl.addWidget(hrow(refresh))
+        c, cl = section_card("Timing", "How long alerts stay and where they sit.")
         self.seconds = QSpinBox()
         self.seconds.setRange(0, 60)
         self.seconds.setSpecialValueText("Use the normal time")
@@ -147,10 +143,43 @@ class AlertsPage(DesignTools, SubPage):
         normal.setValue(int(self.s.get("ov_seconds")))
         normal.valueChanged.connect(lambda v: self.s.set("ov_seconds", v))
         cl.addWidget(field_row("Normal time on screen", "Used when a design does not set its own.", normal))
-        cl.addWidget(option_switch_row("Play a short chime with each alert", "Your voice still reads the alert aloud.", bind_switch(self.s, "ov_sound", accent)))
+        lay.addWidget(c)
+
+        lay = self.add_tab("Sounds")
+        c, cl = section_card("Alert sound", "%d built-in sounds, plus anything you import on the Music page. Press Play to hear one here." % len(alert_sounds.SOUNDS))
+        cl.addWidget(option_switch_row("Play a sound with each alert", "Your voice still reads the alert aloud.", bind_switch(self.s, "ov_sound", accent)))
         self.main_sound = QComboBox()
         self.main_sound.currentIndexChanged.connect(lambda _: self.s.set("ov_sound_file", self.main_sound.currentData() or ""))
-        cl.addWidget(field_row("Normal alert sound", "Replaces the built-in chime.", self.main_sound))
+        cl.addWidget(field_row("Normal alert sound", "Used when nothing below is chosen.", hrow(self.main_sound, self._play_button(self.main_sound))))
+        self.sound = QComboBox()
+        self.sound.currentIndexChanged.connect(lambda _: self._set("sound", self.sound.currentData() or ""))
+        cl.addWidget(field_row("Sound for this design", "Follows the Editing choice at the top of this page.", hrow(self.sound, self._play_button(self.sound))))
+        self.sound_volume = QSlider(Qt.Horizontal)
+        self.sound_volume.setRange(0, 100)
+        self.sound_volume.valueChanged.connect(lambda v: self._set("soundVolume", v))
+        cl.addWidget(field_row("Sound volume", "How loud alert sounds play in OBS.", self.sound_volume))
+        refresh = QPushButton("Refresh sounds")
+        refresh.setObjectName(BUTTON)
+        refresh.clicked.connect(self.reload_sounds)
+        cl.addWidget(hrow(refresh))
+        lay.addWidget(c)
+        c, cl = section_card("A sound for each alert", "Give each alert type its own sound, or pick a pack to fill them all at once.")
+        packs = []
+        for name, values in alert_sounds.PACKS:
+            b = QPushButton(name)
+            b.setObjectName(BUTTON)
+            b.clicked.connect(lambda _=False, v=values: self.use_sound_pack(v))
+            packs.append(b)
+        clear_all = QPushButton("Clear all")
+        clear_all.setObjectName(BUTTON)
+        clear_all.clicked.connect(lambda: self.use_sound_pack({}))
+        cl.addWidget(hrow(*packs, clear_all))
+        self.type_boxes = {}
+        for title, kind in styles.ALERT_TYPES:
+            box = QComboBox()
+            box.currentIndexChanged.connect(lambda _, k=kind: self._set_type_sound(k))
+            self.type_boxes[kind] = box
+            cl.addWidget(field_row(title, "", hrow(box, self._play_button(box))))
         lay.addWidget(c)
 
         lay = self.add_tab("Alert types")
@@ -247,6 +276,7 @@ class AlertsPage(DesignTools, SubPage):
         for key, box in self.boxes.items():
             box.setCurrentIndex(max(0, box.findData(d[key])))
         self.size.setValue(d["size"])
+        self.sound_volume.setValue(d["soundVolume"])
         self.seconds.setValue(d["seconds"])
         if self.template.text() != d["template"]:
             self.template.setText(d["template"])
@@ -263,16 +293,73 @@ class AlertsPage(DesignTools, SubPage):
         keep = self._loading
         self._loading = True
         items = scan(os.path.join(data_dir(), "Soundboard"))
-        for box, empty in ((self.sound, "Same as the normal sound"), (self.main_sound, "Built-in chime")):
+        boxes = [(self.sound, "Same as the normal sound", True), (self.main_sound, "Simple chime", False)]
+        boxes += [(box, "Same as the design", True) for box in self.type_boxes.values()]
+        for box, empty, can_silence in boxes:
             box.blockSignals(True)
             box.clear()
             box.addItem(empty, "")
+            if can_silence:
+                box.addItem("No sound", alert_sounds.SILENT)
+                box.addItem("Random built-in sound", alert_sounds.RANDOM)
+            for name, value in alert_sounds.choices():
+                box.addItem(name, value)
             for item in items:
                 box.addItem(item["title"], item["path"])
             box.blockSignals(False)
         self.main_sound.setCurrentIndex(max(0, self.main_sound.findData(self.s.get("ov_sound_file") or "")))
         self.sound.setCurrentIndex(max(0, self.sound.findData(self.design()["sound"])))
+        self._load_type_sounds()
         self._loading = keep
+
+    def _load_type_sounds(self):
+        saved = styles.type_sounds(self.s)
+        for kind, box in self.type_boxes.items():
+            box.blockSignals(True)
+            box.setCurrentIndex(max(0, box.findData(saved.get(kind, ""))))
+            box.blockSignals(False)
+
+    def _set_type_sound(self, kind):
+        saved = styles.type_sounds(self.s)
+        value = self.type_boxes[kind].currentData() or ""
+        if value:
+            saved[kind] = value
+        else:
+            saved.pop(kind, None)
+        self.s.set("ov_type_sounds", saved)
+
+    def use_sound_pack(self, values):
+        self.s.set("ov_type_sounds", {kind: alert_sounds.PREFIX + key for kind, key in values.items()})
+        self._load_type_sounds()
+
+    def _play_button(self, box):
+        b = QPushButton("Play")
+        b.setObjectName(BUTTON)
+        b.clicked.connect(lambda: self.play_sound(box.currentData() or ""))
+        return b
+
+    def play_sound(self, value):
+        """Plays a sound here in the app, so it can be judged without going live."""
+        if value == alert_sounds.SILENT or not value:
+            value = alert_sounds.choices()[0][1] if not value else ""
+        if value == alert_sounds.RANDOM:
+            value = random.choice(alert_sounds.choices())[1]
+        if not value:
+            return None
+        if alert_sounds.is_builtin(value):
+            path = os.path.join(tempfile.gettempdir(), "chatdoom-%s.wav" % value[len(alert_sounds.PREFIX):])
+            with open(path, "wb") as f:
+                f.write(alert_sounds.wav_bytes(value[len(alert_sounds.PREFIX):]))
+        else:
+            path = value
+        if self.player is None:
+            from PySide6.QtMultimedia import QAudioOutput, QMediaPlayer
+            self.player, self.player_out = QMediaPlayer(self), QAudioOutput(self)
+            self.player.setAudioOutput(self.player_out)
+        self.player_out.setVolume(self.design()["soundVolume"] / 100)
+        self.player.setSource(QUrl.fromLocalFile(path))
+        self.player.play()
+        return path
 
     def _pick_colour(self, key):
         colour = QColorDialog.getColor(QColor(self.design()[key]), self, "Choose a colour")
@@ -305,7 +392,6 @@ class AlertsPage(DesignTools, SubPage):
     def _make_preview(self):
         if self.view is not None:
             return
-        from PySide6.QtCore import QUrl
         from PySide6.QtWebEngineWidgets import QWebEngineView
         self.view = QWebEngineView(self.preview_box)
         self.view.setMinimumHeight(210)

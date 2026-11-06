@@ -269,7 +269,7 @@ async function moderate(request, env) {
         if (used >= limit) { notes.push("Daily moderation limit reached - no more actions today"); results.push({ i, outcome: "limit" }); break; }
         await api(env, `${API}/liveChat/bans?part=snippet`, {
           method: "POST", headers: { "content-type": "application/json" },
-          body: JSON.stringify({ snippet: { liveChatId: meta.chatId, type: "temporary", banDurationSeconds: secs, bannedUserInfo: { channelId: it.channelId } } }),
+          body: JSON.stringify({ snippet: { liveChatId: meta.chatId, type: "temporary", banDurationSeconds: secs, bannedUserDetails: { channelId: it.channelId } } }),
         });
         used = await addAction(env, tok.ch);
         notes.push(`Timed out ${who} for ${secs} seconds`);

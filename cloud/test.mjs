@@ -21,9 +21,50 @@ let invitesNow = [], membersNow = [], invitesStatus = 200, membersStatus = 200, 
 const putsFull = [];
 const kickTokenCalls = [], kickRevokeCalls = [];
 
+const modCalls = [];
+const VIEWER_CHANNEL = "UCviewerviewerviewerviewe";
+let twitchLive = true, twitchDenies = false, kickNoChannelScope = false;
 globalThis.fetch = async (url, init = {}) => {
   const u = new URL(url), p = u.pathname.replace("/api/v10", ""), m = init.method || "GET";
   const j = (o, s = 200) => new Response(JSON.stringify(o), { status: s });
+  const verb = init.method || "GET";
+  if (u.hostname === "www.youtube.com") return new Response(null, { status: p === "/shorts/verticalid1" ? 200 : 303 });
+  if (u.hostname === "www.googleapis.com" && p === "/youtube/v3/videos") return Response.json({ items: [{ player: { embedWidth: 480, embedHeight: 270 } }] });
+  if (u.hostname === "www.googleapis.com" && p === "/youtube/v3/liveChat/bans") {
+    modCalls.push({ verb, path: p, query: u.search, body: init.body && JSON.parse(init.body) });
+    return verb === "DELETE" ? new Response(null, { status: 204 }) : Response.json({ id: "BAN-1" });
+  }
+  if (u.hostname === "www.googleapis.com" && p === "/youtube/v3/liveChat/moderators") {
+    modCalls.push({ verb, path: p, body: JSON.parse(init.body) });
+    return Response.json({ id: "MOD-1" });
+  }
+  if (u.hostname === "www.googleapis.com" && p === "/youtube/v3/liveChat/messages/transition") {
+    modCalls.push({ verb, path: p, query: u.search });
+    return Response.json({ id: "POLL-1" });
+  }
+  if (u.hostname === "www.googleapis.com" && p === "/youtube/v3/liveChat/messages" && verb === "GET") {
+    return Response.json({ items: [{ id: "LCC.1", snippet: { displayMessage: "bad words" }, authorDetails: { channelId: VIEWER_CHANNEL } }] });
+  }
+  if (u.hostname === "www.googleapis.com" && p === "/youtube/v3/liveChat/messages" && verb === "DELETE") {
+    modCalls.push({ verb, path: p, query: u.search });
+    return new Response(null, { status: 204 });
+  }
+  if (u.hostname === "api.twitch.tv" && p === "/helix/streams") {
+    return Response.json({ data: twitchLive ? [{ id: "TW-STREAM", title: "Ranked grind" }] : [] });
+  }
+  if (u.hostname === "api.twitch.tv" && (p.startsWith("/helix/moderation/") || p === "/helix/chat/settings" || p === "/helix/chat/shoutouts" || p === "/helix/chat/announcements" || (p === "/helix/polls" && verb === "PATCH"))) {
+    modCalls.push({ verb, path: p, query: u.search, body: init.body && JSON.parse(init.body) });
+    if (twitchDenies) return Response.json({ message: "Missing scope" }, { status: 401 });
+    return Response.json({ data: [] });
+  }
+  if (u.hostname === "api.kick.com" && p === "/public/v1/channels") {
+    if (kickNoChannelScope) return Response.json({ message: "Forbidden" }, { status: 403 });
+    return Response.json({ data: [{ slug: "test-kick", broadcaster_user_id: 4242, stream_title: "Kick live", stream: { is_live: true } }] });
+  }
+  if (u.hostname === "api.kick.com" && (p === "/public/v1/moderation/bans" || (p.startsWith("/public/v1/chat/") && verb === "DELETE"))) {
+    modCalls.push({ verb, path: p, body: init.body && JSON.parse(init.body) });
+    return verb === "DELETE" && p !== "/public/v1/moderation/bans" ? new Response(null, { status: 204 }) : Response.json({ data: {} });
+  }
   if (u.hostname === "oauth2.googleapis.com" && p === "/token") {
     const body = new URLSearchParams(init.body);
     return j({ access_token: body.get("grant_type") === "refresh_token" ? "YT_ACCESS_2" : "YT_ACCESS",
@@ -71,7 +112,7 @@ globalThis.fetch = async (url, init = {}) => {
     return j({ id: "YT_ACTION" });
   }
   if (u.hostname === "api.twitch.tv" && p === "/helix/users") {
-    return j({ data: [{ id: "TWITCH_USER", display_name: "Test Twitch" }] });
+    return j({ data: [{ id: "TWITCH_USER", login: "testtwitch", display_name: "Test Twitch" }] });
   }
   if (u.hostname === "api.twitch.tv" && p === "/helix/eventsub/subscriptions") {
     const body = JSON.parse(init.body);
@@ -133,6 +174,10 @@ ok(r.status === 200 && res.translation === "Hello from the stream!"
   && translatedInputs.at(-1).input.source_lang === "ja"
   && translatedInputs.at(-1).input.target_lang === "en",
   "authenticated translation converts supported-language chat into English");
+r = await call("/api/translate", { method: "POST", headers: H, body: JSON.stringify({ text: "안녕", source_lang: "ko", target_lang: "hi" }) });
+ok(r.status === 200 && translatedInputs.at(-1).input.target_lang === "hi", "translation can go into a chosen language");
+r = await call("/api/translate", { method: "POST", headers: H, body: JSON.stringify({ text: "hi", source_lang: "ko", target_lang: "xx" }) });
+ok(r.status === 400, "an unknown target language is refused");
 r = await call("/api/translate", { method: "POST", headers: H, body: JSON.stringify({ text: "x".repeat(501), source_lang: "ja" }) });
 ok(r.status === 400, "translation input is length-limited");
 r = await worker.fetch(new Request("https://cv.example/api/translate", {
@@ -325,6 +370,40 @@ ok(r.status === 200 && platformCalls.some((x) => x.platform === "youtube" && x.b
 r = await call("/platform-auth/poll", { method: "POST", headers: ytHeaders, body: JSON.stringify({ platform: "youtube", videoId: "abcdefghijk", question: "Next game?", options: ["A", "B"] }) });
 ok(r.status === 200 && platformCalls.some((x) => x.platform === "youtube" && x.body.snippet.type === "pollEvent" && x.body.snippet.pollDetails.metadata.options.length === 2),
   "YouTube live poll is created with valid choices");
+const moderate = (headers, body) => call("/platform-auth/moderate", { method: "POST", headers, body: JSON.stringify(body) });
+r = await call("/platform-auth/live-streams", { headers: ytHeaders });
+res = await r.json();
+ok(r.status === 200 && res.account === "Test YouTube Channel" && res.streams.length === 1 && res.streams[0].id === "abcdefghijk" && res.streams[0].format === "long",
+  "live-streams names the account and only lists what is live now");
+const formatCalls = platformCalls.length;
+await call("/platform-auth/live-streams", { headers: ytHeaders });
+ok(store.get("yt-format:abcdefghijk") === "long" && platformCalls.length === formatCalls, "a stream's format is remembered, so polling costs no extra lookups");
+r = await moderate(ytHeaders, { platform: "youtube", action: "timeout", videoId: "abcdefghijk", userId: VIEWER_CHANNEL, seconds: 600 });
+res = await r.json();
+let modCall = modCalls.at(-1);
+ok(r.status === 200 && res.banId === "BAN-1" && modCall.body.snippet.type === "temporary" && modCall.body.snippet.banDurationSeconds === 600
+  && modCall.body.snippet.bannedUserDetails.channelId === VIEWER_CHANNEL, "a YouTube time-out uses the fields Google documents and returns the ban id");
+r = await moderate(ytHeaders, { platform: "youtube", action: "ban", videoId: "abcdefghijk", userId: VIEWER_CHANNEL });
+modCall = modCalls.at(-1);
+ok(r.status === 200 && modCall.body.snippet.type === "permanent" && !("banDurationSeconds" in modCall.body.snippet), "a YouTube ban is permanent with no duration");
+r = await moderate(ytHeaders, { platform: "youtube", action: "unban", banId: "BAN-1" });
+ok(r.status === 200 && modCalls.at(-1).verb === "DELETE" && modCalls.at(-1).query.includes("BAN-1"), "a YouTube ban is undone by its id");
+r = await moderate(ytHeaders, { platform: "youtube", action: "unban" });
+ok(r.status === 400, "without a ban id YouTube cannot undo a ban, and the streamer is told");
+r = await moderate(ytHeaders, { platform: "youtube", action: "delete", videoId: "abcdefghijk", userId: VIEWER_CHANNEL, text: "bad words" });
+ok(r.status === 200 && modCalls.at(-1).verb === "DELETE" && modCalls.at(-1).query.includes("LCC.1"), "a YouTube message is found by viewer and text, then removed");
+r = await moderate(ytHeaders, { platform: "youtube", action: "addMod", videoId: "abcdefghijk", userId: VIEWER_CHANNEL });
+ok(r.status === 200 && modCalls.at(-1).body.snippet.moderatorDetails.channelId === VIEWER_CHANNEL, "a viewer can be made a moderator");
+r = await moderate(ytHeaders, { platform: "youtube", action: "endPoll", pollId: "POLL-1" });
+ok(r.status === 200 && modCalls.at(-1).query.includes("status=closed"), "a YouTube poll is ended with status closed");
+r = await moderate(ytHeaders, { platform: "youtube", action: "timeout", videoId: "abcdefghijk", userId: "not-a-channel" });
+ok(r.status === 400, "a bad viewer id never reaches YouTube");
+r = await moderate(ytHeaders, { platform: "youtube", action: "chatMode", videoId: "abcdefghijk" });
+ok(r.status === 400 && (await r.json()).error.includes("does not offer"), "YouTube chat modes are refused with a plain reason");
+r = await moderate(ytHeaders, { platform: "twitch", action: "timeout", userId: "1" });
+ok(r.status === 400, "a session only acts on its own platform");
+r = await call("/platform-auth/moderate", { method: "POST", body: JSON.stringify({ platform: "youtube", action: "ban" }) });
+ok(r.status === 401, "owner actions need a signed-in session");
 youtubeSubscribers = [{
   id: "YT_SUB_1", snippet: { publishedAt: new Date(Date.now() - 10000).toISOString() },
   subscriberSnippet: { title: "Public new subscriber" },
@@ -360,6 +439,27 @@ let twReturn = new URL(twLogin.callback.headers.get("location"));
 let twRedeemed = await call("/platform-auth/redeem", { method: "POST", body: JSON.stringify({ ticket: twReturn.searchParams.get("ticket") }) });
 let twAccount = await twRedeemed.json();
 let twHeaders = { Authorization: "Bearer " + twAccount.session, "content-type": "application/json" };
+ok(["moderator:manage:banned_users", "moderator:manage:chat_messages", "moderator:manage:chat_settings"].every((s) => twLogin.authorize.searchParams.get("scope").includes(s)),
+  "Twitch login asks for the moderation permissions");
+r = await call("/platform-auth/live-streams", { headers: twHeaders });
+res = await r.json();
+ok(r.status === 200 && res.streams.length === 1 && res.streams[0].title === "Ranked grind" && res.channel, "Twitch live-streams gives the channel and the live stream");
+twitchLive = false;
+r = await call("/platform-auth/live-streams", { headers: twHeaders });
+ok((await r.json()).streams.length === 0, "an offline Twitch channel lists no streams");
+r = await moderate(twHeaders, { platform: "twitch", action: "timeout", userId: "777", seconds: 300, reason: "spam" });
+ok(r.status === 200 && modCalls.at(-1).path === "/helix/moderation/bans" && modCalls.at(-1).body.data.duration === 300 && modCalls.at(-1).body.data.user_id === "777", "a Twitch time-out is sent");
+r = await moderate(twHeaders, { platform: "twitch", action: "ban", userId: "777" });
+ok(r.status === 200 && !("duration" in modCalls.at(-1).body.data), "a Twitch ban has no duration");
+r = await moderate(twHeaders, { platform: "twitch", action: "delete", messageId: "abc-1" });
+ok(r.status === 200 && modCalls.at(-1).verb === "DELETE" && modCalls.at(-1).query.includes("message_id=abc-1"), "a Twitch message is removed by id");
+r = await moderate(twHeaders, { platform: "twitch", action: "chatMode", settings: { slow_mode: true, slow_mode_wait_time: 30, nonsense: true } });
+ok(r.status === 200 && modCalls.at(-1).body.slow_mode === true && modCalls.at(-1).body.slow_mode_wait_time === 30 && !("nonsense" in modCalls.at(-1).body), "Twitch slow mode is set and only known settings pass");
+twitchDenies = true;
+r = await moderate(twHeaders, { platform: "twitch", action: "clear" });
+res = await r.json();
+ok(r.status === 403 && res.error.includes("sign in again"), "an old Twitch sign-in is told to sign in again for moderation");
+twitchDenies = false;
 ok(twLogin.authorize.searchParams.get("scope").includes("user:write:chat")
   && twLogin.authorize.searchParams.get("scope").includes("channel:manage:polls")
   && twLogin.authorize.searchParams.get("scope").includes("moderator:read:followers")
@@ -389,7 +489,7 @@ let kickHeaders = { Authorization: "Bearer " + kickAccount.session, "content-typ
 const kickVerifier = kickTokenCalls[0]?.get("code_verifier") || "";
 const kickChallenge = createHash("sha256").update(kickVerifier).digest("base64url");
 ok(kickLogin.authorize.origin + kickLogin.authorize.pathname === "https://id.kick.com/oauth/authorize"
-  && kickLogin.authorize.searchParams.get("scope") === "user:read chat:write"
+  && kickLogin.authorize.searchParams.get("scope") === "user:read channel:read chat:write moderation:ban moderation:chat_message:manage"
   && kickLogin.authorize.searchParams.get("code_challenge_method") === "S256"
   && kickVerifier.length >= 43 && kickLogin.authorize.searchParams.get("code_challenge") === kickChallenge
   && !kickLogin.authorize.toString().includes(kickVerifier),
@@ -402,6 +502,21 @@ const kickSent = platformCalls.find((x) => x.platform === "kick");
 ok(r.status === 200 && kickSent && kickSent.body.content === "Hello Kick" && kickSent.body.type === "user"
   && kickSent.body.broadcaster_user_id === 4242 && kickSent.headers.Authorization === "Bearer KICK_ACCESS",
   "Kick chat message is sent with the signed-in broadcaster account");
+r = await call("/platform-auth/message", { method: "POST", headers: kickHeaders, body: JSON.stringify({ platform: "kick", text: "Hi", replyTo: "uuid-1" }) });
+ok(r.status === 200 && platformCalls.filter((x) => x.platform === "kick").at(-1).body.reply_to_message_id === "uuid-1", "a Kick reply carries the message id");
+r = await call("/platform-auth/live-streams", { headers: kickHeaders });
+res = await r.json();
+ok(r.status === 200 && res.channel === "test-kick" && res.streams.length === 1 && res.streams[0].title === "Kick live", "Kick live-streams reads the channel and live state");
+kickNoChannelScope = true;
+r = await call("/platform-auth/live-streams", { headers: kickHeaders });
+ok((await r.json()).needsLogin === true, "an old Kick sign-in is asked to sign in again, without an error");
+kickNoChannelScope = false;
+r = await moderate(kickHeaders, { platform: "kick", action: "timeout", userId: "55", seconds: 90 });
+ok(r.status === 200 && modCalls.at(-1).body.duration === 2 && modCalls.at(-1).body.user_id === 55 && modCalls.at(-1).body.broadcaster_user_id === 4242, "a Kick time-out is sent in whole minutes");
+r = await moderate(kickHeaders, { platform: "kick", action: "unban", userId: "55" });
+ok(r.status === 200 && modCalls.at(-1).verb === "DELETE" && modCalls.at(-1).body.user_id === 55, "Kick unban sends the viewer in the body");
+r = await moderate(kickHeaders, { platform: "kick", action: "delete", messageId: "uuid-1" });
+ok(r.status === 200 && modCalls.at(-1).path === "/public/v1/chat/uuid-1", "a Kick message is removed by id");
 const callsBeforeKickPoll = platformCalls.length;
 r = await call("/platform-auth/poll", { method: "POST", headers: kickHeaders, body: JSON.stringify({ platform: "kick", question: "Next game?", options: ["A", "B"] }) });
 ok(r.status === 400 && platformCalls.length === callsBeforeKickPoll, "Kick polls are refused and never reach Twitch");

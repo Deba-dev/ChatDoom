@@ -1,3 +1,5 @@
+import { normalizeText } from "./youtube-bot.js";
+
 const json = (data, status = 200) =>
   new Response(JSON.stringify(data), { status, headers: { "content-type": "application/json", "cache-control": "no-store" } });
 
@@ -31,6 +33,12 @@ const providers = {
 let dbReady;
 const YOUTUBE_ACTION_QUOTA_BUDGET = 8000;
 const YOUTUBE_SUBSCRIBER_QUOTA_BUDGET = 2000;
+// What Google charges (developers.google.com/youtube/v3/determine_quota_cost). A ban costs ten times a chat message.
+const YOUTUBE_COST = { lookup: 1, chatList: 5, message: 20, ban: 200 };
+const SHORTS_WORDS = /#shorts?\b|\bshorts?\b|\bvertical\b|\b9\s*[:x]\s*16\b/i;
+const FORMAT_CACHE_SECONDS = 21600;
+const YOUTUBE_CHANNEL = /^UC[\w-]{20,30}$/;
+const NEEDS_NEW_LOGIN = " Sign out and sign in again on the Connect page so CHATDOOM gets the moderation permissions.";
 
 function randomString(length) {
   const bytes = crypto.getRandomValues(new Uint8Array(length));
@@ -187,11 +195,12 @@ async function start(env, origin, url) {
     authUrl.searchParams.set("access_type", "offline");
     authUrl.searchParams.set("prompt", "consent");
   } else if (platform === "kick") {
-    authUrl.searchParams.set("scope", "user:read chat:write");
+    authUrl.searchParams.set("scope", "user:read channel:read chat:write moderation:ban moderation:chat_message:manage");
     authUrl.searchParams.set("code_challenge", await pkceChallenge(verifier));
     authUrl.searchParams.set("code_challenge_method", "S256");
   } else {
-    authUrl.searchParams.set("scope", "user:write:chat channel:manage:polls moderator:read:followers channel:read:subscriptions");
+    authUrl.searchParams.set("scope", "user:write:chat channel:manage:polls moderator:read:followers channel:read:subscriptions " +
+      "moderator:manage:banned_users moderator:manage:chat_messages moderator:manage:chat_settings moderator:manage:announcements moderator:manage:shoutouts");
   }
   return json({ authorizeUrl: authUrl.toString() });
 }
@@ -446,37 +455,279 @@ async function youtubeChatId(env, account, videoId) {
   return live.snippet.liveChatId;
 }
 
+// YouTube's API has no Shorts or vertical field, so this is a best guess from what the streamer named things, then from YouTube's own
+// /shorts/ address and player shape. The app lets the streamer correct it. Saved for a few hours so polling costs nothing extra.
+async function youtubeFormat(env, account, item) {
+  const key = "yt-format:" + item.id;
+  const saved = await env.KV.get(key);
+  if (saved) return saved;
+  const headers = { Authorization: "Bearer " + account.accessToken };
+  let format = "";
+  if (SHORTS_WORDS.test(item.snippet && item.snippet.title || "")) format = "shorts";
+  const boundStream = item.contentDetails && item.contentDetails.boundStreamId;
+  if (!format && boundStream) {
+    await reserveYouTubeQuota(env, YOUTUBE_COST.lookup);
+    const url = new URL("https://www.googleapis.com/youtube/v3/liveStreams");
+    url.search = new URLSearchParams({ part: "snippet", id: boundStream });
+    const data = await fetch(url, { headers }).then((r) => tokenResponse(r, "YouTube", "stream lookup")).catch(() => ({}));
+    const stream = data.items && data.items[0];
+    if (stream && SHORTS_WORDS.test(stream.snippet && stream.snippet.title || "")) format = "shorts";
+  }
+  if (!format) {
+    const page = await fetch("https://www.youtube.com/shorts/" + item.id, { method: "HEAD", redirect: "manual" }).catch(() => null);
+    if (page && page.status === 200) format = "shorts";
+  }
+  if (!format) {
+    await reserveYouTubeQuota(env, YOUTUBE_COST.lookup);
+    const url = new URL("https://www.googleapis.com/youtube/v3/videos");
+    url.search = new URLSearchParams({ part: "player", id: item.id, maxHeight: "480" });
+    const data = await fetch(url, { headers }).then((r) => tokenResponse(r, "YouTube", "player lookup")).catch(() => ({}));
+    const player = data.items && data.items[0] && data.items[0].player;
+    if (player && Number(player.embedHeight) > Number(player.embedWidth)) format = "shorts";
+  }
+  format = format || "long";
+  await env.KV.put(key, format, { expirationTtl: FORMAT_CACHE_SECONDS });
+  return format;
+}
+
+async function listBroadcasts(env, account, statuses) {
+  const now = Date.now();
+  const broadcasts = [];
+  for (const broadcastStatus of statuses) {
+    await reserveYouTubeQuota(env, YOUTUBE_COST.lookup);
+    const url = new URL("https://www.googleapis.com/youtube/v3/liveBroadcasts");
+    url.search = new URLSearchParams({ part: "id,snippet,status,contentDetails", broadcastStatus, broadcastType: "all", maxResults: "50" });
+    const response = await fetch(url, { headers: { Authorization: "Bearer " + account.accessToken } });
+    const data = await tokenResponse(response, "YouTube", "stream lookup");
+    for (const item of data.items || []) {
+      const start = Date.parse(item.snippet && item.snippet.scheduledStartTime || "");
+      const live = broadcastStatus === "active";
+      broadcasts.push({
+        id: clean(item.id, 20), title: clean(item.snippet && item.snippet.title || "Untitled stream", 100),
+        live, privacy: clean(item.status && item.status.privacyStatus || "", 20),
+        start: Number.isFinite(start) ? start : 0,
+        stale: broadcastStatus === "upcoming" && !(start > now - 86_400_000),   // a date long past: the channel's old default entry
+        format: live ? await youtubeFormat(env, account, item) : "",
+      });
+    }
+  }
+  broadcasts.sort((a, b) => b.live - a.live || a.stale - b.stale || a.start - b.start);
+  return broadcasts;
+}
+
+async function signedIn(request, env) {
+  try {
+    const account = await accountFor(request, env);
+    return account ? { account } : { failure: json({ error: "Platform login expired or disconnected. Sign in again." }, 401) };
+  } catch (error) {
+    return { failure: json({ error: clean(error.message, 140) }, error.status === 400 || error.status === 401 ? 401 : 502) };
+  }
+}
+
+const failed = (error, fallback) => json({ error: clean(error.message || fallback, 180) },
+  error.status === 429 ? 429 : error.status === 400 || error.status === 401 || error.status === 403 ? error.status : 502);
+
 // The signed-in channel's own live and scheduled streams. Unlisted ones are included, which no public page can show.
 async function youtubeBroadcasts(request, env) {
-  let account;
-  try { account = await accountFor(request, env); }
-  catch (error) { return json({ error: clean(error.message, 140) }, error.status === 400 || error.status === 401 ? 401 : 502); }
-  if (!account) return json({ error: "Platform login expired or disconnected. Sign in again." }, 401);
+  const { account, failure } = await signedIn(request, env);
+  if (failure) return failure;
   if (account.platform !== "youtube") return json({ error: "Sign in to YouTube to find your streams" }, 400);
   try {
-    const now = Date.now();
-    const broadcasts = [];
-    for (const broadcastStatus of ["active", "upcoming"]) {
-      await reserveYouTubeQuota(env, 1);
-      const url = new URL("https://www.googleapis.com/youtube/v3/liveBroadcasts");
-      url.search = new URLSearchParams({ part: "id,snippet,status", broadcastStatus, broadcastType: "all", maxResults: "50" });
-      const response = await fetch(url, { headers: { Authorization: "Bearer " + account.accessToken } });
-      const data = await tokenResponse(response, "YouTube", "stream lookup");
-      for (const item of data.items || []) {
-        const start = Date.parse(item.snippet && item.snippet.scheduledStartTime || "");
-        broadcasts.push({
-          id: clean(item.id, 20), title: clean(item.snippet && item.snippet.title || "Untitled stream", 100),
-          live: broadcastStatus === "active", privacy: clean(item.status && item.status.privacyStatus || "", 20),
-          start: Number.isFinite(start) ? start : 0,
-          stale: broadcastStatus === "upcoming" && !(start > now - 86_400_000),   // a date long past: the channel's old default entry
-        });
-      }
-    }
-    broadcasts.sort((a, b) => b.live - a.live || a.stale - b.stale || a.start - b.start);
-    return json({ broadcasts });
+    return json({ broadcasts: await listBroadcasts(env, account, ["active", "upcoming"]) });
   } catch (error) {
-    return json({ error: clean(error.message || "Could not look up your streams", 160) },
-      error.status === 429 ? 429 : error.status === 400 || error.status === 401 ? error.status : 502);
+    return failed(error, "Could not look up your streams");
+  }
+}
+
+// What the signed-in account is streaming right now, in one shape for all three platforms. The app polls this.
+async function liveStreams(request, env) {
+  const { account, failure } = await signedIn(request, env);
+  if (failure) return failure;
+  const base = { platform: account.platform, account: account.display_name, channel: "", streams: [] };
+  try {
+    if (account.platform === "youtube") {
+      return json({ ...base, channel: account.provider_user_id, streams: await listBroadcasts(env, account, ["active"]) });
+    }
+    if (account.platform === "twitch") {
+      const headers = { Authorization: "Bearer " + account.accessToken, "Client-Id": env.TWITCH_CLIENT_ID };
+      const id = encodeURIComponent(account.provider_user_id);
+      const user = await tokenResponse(await fetch("https://api.twitch.tv/helix/users?id=" + id, { headers }), "Twitch", "account lookup");
+      const live = await tokenResponse(await fetch("https://api.twitch.tv/helix/streams?user_id=" + id, { headers }), "Twitch", "stream lookup");
+      const channel = clean(user.data && user.data[0] && user.data[0].login || "", 60);
+      const stream = live.data && live.data[0];
+      return json({ ...base, channel, streams: stream ? [{ id: clean(stream.id, 40), title: clean(stream.title, 100), live: true, format: "long" }] : [] });
+    }
+    const response = await fetch("https://api.kick.com/public/v1/channels", { headers: { Authorization: "Bearer " + account.accessToken } });
+    if (response.status === 401 || response.status === 403) return json({ ...base, needsLogin: true });   // signed in before channel:read was asked for
+    const data = await tokenResponse(response, "Kick", "channel lookup");
+    const channel = Array.isArray(data.data) ? data.data[0] : data.data;
+    if (!channel) return json(base);
+    const live = Boolean(channel.stream && channel.stream.is_live);
+    return json({ ...base, channel: clean(channel.slug, 60),
+      streams: live ? [{ id: clean(channel.slug, 60), title: clean(channel.stream_title, 100), live: true, format: "long" }] : [] });
+  } catch (error) {
+    return failed(error, "Could not check for live streams");
+  }
+}
+
+// YouTube chat readers and the Data API use different message ids, so the message is found by viewer and text, like the moderator bot does.
+async function findYoutubeMessage(env, account, chatId, channelId, text) {
+  const mine = [];
+  let pageToken = "";
+  for (let page = 0; page < 3; page++) {
+    await reserveYouTubeQuota(env, YOUTUBE_COST.chatList);
+    const url = new URL("https://www.googleapis.com/youtube/v3/liveChat/messages");
+    url.search = new URLSearchParams({ liveChatId: chatId, part: "snippet,authorDetails", maxResults: "200", ...(pageToken ? { pageToken } : {}) });
+    const data = await tokenResponse(await fetch(url, { headers: { Authorization: "Bearer " + account.accessToken } }), "YouTube", "chat lookup");
+    for (const item of data.items || []) {
+      if (item.authorDetails && item.authorDetails.channelId === channelId) mine.push(item);
+    }
+    pageToken = data.nextPageToken || "";
+    if (!pageToken || (data.items || []).length < 200) break;
+  }
+  const want = normalizeText(text);
+  for (let i = mine.length - 1; i >= 0; i--) {
+    if (normalizeText(mine[i].snippet && mine[i].snippet.displayMessage) === want) return mine[i];
+  }
+  return mine.length === 1 ? mine[0] : null;
+}
+
+async function youtubeModerate(env, account, body, act) {
+  const headers = { Authorization: "Bearer " + account.accessToken, "content-type": "application/json" };
+  const api = "https://www.googleapis.com/youtube/v3/liveChat/";
+  if (act === "unban") {
+    const id = clean(body.banId, 300);
+    if (!id) return json({ error: "YouTube can only undo a time-out or ban made in this session" }, 400);
+    await reserveYouTubeQuota(env, YOUTUBE_COST.ban);
+    await tokenResponse(await fetch(api + "bans?id=" + encodeURIComponent(id), { method: "DELETE", headers }), "YouTube", "unban");
+    return json({ ok: true });
+  }
+  if (act === "endPoll") {
+    const id = clean(body.pollId, 300);
+    if (!id) return json({ error: "There is no running poll to end" }, 400);
+    await reserveYouTubeQuota(env, YOUTUBE_COST.message);
+    const url = new URL(api + "messages/transition");
+    url.search = new URLSearchParams({ id, status: "closed", part: "snippet" });
+    await tokenResponse(await fetch(url, { method: "POST", headers }), "YouTube", "ending the poll");
+    return json({ ok: true });
+  }
+  const viewer = String(body.userId || "");
+  if (!["delete", "timeout", "ban", "addMod"].includes(act)) return json({ error: "YouTube does not offer that to apps" }, 400);
+  if (!YOUTUBE_CHANNEL.test(viewer)) return json({ error: "This viewer has no YouTube channel id" }, 400);
+  const chatId = await youtubeChatId(env, account, String(body.videoId || ""));
+  if (act === "delete") {
+    const message = await findYoutubeMessage(env, account, chatId, viewer, body.text);
+    if (!message) return json({ error: "Could not find that message. It may be too old." }, 404);
+    await reserveYouTubeQuota(env, YOUTUBE_COST.message);
+    await tokenResponse(await fetch(api + "messages?id=" + encodeURIComponent(message.id), { method: "DELETE", headers }), "YouTube", "removing the message");
+    return json({ ok: true });
+  }
+  await reserveYouTubeQuota(env, YOUTUBE_COST.ban);
+  if (act === "addMod") {
+    await tokenResponse(await fetch(api + "moderators?part=snippet", {
+      method: "POST", headers,
+      body: JSON.stringify({ snippet: { liveChatId: chatId, moderatorDetails: { channelId: viewer } } }),
+    }), "YouTube", "adding the moderator");
+    return json({ ok: true });
+  }
+  const seconds = Math.min(86400, Math.max(10, Math.floor(Number(body.seconds) || 300)));
+  const snippet = { liveChatId: chatId, type: act === "ban" ? "permanent" : "temporary", bannedUserDetails: { channelId: viewer },
+                    ...(act === "ban" ? {} : { banDurationSeconds: seconds }) };
+  const data = await tokenResponse(await fetch(api + "bans?part=snippet", { method: "POST", headers, body: JSON.stringify({ snippet }) }),
+    "YouTube", act === "ban" ? "ban" : "time-out");
+  return json({ ok: true, banId: data.id || "" });
+}
+
+async function twitchModerate(env, account, body, act) {
+  const headers = { Authorization: "Bearer " + account.accessToken, "Client-Id": env.TWITCH_CLIENT_ID, "content-type": "application/json" };
+  const me = account.provider_user_id;
+  const call = async (path, query, options, stage) => {
+    const url = new URL("https://api.twitch.tv/helix/" + path);
+    url.search = new URLSearchParams(query);
+    return tokenResponse(await fetch(url, { headers, ...options }), "Twitch", stage);
+  };
+  const both = { broadcaster_id: me, moderator_id: me };
+  const viewer = String(body.userId || "");
+  const needsViewer = ["timeout", "ban", "unban", "shoutout"].includes(act);
+  if (needsViewer && !/^\d{1,20}$/.test(viewer)) return json({ error: "This viewer has no Twitch user id" }, 400);
+  if (act === "delete") {
+    const id = clean(body.messageId, 60);
+    if (!id) return json({ error: "This message has no Twitch id" }, 400);
+    await call("moderation/chat", { ...both, message_id: id }, { method: "DELETE" }, "removing the message");
+  } else if (act === "clear") {
+    await call("moderation/chat", both, { method: "DELETE" }, "clearing chat");
+  } else if (act === "timeout" || act === "ban") {
+    const reason = clean(body.reason, 500);
+    const data = { user_id: viewer, ...(reason ? { reason } : {}),
+                   ...(act === "timeout" ? { duration: Math.min(1209600, Math.max(1, Math.floor(Number(body.seconds) || 300))) } : {}) };
+    await call("moderation/bans", both, { method: "POST", body: JSON.stringify({ data }) }, act === "ban" ? "ban" : "time-out");
+  } else if (act === "unban") {
+    await call("moderation/bans", { ...both, user_id: viewer }, { method: "DELETE" }, "unban");
+  } else if (act === "chatMode") {
+    const wanted = body.settings && typeof body.settings === "object" ? body.settings : {};
+    const settings = {};
+    for (const key of ["slow_mode", "follower_mode", "subscriber_mode", "emote_mode"]) {
+      if (typeof wanted[key] === "boolean") settings[key] = wanted[key];
+    }
+    if (settings.slow_mode) settings.slow_mode_wait_time = Math.min(120, Math.max(3, Math.floor(Number(wanted.slow_mode_wait_time) || 30)));
+    if (!Object.keys(settings).length) return json({ error: "Choose a chat mode" }, 400);
+    await call("chat/settings", both, { method: "PATCH", body: JSON.stringify(settings) }, "changing chat mode");
+  } else if (act === "announce") {
+    const message = clean(body.text, 500);
+    if (!message) return json({ error: "Type the announcement first" }, 400);
+    await call("chat/announcements", both, { method: "POST", body: JSON.stringify({ message, color: "primary" }) }, "announcement");
+  } else if (act === "shoutout") {
+    await call("chat/shoutouts", { from_broadcaster_id: me, to_broadcaster_id: viewer, moderator_id: me }, { method: "POST" }, "shoutout");
+  } else if (act === "endPoll") {
+    const id = clean(body.pollId, 80);
+    if (!id) return json({ error: "There is no running poll to end" }, 400);
+    await call("polls", {}, { method: "PATCH", body: JSON.stringify({ broadcaster_id: me, id, status: "TERMINATED" }) }, "ending the poll");
+  } else {
+    return json({ error: "Twitch does not offer that to apps" }, 400);
+  }
+  return json({ ok: true });
+}
+
+async function kickModerate(account, body, act) {
+  const headers = { Authorization: "Bearer " + account.accessToken, "content-type": "application/json" };
+  const api = "https://api.kick.com/public/v1/";
+  if (act === "delete") {
+    const id = clean(body.messageId, 60);
+    if (!id) return json({ error: "This message has no Kick id" }, 400);
+    await tokenResponse(await fetch(api + "chat/" + encodeURIComponent(id), { method: "DELETE", headers }), "Kick", "removing the message");
+    return json({ ok: true });
+  }
+  if (!["timeout", "ban", "unban"].includes(act)) return json({ error: "Kick does not offer that to apps" }, 400);
+  const viewer = Number(body.userId);
+  if (!Number.isSafeInteger(viewer) || viewer <= 0) return json({ error: "This viewer has no Kick user id" }, 400);
+  const target = { broadcaster_user_id: Number(account.provider_user_id), user_id: viewer };
+  if (act === "unban") {
+    await tokenResponse(await fetch(api + "moderation/bans", { method: "DELETE", headers, body: JSON.stringify(target) }), "Kick", "unban");
+    return json({ ok: true });
+  }
+  const reason = clean(body.reason, 100);
+  const minutes = Math.min(10080, Math.max(1, Math.ceil((Number(body.seconds) || 300) / 60)));
+  await tokenResponse(await fetch(api + "moderation/bans", {
+    method: "POST", headers,
+    body: JSON.stringify({ ...target, ...(reason ? { reason } : {}), ...(act === "timeout" ? { duration: minutes } : {}) }),
+  }), "Kick", act === "ban" ? "ban" : "time-out");
+  return json({ ok: true });
+}
+
+// Owner actions on the streamer's own chat: remove a message, time out, ban, undo, and the platform's chat controls.
+async function moderate(request, env) {
+  const { account, failure } = await signedIn(request, env);
+  if (failure) return failure;
+  const body = await request.json().catch(() => ({}));
+  if (String(body.platform || "") !== account.platform) return json({ error: "Choose the platform account you signed in to" }, 400);
+  const act = String(body.action || "");
+  try {
+    if (account.platform === "youtube") return await youtubeModerate(env, account, body, act);
+    if (account.platform === "twitch") return await twitchModerate(env, account, body, act);
+    return await kickModerate(account, body, act);
+  } catch (error) {
+    const permission = account.platform !== "youtube" && (error.status === 401 || error.status === 403);
+    return json({ error: clean(error.message, 140) + (permission ? NEEDS_NEW_LOGIN : "") }, permission ? 403 : error.status || 502);
   }
 }
 
@@ -488,6 +739,7 @@ async function action(request, env, kind) {
   const body = await request.json().catch(() => ({}));
   const platform = String(body.platform || "");
   if (platform !== account.platform) return json({ error: "Choose the platform account you signed in to" }, 400);
+  const replyTo = clean(body.replyTo, 60);
 
   try {
     if (platform === "kick") {
@@ -497,7 +749,8 @@ async function action(request, env, kind) {
       const response = await fetch("https://api.kick.com/public/v1/chat", {
         method: "POST",
         headers: { Authorization: "Bearer " + account.accessToken, "content-type": "application/json" },
-        body: JSON.stringify({ content: text, type: "user", broadcaster_user_id: Number(account.provider_user_id) }),
+        body: JSON.stringify({ content: text, type: "user", broadcaster_user_id: Number(account.provider_user_id),
+                               ...(replyTo ? { reply_to_message_id: replyTo } : {}) }),
       });
       const data = await tokenResponse(response, "Kick", "message send");
       if (data.data && data.data.is_sent === false) return json({ error: "Kick did not send the message" }, 502);
@@ -517,7 +770,7 @@ async function action(request, env, kind) {
         snippet = { type: "pollEvent", pollDetails: { metadata: { questionText: question, options: options.map((optionText) => ({ optionText })) } } };
       }
       const chatId = await youtubeChatId(env, account, String(body.videoId || ""));
-      await reserveYouTubeQuota(env, 50);
+      await reserveYouTubeQuota(env, YOUTUBE_COST.message);
       const response = await fetch("https://www.googleapis.com/youtube/v3/liveChat/messages?part=snippet", {
         method: "POST",
         headers: { Authorization: "Bearer " + account.accessToken, "content-type": "application/json" },
@@ -535,7 +788,7 @@ async function action(request, env, kind) {
       const response = await fetch(url, {
         method: "POST",
         headers: { Authorization: "Bearer " + account.accessToken, "Client-Id": env.TWITCH_CLIENT_ID, "content-type": "application/json" },
-        body: JSON.stringify({ message: text }),
+        body: JSON.stringify({ message: text, ...(replyTo ? { reply_parent_message_id: replyTo } : {}) }),
       });
       const data = await tokenResponse(response, "Twitch", "message send");
       if (data.data && data.data[0] && !data.data[0].is_sent) return json({ error: data.data[0].message || "Twitch did not send the message" }, 502);
@@ -597,6 +850,8 @@ export async function handlePlatformAuth(request, env, url) {
   if (request.method === "POST" && path === "/platform-auth/eventsub") return twitchEventSub(request, env);
   if (request.method === "POST" && path === "/platform-auth/youtube-subscribers") return youtubeSubscribers(request, env);
   if (request.method === "GET" && path === "/platform-auth/youtube-broadcasts") return youtubeBroadcasts(request, env);
+  if (request.method === "GET" && path === "/platform-auth/live-streams") return liveStreams(request, env);
+  if (request.method === "POST" && path === "/platform-auth/moderate") return moderate(request, env);
   if (request.method === "POST" && path === "/platform-auth/message") return action(request, env, "message");
   if (request.method === "POST" && path === "/platform-auth/poll") return action(request, env, "poll");
   if (request.method === "DELETE" && path === "/platform-auth/account") return disconnect(request, env);

@@ -318,6 +318,35 @@ def load_words(user_path=None):
     return len(word_map)
 
 
+def strip_emoji(text, emotes=None):
+    """For "skip emoji" in speech: no emoji, no :names:, and no picture emotes."""
+    for word in emotes or ():
+        text = re.sub(r"(?<!\S)" + re.escape(word) + r"(?!\S)", " ", text)
+    text = EMOJI_RX.sub(" ", SHORTCODE_RX.sub(" ", KEYCAP_RX.sub(" ", text)))
+    return re.sub(r"\s+", " ", text).strip()
+
+
+def squeeze_emoji(text):
+    """The same emoji sent many times in a row is read once."""
+    out, last = [], None
+    for piece in re.split(r"(\s+)", text):
+        if not piece.strip():
+            if last is None:
+                out.append(piece)
+            continue
+        clusters = EMOJI_CLUSTER_RX.findall(piece)
+        if clusters and "".join(clusters) == piece and len(set(clusters)) == 1:
+            if clusters[0] != last:
+                out.append(clusters[0])
+                last = clusters[0]
+            continue
+        if last is not None:
+            out.append(" ")
+        last = None
+        out.append(piece)
+    return "".join(out).strip()
+
+
 def normalize(text):
     def named_emoji(match):
         emoji = match.group(0)

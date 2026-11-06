@@ -175,6 +175,7 @@ html,body{margin:0;height:100%;background:transparent;overflow:hidden;color:#fff
 .ma{font-size:15px;font-weight:500;opacity:.8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .mtxt{min-width:0;overflow:hidden}
 .mp{font-size:12px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:var(--a2)}
+.emote{height:1.5em;vertical-align:middle}
 .mt.marq{display:inline-block;overflow:visible;text-overflow:clip;animation:marq 12s linear infinite}
 @keyframes marq{0%,12%{transform:translateX(0)}88%,100%{transform:translateX(-55%)}}
 @keyframes eq{0%,100%{height:6px}50%{height:28px}}
@@ -323,12 +324,20 @@ function render(e,d){
   alertbox.appendChild(box); effect(box,d.effect||'sparkles');
   return {box:box,text:text};
 }
+// The alert type's own sound wins, then the design's, then the normal sound.
+function playSound(kind,d){
+  var own=(cfg.typeSounds||{})[kind], s=own||d;
+  if(s.noSound) return;
+  var pick=s.soundRandom&&s.soundRandom.length?s.soundRandom[Math.floor(Math.random()*s.soundRandom.length)]:'';
+  var url=pick||s.soundUrl||d.soundUrl||cfg.soundUrl;
+  var level=typeof d.soundVolume==='number'?d.soundVolume:(typeof cfg.soundVolume==='number'?cfg.soundVolume:80);
+  if(url){ var sound=new Audio(url); sound.volume=Math.max(0,Math.min(1,level/100)); sound.play().catch(function(){}); }
+  else if(cfg.sound) chime();
+}
 function next(){
   if(!queue.length){ busy=false; return; }
   busy=true; var e=queue.shift(), d=designFor(category(e)), shown=render(e,d);
-  var url=d.soundUrl||cfg.soundUrl;
-  if(url){ var sound=new Audio(url); sound.volume=0.8; sound.play().catch(function(){}); }
-  else if(cfg.sound) chime();
+  playSound(category(e),d);
   var ms=(d.seconds||cfg.seconds||8)*1000+Math.min(8000,shown.text.length*60);
   setTimeout(function(){ shown.box.classList.add('out'); setTimeout(function(){ shown.box.remove(); setTimeout(next,300); },550); },ms);
 }
@@ -406,6 +415,16 @@ function hiddenChat(e,d){
   if(d.hideLinks&&/https?:\/\/|www\.|\b[\w-]+\.(com|net|org|in|gg|tv|io|xyz|ru)\b/i.test(text)) return true;
   return (d.hideUsers||'').toLowerCase().split(',').map(function(u){ return u.trim(); }).indexOf((e.name||'').toLowerCase())>=0;
 }
+// Viewers' words stay text nodes. Only addresses the app accepted become pictures.
+function fillWords(node,words,emotes){
+  var names=Object.keys(emotes||{});
+  if(!names.length){ node.textContent=words; return; }
+  words.split(/(\s+)/).forEach(function(w){
+    var url=emotes[w];
+    if(typeof url==='string'&&url.indexOf('https://')===0){ var i=document.createElement('img'); i.className='emote'; i.src=url; i.alt=w; node.appendChild(i); }
+    else node.appendChild(document.createTextNode(w));
+  });
+}
 function addChat(e){
   var d=designOf('chat'), style=d.skin||cfg.chatStyle||'glass';
   if(hiddenChat(e,d)) return;
@@ -418,7 +437,7 @@ function addChat(e){
   if(d.nameColour==='platform') b.style.color=platformColour(e.platform,d); else if(d.nameColour==='accent') b.style.color='var(--a2)';
   var words=e.text||'', most=nm(d.maxChars,0);
   if(most>0&&words.length>most) words=words.slice(0,most)+'\u2026';
-  var t=document.createElement('span'); t.className='tx'; t.textContent=words;
+  var t=document.createElement('span'); t.className='tx'; fillWords(t,words,e.emotes);
   if(d.showTime){ var now=new Date(), tm=document.createElement('span'); tm.className='tm'; tm.textContent=('0'+now.getHours()).slice(-2)+':'+('0'+now.getMinutes()).slice(-2); m.appendChild(tm); }
   if(d.showTag!==false) m.appendChild(tag);
   var word=(d.highlightWord||'').toLowerCase();

@@ -171,7 +171,7 @@ export function createV1({ env, now, api, accessToken, readBody, json, actions, 
           if (actions.get(tok.ch) >= limit) { notes.push("Daily moderation limit reached - no more actions today"); break; }
           await api(`${API}/liveChat/bans?part=snippet`, await accessToken(), {
             method: "POST", headers: { "content-type": "application/json" },
-            body: JSON.stringify({ snippet: { liveChatId: meta.chatId, type: "temporary", banDurationSeconds: secs, bannedUserInfo: { channelId: it.channelId } } }),
+            body: JSON.stringify({ snippet: { liveChatId: meta.chatId, type: "temporary", banDurationSeconds: secs, bannedUserDetails: { channelId: it.channelId } } }),
           }, 50);
           actions.add(tok.ch);
           notes.push(`Timed out ${who} for ${secs} seconds`);
