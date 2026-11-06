@@ -11,7 +11,7 @@ from PySide6.QtWidgets import (QApplication, QButtonGroup, QCheckBox, QColorDial
                                QLabel, QLineEdit, QPlainTextEdit, QPushButton, QScrollArea, QSlider, QSpinBox, QStackedWidget,
                                QTextEdit, QVBoxLayout, QWidget)
 
-from . import hinglish
+from . import alert_styles, hinglish
 from .commands import PLATFORM_NAMES, Commands
 from .commands_page import CommandsPage
 from .discord import Bridge, Cloud, LinkManager, post_webhook, run_bg
@@ -37,16 +37,18 @@ from .speech import VOICES, Speaker
 from .appearance import AppearanceDialog
 from .theme import CUSTOM_THEME, DEFAULT_THEME, FX, THEMES, build_qss, set_custom_theme
 from .tools import Tools
+from .alerts_page import AlertsPage
 from .tools_page import ToolsPage
-from .ui_kit import platform_mark, section_card
+from .ui_kit import SubPage, platform_mark, section_card
 from .visuals import BACKGROUNDS, Backdrop, CardGlow, HeroCard, Motion, NavIndicator, StatCard, Toasts, count_to, stagger_in
 from .updater import Updater
 from .version import CREATOR, PRODUCT_NAME, VERSION, label
 
 COLORS = {"youtube": "#ff4d4d", "twitch": "#9146ff", "kick": "#53fc18", "test": "#00d4ff", "tip": "#ffd24d"}
 TAGS = {"youtube": "YT", "twitch": "TW", "kick": "KICK", "test": "TEST", "tip": "TIP"}
-PAGES = ("Connect", "Live chat", "Voice", "Moderation", "Discord", "Payments", "YouTube mod", "OBS overlays", "Music", "Commands", "Stream tools")
-NAV_MARK = ("◎", "☰", "♫", "⌗", "◈", "₹", "▶", "▣", "♪", "!", "≡")
+PAGES = ("Connect", "Live chat", "Voice", "Moderation", "Discord", "Payments", "YouTube mod", "OBS overlays", "Music", "Commands", "Stream tools",
+         "Alerts", "Loyalty", "Engage")
+NAV_MARK = ("◎", "☰", "♫", "⌗", "◈", "₹", "▶", "▣", "♪", "!", "≡", "◉", "$", "?")
 STREAM_END_GRACE = 180000          # ms with no stream connected before the stream counts as over (reconnects are not an end)
 MAX_EXTRA_STREAMS = 8
 PAGE_BLURB = (
@@ -60,7 +62,10 @@ PAGE_BLURB = (
     "Browser sources for alerts, chat and the song playing, or your StreamElements overlay.",
     "Play no-copyright music on stream, quieter while your chat is read aloud.",
     "Your own !commands, and memes viewers play from chat.",
-    "Points, polls, giveaways, counters, timers, song requests, hotkeys and your stream summary.",
+    "Timers, welcomes, song requests, paid read-aloud, hotkeys and your stream summary.",
+    "How every alert looks, moves and sounds on stream, with a live preview.",
+    "Points, levels and a shop that keep viewers coming back.",
+    "Polls, predictions, giveaways, the viewer queue, counters and goals.",
 )
 MARKS = {"youtube": ("YT", "#ff4d4d"), "twitch": ("TW", "#9146ff"), "kick": ("KK", "#53fc18")}
 CHAT_FONTS = ("Poppins", "Arial", "Segoe UI", "Calibri", "Verdana", "Tahoma", "Consolas", "Cascadia Mono", "Inter", "Roboto", "DM Sans", "Space Grotesk", "JetBrains Mono")
@@ -618,7 +623,9 @@ class MainWindow(QWidget):
         self.cmdpage = CommandsPage(self.s, self.commands, self._test_command)
         self.tools = Tools(self.s, data_dir(), self.music)
         self.commands.points = self.tools.points
+        self.commands.values = self.tools.command_values
         self.toolspage = ToolsPage(self.s, self.tools, self)
+        self.alertspage = AlertsPage(self.s, self.overlay)
         self.hotkeys = Hotkeys()
         self._hotkeys_applied = False
         self.updater = Updater(self.s)
@@ -648,7 +655,8 @@ class MainWindow(QWidget):
             bar.addWidget(card, 1)
         right.addWidget(self.statbar)
         self.stack = QStackedWidget()
-        for page in (self._page_connect(), self._page_feed(), self._page_voice(), self._page_mod(), self.discord, self.payments, self.ytpage, self.ovpage, self.musicpage, self.cmdpage, self.toolspage):
+        for page in (self._page_connect(), self._page_feed(), self._page_voice(), self._page_mod(), self.discord, self.payments, self.ytpage, self.ovpage, self.musicpage, self.cmdpage, self.toolspage,
+                     self.alertspage, self.toolspage.loyalty, self.toolspage.engage):
             self.stack.addWidget(page)
         right.addWidget(self.stack, 1)
         root.addWidget(canvas, 1)
@@ -678,7 +686,7 @@ class MainWindow(QWidget):
         self.stream_end = QTimer(self)
         self.stream_end.setSingleShot(True)
         self.stream_end.timeout.connect(self._stream_over)
-        self.music.changed.connect(lambda: self.toolspage.refresh_live() if self.stack.currentWidget() is self.toolspage else None)
+        self.music.changed.connect(lambda: self.toolspage.refresh_live() if self._tools_open() else None)
         self.sync.start(60000)
         self.relink = QTimer(self)                    # refresh the list of linked viewers every 5 minutes
         self.relink.timeout.connect(self.links.refresh)
@@ -726,7 +734,7 @@ class MainWindow(QWidget):
         navlay.setSpacing(0)
         self.nav = QButtonGroup(self)
         self.nav.setExclusive(True)
-        groups = (("Workspace", (0, 1, 2, 8)), ("Tools", (3, 9, 10, 4, 5, 6, 7)))
+        groups = (("Stream", (0, 1, 11, 7)), ("Community", (9, 12, 13, 10)), ("Sound", (2, 8)), ("Safety and links", (3, 6, 4, 5)))
         for title, indexes in groups:
             g = QLabel(title.upper())
             g.setObjectName("group")
@@ -867,6 +875,7 @@ class MainWindow(QWidget):
                 "chatSeconds": int(self.s.get("ov_chat_seconds")), "maxLines": 8,
                 "memeSeconds": int(self.s.get("meme_seconds")),
                 "soundUrl": sound_url,
+                "alertDesigns": alert_styles.overlay_designs(self.s, sound_dir, self.memes_dir),
                 "alertStyle": self.s.get("ov_alert_style"), "chatStyle": self.s.get("ov_chat_style"),
                 "showTips": bool(self.s.get("ov_alert_tips")),
                 "showSuperchats": bool(self.s.get("ov_alert_superchats")),
@@ -974,6 +983,12 @@ class MainWindow(QWidget):
         if i == 8:
             return (("music", "violet", len(self.music.tracks), "Tracks"), ("voice", "green", "%d%%" % int(s.get("music_volume")), "Volume"),
                     ("power", "orange", "Playing" if self.music.playing else "Stopped", "Player"))
+        if i == 12:
+            return (("people", "violet", len(self.tools.points.file.data), "Viewers with points"), ("star", "green", on_off(s.get("levels_on")), "Levels"),
+                    ("money", "orange", len(self.tools.shop_items()), "Shop items"))
+        if i == 13:
+            return (("chat", "violet", "Running" if self.tools.prediction.active else "None", "Prediction"), ("people", "green", len(self.tools.queue.people), "In the queue"),
+                    ("star", "orange", len(self.tools.goals()), "Goals"))
         if i == 9:
             return (("commands", "violet", len(s.get("commands") or []), "Commands"), ("star", "green", len(s.get("memes") or []), "Memes"),
                     ("power", "orange", on_off(s.get("commands_on")), "Chat commands"))
@@ -982,8 +997,8 @@ class MainWindow(QWidget):
 
     def _refresh_stats(self):
         i = self.stack.currentIndex()
-        self.statbar.setVisible(i != 0)
-        if i == 0:
+        self.statbar.setVisible(i not in (0, 11))    # Connect has its own cards, and Alerts needs the room for its preview
+        if i in (0, 11):
             return
         try:
             for card, stat in zip(self.stat_cards, self._page_stats(i)):
@@ -1244,7 +1259,7 @@ class MainWindow(QWidget):
             seen_ids.add(uid)
             seen.append(uid)
             if self.s.get("ov_alert_youtube_subscribers"):
-                self.overlay.push("alert", {
+                self._push_alert({
                     "platform": "youtube",
                     "category": "subscriber",
                     "name": subscriber.get("name") or "Someone",
@@ -1253,8 +1268,13 @@ class MainWindow(QWidget):
         self.s.set("yt_subscriber_seen", seen[-500:])
         self.s.set("yt_subscriber_cursor", int(result.get("cursor") or self.s.get("yt_subscriber_cursor") or 0))
 
-    def on_twitch_event(self, alert):
+    def _push_alert(self, alert):
         self.overlay.push("alert", alert)
+        self.tools.note_alert(alert)
+        self.tools_changed()
+
+    def on_twitch_event(self, alert):
+        self._push_alert(alert)
         self.feed.append("<span style='color:#9146ff'>Twitch alert: %s %s</span>" %
                          (esc(alert.get("name") or "Someone"), esc(alert.get("category") or "event")))
 
@@ -1314,14 +1334,17 @@ class MainWindow(QWidget):
     def eventFilter(self, obj, event):
         popup = getattr(self, "chat_popup", None)
         if event.type() == QEvent.Wheel and isinstance(obj, (QSlider, QComboBox)) and QApplication.activePopupWidget() is None:
-            voice = getattr(self, "voice_scroll", None)
+            voice = getattr(self, "voice_page", None)
             if popup is not None and popup.isAncestorOf(obj):
                 bar = self.chat_style_scroll.verticalScrollBar()
                 bar.setValue(bar.value() - event.angleDelta().y())
                 return True
             if voice is not None and voice.isAncestorOf(obj):
-                bar = voice.verticalScrollBar()
-                bar.setValue(bar.value() - event.angleDelta().y())
+                area = obj.parentWidget()
+                while area is not None and not isinstance(area, QScrollArea):
+                    area = area.parentWidget()
+                if area is not None:
+                    area.verticalScrollBar().setValue(area.verticalScrollBar().value() - event.angleDelta().y())
                 return True
         if popup is not None and popup.isVisible():
             if event.type() == QEvent.KeyPress and event.key() == Qt.Key_Escape:
@@ -1622,18 +1645,8 @@ class MainWindow(QWidget):
         return wrap
 
     def _page_voice(self):
-        page = QWidget()
-        page.setObjectName("page")
-        outer = QVBoxLayout(page)
-        outer.setContentsMargins(0, 8, 0, 0)
-        scroll = QScrollArea()
-        scroll.setWidgetResizable(True)
-        scroll.setFrameShape(QFrame.NoFrame)
-        self.voice_scroll = scroll
-        inner = QWidget()
-        lay = QVBoxLayout(inner)
-        lay.setContentsMargins(0, 0, 0, 8)
-        lay.setSpacing(12)
+        page = SubPage()
+        self.voice_page = page
 
         engine, engine_lay = self._voice_section("Voice engine", "Choose the speech engine used to read your chat.")
         eng = QComboBox()
@@ -1642,7 +1655,6 @@ class MainWindow(QWidget):
         eng.setCurrentIndex(max(0, eng.findData(self.s.get("engine"))))
         eng.currentIndexChanged.connect(lambda _: self.s.set("engine", eng.currentData()))
         engine_lay.addWidget(self._voice_field("Voice engine", "Neural voices need the internet. Windows voices work offline.", eng))
-        lay.addWidget(engine)
 
         languages, lang_lay = self._voice_section("Language voices", "Pick who speaks each kind of message.")
         lang_lay.addWidget(self._voice_field("Hindi", "Choose the voice for Devanagari messages.", self._voice_combo("hi_voice")))
@@ -1690,26 +1702,15 @@ class MainWindow(QWidget):
         buttons.addStretch(1)
         word_lay.addLayout(buttons)
 
-        board = VoiceBoard()
-        board.set_cards([(languages, options), (playback, queue)], words)
-        lay.addWidget(board)
-        lay.addStretch(1)
-        scroll.setWidget(inner)
-        outer.addWidget(scroll)
+        for title, cards in (("Voices", (engine, languages)), ("Reading", (options,)), ("Playback", (playback, queue)), ("Word list", (words,))):
+            tab = page.add_tab(title)
+            for card in cards:
+                tab.addWidget(card)
+        page.finish()
         return page
 
     def _page_mod(self):
-        page = QWidget()
-        page.setObjectName("page")
-        holder = QVBoxLayout(page)
-        holder.setContentsMargins(0, 4, 0, 0)
-        scroll = QScrollArea()
-        scroll.setWidgetResizable(True)
-        scroll.setFrameShape(QFrame.NoFrame)
-        inner = QWidget()
-        outer = QVBoxLayout(inner)
-        outer.setContentsMargins(0, 0, 8, 0)
-        outer.setSpacing(14)
+        page = SubPage()
         filters, lay = section_card("What gets read", "These filters decide what gets read aloud. Skipped messages stay visible in grey on the Live chat page.")
         for text, key in (("Skip messages with links", "skip_links"), ("Skip !commands", "skip_cmds"),
                           ("Ignore known bots (Nightbot, StreamElements, ...)", "ignore_bots"),
@@ -1718,7 +1719,7 @@ class MainWindow(QWidget):
         lay.addWidget(labeled("Max message length", self._bind_spin("max_len", 20, 500, " chars")))
         lay.addWidget(labeled("Ignore repeats for", self._bind_spin("dedupe_secs", 0, 120, " s")))
         lay.addWidget(labeled("Same viewer cooldown", self._bind_spin("user_cooldown", 0, 60, " s")))
-        outer.addWidget(filters)
+        page.add_tab("What gets read").addWidget(filters)
         words, lay = section_card("Blocked words", "One per line. Never read aloud, and also blocks paid messages.")
         self.blocked_edit = QPlainTextEdit()
         self.blocked_edit.setMinimumHeight(170)
@@ -1732,9 +1733,8 @@ class MainWindow(QWidget):
         save.setObjectName("primary")
         save.clicked.connect(self._save_blocked)
         lay.addWidget(save, 0, Qt.AlignLeft)
-        outer.addWidget(words, 1)
-        scroll.setWidget(inner)
-        holder.addWidget(scroll)
+        page.add_tab("Blocked words").addWidget(words, 1)
+        page.finish()
         return page
 
     # ---------- behaviour ----------
@@ -1798,8 +1798,10 @@ class MainWindow(QWidget):
         self.nav_glow.move_to(self.nav.button(i))
         self.nav_scroll.ensureWidgetVisible(self.nav.button(i), 0, 8)
         self._refresh_stats()
-        if page is self.toolspage:
+        if page in self.toolspage.pages:
             self.toolspage.refresh()
+        elif page is self.alertspage:
+            self.alertspage.reload_sounds()
         if self.s.get("lite_mode"):
             self.title_line.setFixedWidth(72)
             return
@@ -1926,8 +1928,8 @@ class MainWindow(QWidget):
                 self.overlay.push("chat", {"platform": m.platform, "name": m.author, "text": m.text})
             if m.kind in ("super", "member"):
                 category = "membership" if m.kind == "member" else ("tip" if m.platform == "tip" else "superchat")
-                self.overlay.push("alert", {"platform": m.platform, "category": category,
-                                            "name": m.author, "amount": m.amount, "message": m.text})
+                self._push_alert({"platform": m.platform, "category": category,
+                                  "name": m.author, "amount": m.amount, "message": m.text})
             if m.kind == "super":
                 self.discord.post_paid(m)
             if m.kind in ("super", "member"):
@@ -1982,7 +1984,7 @@ class MainWindow(QWidget):
             self.speaker.announce(act["speak"])
         if act.get("toast"):
             self.toasts.show(act["toast"])
-        if act["type"] in ("counter", "song", "points"):
+        if act["type"] in ("counter", "song", "points", "bet", "queue", "shop"):
             self.tools_changed(lists=act["type"] == "counter")
         return True
 
@@ -2017,9 +2019,12 @@ class MainWindow(QWidget):
             "#7cf0c0" if sent else "#8a93a8", esc(text), ("posted to " + where) if sent else "not posted: connect and sign in to YouTube, Twitch or Kick"))
         return sent
 
+    def _tools_open(self):
+        return self.stack.currentWidget() in self.toolspage.pages
+
     def tools_changed(self, lists=False):
         self.overlay.push("widgets", self.tools.widgets(time.time()))
-        if self.stack.currentWidget() is self.toolspage:
+        if self._tools_open():
             if lists:
                 self.toolspage.refresh_lists()
             self.toolspage.refresh_live()
@@ -2032,8 +2037,14 @@ class MainWindow(QWidget):
             self.end_poll()
         elif poll.active:
             self.overlay.push("widgets", self.tools.widgets(now))           # the seconds left count down on stream
-            if self.stack.currentWidget() is self.toolspage:
+            if self._tools_open():
                 self.toolspage.refresh_live(now)
+        guess = self.tools.prediction
+        if guess.open and now >= guess.ends:
+            self.lock_prediction()
+        elif guess.open:
+            self.overlay.push("widgets", self.tools.widgets(now))
+        self._announce_levels()
         if now - self._last_points_tick >= 60:
             self._last_points_tick = now
             self.tools.points.tick(now)
@@ -2065,6 +2076,70 @@ class MainWindow(QWidget):
         self._broadcast(result)
         self.speaker.announce(result)
         self.toasts.show(result, "gold", 6)
+        self.tools_changed()
+
+    def _announce_levels(self):
+        waiting, self.tools.points.levelups = self.tools.points.levelups, []
+        for platform, name, level in waiting:
+            text = (self.s.get("level_text") or "{user} reached level {level}!").replace("{user}", name).replace("{level}", str(level))
+            self.feed.append("<span style='color:#ffd24d'>\u2605 %s</span>" % esc(text))
+            if self.s.get("level_announce") and platform in self.platform_auth.SUPPORTED and self._can_post(platform):
+                self._post_chat(platform, text)
+
+    def start_prediction(self, question, options, seconds):
+        if not self.s.get("points_on"):
+            self.toasts.show("Turn on Points on the Loyalty page first.", "warn")
+            return
+        guess = self.tools.prediction
+        problem = guess.start(question, options, seconds, time.time())
+        if problem:
+            self.toasts.show(problem, "warn")
+            return
+        self._broadcast("Prediction: %s Bet with %s" % (guess.question, " | ".join("!bet %d 100 = %s" % (i + 1, o) for i, o in enumerate(guess.options))))
+        self.toasts.show("Prediction started", "good")
+        self.tools_changed()
+
+    def lock_prediction(self):
+        if self.tools.prediction.open:
+            self.tools.prediction.lock()
+            self._broadcast("Bets are locked!")
+            self.tools_changed()
+
+    def resolve_prediction(self, number):
+        paid, text = self.tools.prediction.resolve(number)
+        if not text:
+            return
+        self.tools.settle_prediction(paid)
+        self._broadcast(text)
+        self.toasts.show(text, "gold", 6)
+        self.tools_changed()
+
+    def cancel_prediction(self):
+        guess = self.tools.prediction
+        if guess.active:
+            paid, text = guess.refund()
+            self.tools.settle_prediction(paid)
+            self._broadcast(text)
+        elif guess.result:
+            guess.__init__()
+        self.tools_changed()
+
+    def set_queue(self, on):
+        self.tools.queue.open = on
+        self._broadcast("The viewer queue is open! Type !queue to join." if on else "The viewer queue is closed.")
+        self.tools_changed()
+
+    def next_in_queue(self):
+        person = self.tools.queue.next()
+        if person is None:
+            self.toasts.show("Nobody is waiting in the queue.", "warn")
+            return
+        self._broadcast("Next up: %s" % person[1])
+        self.toasts.show("Next up: %s" % person[1], "gold", 6)
+        self.tools_changed()
+
+    def clear_queue(self):
+        self.tools.queue.people = []
         self.tools_changed()
 
     def open_giveaway(self, keyword, cost):
@@ -2233,6 +2308,8 @@ class MainWindow(QWidget):
 
     def closeEvent(self, e):
         self.links.save()
+        if self.tools.prediction.active:              # nobody loses points because the app was closed
+            self.tools.settle_prediction(self.tools.prediction.refund()[0])
         self.tools.save()
         self.hotkeys.clear()
         self.music.stop()

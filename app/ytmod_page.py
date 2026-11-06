@@ -6,7 +6,7 @@ from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import QLabel, QListWidget, QPushButton, QSpinBox, QVBoxLayout, QWidget
 
 from .theme import DEFAULT_THEME, THEMES
-from .ui_kit import (FormScrollArea, bind_switch, copy_row, field_row, hrow, info_box, make_badge, option_switch_row,
+from .ui_kit import (SubPage, bind_switch, copy_row, field_row, hrow, info_box, make_badge, option_switch_row,
                      section_card, set_badge, status_row, step_row)
 
 BOT_STATES = {"online": ("pillOn", "\u25cf  Bot online"), "waking": ("pillWait", "\u25cf  Waking up..."),
@@ -25,17 +25,12 @@ def log_line(entry):
     return head + ("\n" + entry["text"] if entry.get("text") else "")
 
 
-class YtModPage(FormScrollArea):
+class YtModPage(SubPage):
     def __init__(self, settings, moderator):
         super().__init__()
         self.s, self.mod = settings, moderator
         self._last_info = 0.0
-        inner = QWidget()
-        inner.setObjectName("page")
-        self.setWidget(inner)
-        lay = QVBoxLayout(inner)
-        lay.setContentsMargins(0, 8, 12, 12)
-        lay.setSpacing(14)
+        lay = self.add_tab("Setup")
         accent = THEMES.get(self.s.get("theme"), THEMES[DEFAULT_THEME])["a1"]
 
         # ---------- master switch ----------
@@ -104,6 +99,7 @@ class YtModPage(FormScrollArea):
         lay.addWidget(c)
 
         # ---------- step 3: rules ----------
+        lay = self.add_tab("What it removes")
         c, cl = section_card("Step 3 \u2014 What the bot removes",
                              "Moderators and you are never touched. Start in test mode: CHATDOOM only tells you what it WOULD remove.")
         for title, note, key in (("Messages with blocked words", "The list on the Moderation page.", "mod_del_blocked"),
@@ -131,6 +127,7 @@ class YtModPage(FormScrollArea):
         lay.addWidget(c)
 
         # ---------- the bot talks in chat ----------
+        lay = self.add_tab("Bot in chat")
         c, cl = section_card("Step 4 \u2014 Let the bot talk in chat",
                              "Works like Nightbot: your !commands, timers and welcome messages are posted by the bot. "
                              "Set them up on the Commands and Stream tools pages. CHATDOOM must be open while you stream.")
@@ -139,6 +136,7 @@ class YtModPage(FormScrollArea):
         lay.addWidget(c)
 
         # ---------- what was removed ----------
+        lay = self.add_tab("Removed messages")
         c, cl = section_card("Removed messages",
                              "Everything the bot removed or timed out, newest first, with what the viewer wrote. "
                              "The last %d are kept on this PC only." % 200)
@@ -159,7 +157,7 @@ class YtModPage(FormScrollArea):
 
         lay.addWidget(info_box("CHATDOOM reads your chat itself and asks the bot to remove messages, so it only works while CHATDOOM is open "
                                "and connected to your YouTube live chat. You never sign in to Google.", "How it works"))
-        lay.addStretch(1)
+        self.finish()
 
         self.poll = QTimer(self)                       # while a code is showing, check for it every few seconds
         self.poll.setInterval(6000)

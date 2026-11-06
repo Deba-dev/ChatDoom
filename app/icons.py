@@ -40,6 +40,9 @@ def nav_icon(index):
         _nav_music,
         _nav_commands,
         _nav_tools,
+        _nav_alerts,
+        _nav_loyalty,
+        _nav_engage,
     )
     if 0 <= index < len(drawers):
         return _pix(drawers[index])
@@ -249,6 +252,28 @@ def _nav_commands(p):
     p.drawRoundedRect(2, 3, 12, 10, 2, 2)
     p.drawLine(8, 5, 8, 9)
     p.drawPoint(8, 11)
+
+
+def _nav_alerts(p):
+    p.drawArc(4, 2, 8, 9, 0, 180 * 16)
+    p.drawLine(4, 6, 4, 11)
+    p.drawLine(12, 6, 12, 11)
+    p.drawLine(2, 12, 14, 12)
+    p.drawLine(7, 14, 9, 14)
+
+
+def _nav_loyalty(p):
+    p.drawEllipse(2, 2, 12, 12)
+    p.drawLine(8, 5, 8, 11)
+    p.drawLine(6, 7, 10, 7)
+    p.drawLine(6, 9, 10, 9)
+
+
+def _nav_engage(p):
+    p.drawRoundedRect(2, 3, 12, 8, 2, 2)
+    p.drawLine(5, 11, 4, 14)
+    p.drawLine(5, 7, 7, 7)
+    p.drawLine(9, 7, 11, 7)
 
 
 def _nav_tools(p):

@@ -12,7 +12,7 @@ from .discord import post_live_announcement, post_webhook, run_bg
 from .oauth_local import Loopback
 from .platforms import youtube_id
 from .theme import DEFAULT_THEME, THEMES
-from .ui_kit import (FormScrollArea, Switch, bind_switch, copy_row, field_row, hrow, info_box, make_badge,
+from .ui_kit import (SubPage, Switch, bind_switch, copy_row, field_row, hrow, info_box, make_badge,
                      option_switch_row, platform_mark, section_card, set_badge, status_row)
 
 SOURCES = ("youtube", "twitch", "kick")
@@ -25,7 +25,7 @@ def _style(btn, name):
     btn.style().polish(btn)
 
 
-class DiscordPage(FormScrollArea):
+class DiscordPage(SubPage):
     def __init__(self, settings, cloud, bridge, links):
         super().__init__()
         self.s, self.cloud, self.bridge, self.links = settings, cloud, bridge, links
@@ -36,12 +36,7 @@ class DiscordPage(FormScrollArea):
         self._paid_event_order = deque()
         self.role_names = {}
         self.loop = None
-        inner = QWidget()
-        inner.setObjectName("page")
-        self.setWidget(inner)
-        lay = QVBoxLayout(inner)
-        lay.setContentsMargins(0, 8, 12, 12)
-        lay.setSpacing(14)
+        lay = self.add_tab("Server")
         accent = THEMES.get(self.s.get("theme"), THEMES[DEFAULT_THEME])["a1"]
 
         # ---------- 1. connect ----------
@@ -110,6 +105,7 @@ class DiscordPage(FormScrollArea):
         lay.addWidget(self.roles_card)
 
         # ---------- 3. announcements ----------
+        lay = self.add_tab("Announcements")
         c, cl = section_card("Go-live announcements",
                              "Posts once per YouTube live video, including after chat reconnects. The card includes your message and a clickable stream link.")
         self.hook = QLineEdit(self.s.get("webhook_url"))
@@ -142,21 +138,9 @@ class DiscordPage(FormScrollArea):
         cl.addWidget(hrow(now, self.hstatus))
         lay.addWidget(c)
 
-        # ---------- advanced (hidden until asked for) ----------
-        self.adv_btn = QPushButton("Show advanced options")
-        self.adv_btn.setObjectName("quiet")
-        self.adv_btn.setCheckable(True)
-        self.adv_btn.setCursor(Qt.PointingHandCursor)
-        self.adv_btn.toggled.connect(self._toggle_advanced)
-        lay.addWidget(hrow(self.adv_btn))
-        self.adv = QWidget()
-        al = QVBoxLayout(self.adv)
-        al.setContentsMargins(0, 0, 0, 0)
-        al.setSpacing(14)
-        self._build_advanced(al)
-        self.adv.hide()
-        lay.addWidget(self.adv)
-        lay.addStretch(1)
+        lay = self.add_tab("Advanced")
+        self._build_advanced(lay)
+        self.finish()
 
         bridge.done.connect(self.on_done)
         self.refresh_state()
@@ -238,10 +222,6 @@ class DiscordPage(FormScrollArea):
         cl.addWidget(wrap)
         al.addWidget(c)
         self.update_link()
-
-    def _toggle_advanced(self, on):
-        self.adv.setVisible(on)
-        self.adv_btn.setText("Hide advanced options" if on else "Show advanced options")
 
     # ------------------------------------------------------------------ state
     @property

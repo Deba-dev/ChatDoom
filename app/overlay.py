@@ -85,7 +85,7 @@ class Overlay:
                 u = urllib.parse.urlparse(self.path)
                 if u.path in ("/", ""):
                     return self._send(200, INDEX, "text/html; charset=utf-8")
-                if u.path in ("/alert", "/chat", "/music", "/meme", "/widgets"):
+                if u.path in ("/alert", "/chat", "/music", "/meme", "/widgets", "/preview"):
                     return self._send(200, page(u.path[1:]), "text/html; charset=utf-8")
                 if u.path == "/poll":
                     q = urllib.parse.parse_qs(u.query)

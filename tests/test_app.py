@@ -353,8 +353,10 @@ yt_card.edit.setText(""); w.s.set("youtube", "https://www.youtube.com/watch?v=7N
 w.on_status("youtube", "Connected", True); ok(not w.yt_beat.isActive(), "no wake-up pings until the channel is verified")
 w.s.set("yt_bot_token", "TOKEN123"); w.on_status("youtube", "Connected", True); ok(w.yt_beat.isActive(), "while connected to YouTube the app keeps the free-hosted bot awake")
 w.on_status("youtube", "Disconnected", False); ok(not w.yt_beat.isActive(), "pings stop when you disconnect")
-w.s.set("yt_bot_url", "http://127.0.0.1:9"); post("Net", UCB, "net www.down.com"); wait(1200)
+w.s.set("yt_bot_url", "http://127.0.0.1:9"); post("Net", UCB, "net www.down.com"); wait(3500)   # Windows takes about 2 seconds to report a refused connection
 ok("Cannot reach the CHATDOOM moderator bot" in w.feed.toPlainText(), "if the bot cannot be reached the streamer sees a plain message")
+shown = w.feed.toPlainText().count("Cannot reach the CHATDOOM moderator bot"); post("Net2", UCB, "net2 www.down.com"); wait(3500)
+ok(w.feed.toPlainText().count("Cannot reach the CHATDOOM moderator bot") == shown, "the same problem is not repeated in the feed straight away")
 w.s.set("yt_bot_url", "http://127.0.0.1:8812")
 w.goto(5); wait(300); w.grab().save(os.path.join(os.environ["APPDATA"], "payments.png")); w.goto(6); wait(300); w.grab().save(os.path.join(os.environ["APPDATA"], "ytmod.png"))
 
@@ -377,7 +379,7 @@ for name in THEMES:
 w.apply_theme("Sunset"); w.goto(0); wait(120); w.grab().save(os.path.join(os.environ["APPDATA"], "sunset_connect.png")); wait(500)
 w.apply_theme("Neon Violet"); w.goto(4); wait(150); w.grab().save(os.path.join(os.environ["APPDATA"], "violet_discord_midanim.png")); wait(600); w.grab().save(os.path.join(os.environ["APPDATA"], "violet_discord.png"))
 for i in range(w.stack.count()): w.goto(i); wait(60); w.grab()
-ok(w.stack.count() == 11, "all 11 pages render without errors")
+ok(w.stack.count() == 14, "all 14 pages render without errors")
 n = len(w.fx.items)
 ok(n == 0, "buttons use a quiet hover instead of a glow")
 w._lite(True); wait(100); ok(w.fx.enabled is False, "Lite mode turns motion off")
@@ -507,7 +509,9 @@ w.set_background_dim(70); w.s.set("background", "plain"); w.theme_combo.setCurre
 # ===== G. protected secrets =====
 print("--- G. protected secrets ---")
 import app.secure as sec, app.settings as stg, sys as _sys
+_platform = _sys.platform; _sys.platform = "linux"
 ok(sec.protect("abc") == "abc" and sec.unprotect("abc") == "abc", "outside Windows secrets are stored as before")
+_sys.platform = _platform
 real = (sec._win_call, _sys.platform)
 sec._win_call = lambda data, protect: bytes(b ^ 0x5A for b in data); _sys.platform = "win32"
 enc = sec.protect("refresh-token-123"); dec = sec.unprotect(enc)
@@ -567,7 +571,7 @@ ok("YouTube Viewer" in d.src_role["youtube"].text() and "2 invite link" in d.ist
 ok(w.s.get("inv_youtube") == "https://discord.gg/NEWYo" and d.inv_edits["youtube"].text() == "https://discord.gg/NEWYo", "advanced fields stay in step with the simple ones")
 d.src_switch["youtube"].setChecked(False); d.src_switch["twitch"].setChecked(False); d.src_switch["kick"].setChecked(False); d.setup_roles()
 ok("at least one platform" in d.istatus.text() and C["setup_calls"] == 1, "nothing ticked: a clear message, no request")
-ok(not d.adv.isVisibleTo(d) and d.adv_btn.text() == "Show advanced options", "manual options are hidden until asked for"); d.adv_btn.setChecked(True); ok(d.adv.isVisibleTo(d), "Advanced options opens the old manual controls")
+ok(d.tab_names()[-1] == "Advanced" and d.current_tab() == "Server", "manual options wait in their own Advanced tab"); d.show_tab("Advanced"); ok(d.current_tab() == "Advanced", "the Advanced tab opens the old manual controls"); d.show_tab(0)
 w.s.set("cloud_token", "STALE"); d.key.setText("STALE"); d.test(); wait(600)
 ok(not w.s.get("cloud_token") and "no longer valid" in d.status.text() and "Not connected" in d.badge.text(), "a key that stopped working is dropped with a plain explanation")
 w.s.set("cloud_token", "KEY"); d.refresh_state()
@@ -643,9 +647,9 @@ ok(st["state"] == {"title": "Second", "artist": "Bo", "playing": True}, "the OBS
 ok(b'data-mode="music"' in urllib.request.urlopen(w.overlay.url("music")).read() and w.musicpage.music_url.text().endswith("/music"), "now-playing overlay page exists and its address is on the Music page")
 w.music.stop(); ok(ov("/poll?type=music&after=-1")["state"]["playing"] is False, "stopping hides it on stream")
 w.goto(8); wait(300); w.grab().save(os.path.join(os.environ["APPDATA"], "music.png")); shutil.rmtree(folder, ignore_errors=True); shutil.rmtree(library, ignore_errors=True)
-ok(len([b for b in w.findChildren(__import__("PySide6.QtWidgets", fromlist=["QPushButton"]).QPushButton) if b.objectName() == "nav"]) == 11 and w.nav.button(8).text().strip() == "Music" and not w.nav.button(8).icon().isNull()
+ok(len([b for b in w.findChildren(__import__("PySide6.QtWidgets", fromlist=["QPushButton"]).QPushButton) if b.objectName() == "nav"]) == 14 and w.nav.button(8).text().strip() == "Music" and not w.nav.button(8).icon().isNull()
    and w.nav.button(9).text().strip() == "Commands" and w.nav.button(10).text().strip() == "Stream tools" and not w.nav.button(10).icon().isNull(),
-   "sidebar has all 11 pages, each with a drawn icon (Music, Commands and Stream tools included)")
+   "sidebar has all 14 pages, each with a drawn icon (Music, Commands and Stream tools included)")
 
 # ===== L. multi-stream, commands and memes =====
 print("--- L. multi-stream, commands and memes ---")
@@ -1032,6 +1036,7 @@ ok("AppVersion=%s" % VERSION in version_files[0] and "'ProductVersion', '%s'" % 
 w.goto(0); wait(100)
 ok(not w.statbar.isVisible() and w.num_total.parent().objectName() == "stat", "the Connect page shows its own stat cards")
 for i in range(1, w.stack.count()):
+    if i == 11: continue                     # Alerts uses the room for its preview
     w.goto(i); wait(30)
     shown = [c.num.text() for c in w.stat_cards]
     ok(w.statbar.isVisible() and all(shown) and all(c.cap.text() for c in w.stat_cards), "%s shows three live stats" % PAGES[i])
@@ -1044,6 +1049,130 @@ w.s.set("lite_mode", True); w.goto(5); wait(30)
 ok(w.title_line.width() == 72 and all(c.graphicsEffect() is None for c in top_cards(w.stack.widget(5))), "Lite mode skips the entrance animations")
 w.s.set("lite_mode", False); w.goto(5); wait(700)
 ok(all(not isinstance(c.graphicsEffect(), QGraphicsOpacityEffect) for c in top_cards(w.stack.widget(5))), "cards are left clean when the entrance animation ends")
+# ===== O. submenus, alert designs and the new viewer tools =====
+print("--- O. submenus, alert designs, viewer tools ---")
+from app import alert_styles as AS
+from app.commands import render, safe_math
+from app.ui_kit import SubPage
+
+nav_ids = [w.nav.id(b) for b in w.nav.buttons()]
+ok(sorted(nav_ids) == list(range(14)) and all(w.nav.button(i).text().strip() == PAGES[i] for i in range(14)), "every main page has a sidebar button")
+tabbed = [i for i in range(w.stack.count()) if isinstance(w.stack.widget(i), SubPage)]
+ok(set(tabbed) == set(range(2, 14)), "every settings page uses the horizontal submenu")
+for i in tabbed:
+    page = w.stack.widget(i); w.goto(i); wait(20)
+    ok(page.subnav.isVisible() and len(page.tab_names()) >= 2 and page._tabs.width() > 0, "%s has a submenu: %s" % (PAGES[i], ", ".join(page.tab_names())))
+    for name in page.tab_names():
+        page.show_tab(name)
+        assert page.current_tab() == name
+    page.show_tab(0)
+w.resize(980, 680); wait(50)
+for i in tabbed:
+    w.goto(i); wait(40); p = w.stack.widget(i)
+    view, seen = p._strip.viewport(), []
+    for name in p.tab_names():
+        p.show_tab(name); wait(5)
+        b = p._group.checkedButton(); x = b.mapTo(view, b.rect().topLeft()).x()
+        seen.append(x >= 0 and x + b.width() <= view.width())
+    overflow = p._strip.horizontalScrollBar().maximum() > 0
+    ok(all(seen) and p._arrows[1].isVisible() == overflow and p.subnav.width() <= p.width(), "%s: every tab can be reached on the smallest window" % PAGES[i])
+    p.show_tab(0)
+w.resize(1280, 840)
+
+ok(all(len(x) >= 10 for x in (AS.LOOKS, AS.ENTERS, AS.EXITS, AS.TEXT_FX, AS.EFFECTS, AS.FONTS, AS.PACKS)) and len(AS.IDLES) >= 8, "over 10 looks, animations, text effects, particles, fonts and packs")
+from app.overlay_html import PAGE
+for prefix, group in ((".style-", AS.LOOKS), (".in-", AS.ENTERS), (".exit-", AS.EXITS), (".idle-", AS.IDLES), (".t-", AS.TEXT_FX[1:])):
+    missing = [v for _, v in group if prefix + v not in PAGE and v not in ("neon",)]
+    ok(not missing, "every %s value has CSS in the overlay %s" % (prefix, missing))
+for name, values in AS.PACKS:
+    assert AS.clean(values)["look"] == values["look"] and AS.clean(values)["font"] == values["font"], name
+ok(AS.clean({"look": "<script>", "font": "x", "size": 999, "c1": "red;}", "seconds": "x"})["look"] == "neon" and AS.clean({"size": 999})["size"] == 160 and AS.clean({"c1": "red;}"})["c1"] == "#8b5cf6",
+   "a broken saved design falls back to safe values")
+A = w.alertspage
+w.s.set("ov_alert_design", {}); w.s.set("ov_alert_custom", {}); A.target.setCurrentIndex(0)
+A.boxes["look"].setCurrentIndex(A.boxes["look"].findData("comic"))
+ok(ov("/poll?type=alert&after=-1")["cfg"]["alertDesigns"]["default"]["look"] == "comic" and w.s.get("ov_alert_style") == "comic", "changing the look reaches OBS")
+A.pack_buttons[4].click()
+d = ov("/poll?type=alert&after=-1")["cfg"]["alertDesigns"]["default"]
+ok(d["look"] == "cyber" and d["enter"] == "glitch" and d["font"] == "Audiowide", "a pack sets the whole design")
+A.target.setCurrentIndex(A.target.findData("follow"))
+ok(A.own.isVisibleTo(A) and not A.own.isChecked(), "a type starts with the main design")
+A.boxes["enter"].setCurrentIndex(A.boxes["enter"].findData("spin"))
+cfg = ov("/poll?type=alert&after=-1")["cfg"]["alertDesigns"]
+ok(A.own.isChecked() and cfg["follow"]["enter"] == "spin" and cfg["follow"]["look"] == "cyber" and cfg["default"]["enter"] == "glitch" and "raid" not in cfg, "follows can have their own design without changing the others")
+A.own.setChecked(False)
+ok("follow" not in ov("/poll?type=alert&after=-1")["cfg"]["alertDesigns"], "turning it off goes back to the main design")
+A.target.setCurrentIndex(0)
+outside = os.path.join(tempfile.gettempdir(), "secret.png"); open(outside, "wb").close()
+ok(AS.for_overlay(AS.clean({"image": "../../secret.png", "sound": outside}), w.overlay.sounds_dir, w.memes_dir)["imageUrl"] == "", "files outside the app's folders never reach the overlay")
+n0 = ov("/poll?type=alert&after=-1")["latest"]; A.test_all()
+ok(len(ov("/poll?type=alert&after=%d" % n0)["events"]) == len(AS.ALERT_TYPES), "Test every alert sends one of each")
+ok(b'data-mode="preview"' in urllib.request.urlopen(w.overlay.url("preview")).read(), "the live preview page exists")
+w.s.set("ov_alert_design", {}); w.s.set("ov_alert_style", "neon"); w.s.set("ov_alert_custom", {}); A.load()
+
+class V:
+    def __init__(s, author, mod=False, platform="youtube"): s.author, s.mod, s.platform = author, mod, platform
+ok(render("{math:2*(3+4)} {math:__import__('os')} {math:9**9**9} {math:1/0}", V("a")) == "14 ? ? ?", "{math} only does plain sums and never runs code")
+ok(safe_math("10/4") == "2.50" and safe_math("(" * 300) == "?", "{math} shows decimals and survives junk")
+r = render("{random:5-5} {pick:only} {counter:nope} {level} {nosuch} {random:abc}", V("a"), extra={"level": 3})
+ok(r == "5 only 0 3 {nosuch} {random:abc}", "new variables work and unknown ones are left alone")
+
+T = w.tools; say = lambda who, text, mod=False: T.handle(Message("twitch", who, text, mod=mod))
+from app.models import viewer_key
+key = lambda who: viewer_key(Message("twitch", who, "x"))
+w.s.set("points_on", True); T.points.reset(); T.points.add(key("Ana"), 1000, "Ana"); T.points.add(key("Bo"), 300, "Bo"); T.points.add(key("Cy"), 100, "Cy")
+now = time.time()
+ok(T.prediction.start("Win?", ["Yes", ""], 60, now) != "" and T.prediction.start("Win?", ["Yes", "No"], 60, now) == "", "a prediction needs two outcomes")
+say("Ana", "!bet 1 300"); say("Bo", "!bet 2 300"); say("Cy", "!bet 2 100")
+ok(T.points.balance(key("Ana")) == 700 and T.points.balance(key("Bo")) == 0 and T.prediction.pools() == [300, 400], "bets take points straight away")
+ok(say("Ana", "!bet 2 10")["skipped"] == "already bet" and "only have" in say("Zed", "!bet 1 5")["reply"], "one bet each, and no betting points you lack")
+w.lock_prediction(); ok(say("Dee", "!bet 1 5")["skipped"] == "bets are locked", "locked bets stay closed")
+w.resolve_prediction(2)
+ok(T.points.balance(key("Bo")) == 300 + 225 and T.points.balance(key("Cy")) == 100 + 75 and T.points.balance(key("Ana")) == 700 and "No won" in T.prediction.result, "winners share the losing side in proportion to their bet")
+T.prediction.__init__(); T.prediction.start("Q?", ["A", "B"], 60, now); say("Ana", "!bet 1 100"); w.resolve_prediction(2)
+ok(T.points.balance(key("Ana")) == 700 and "returned" in T.prediction.result, "if nobody picked the winner, bets come back")
+T.prediction.__init__(); T.prediction.start("Q?", ["A", "B"], 60, now); say("Ana", "!bet 1 all"); ok(T.points.balance(key("Ana")) == 0, "!bet 1 all works"); w.cancel_prediction()
+ok(T.points.balance(key("Ana")) == 700, "cancelling refunds everyone")
+T.prediction.__init__(); T.prediction.ends = 0; T.prediction.start("Q?", ["A", "B"], -1, now); w._tools_tick(); ok(T.prediction.locked, "bets lock by themselves when time runs out"); T.prediction.__init__()
+
+ok(say("Ana", "!queue") is None, "the queue does nothing while closed")
+w.set_queue(True); ok("number 1" in say("Ana", "!queue")["reply"] and "number 2" in say("Bo", "!queue")["reply"] and "already" in say("Ana", "!queue")["reply"], "viewers join the queue once")
+ok("number 2" in say("Bo", "!place")["reply"] and say("Bo", "!next")["skipped"] == "mods only", "!place works and !next is for moderators")
+ok("Ana" in say("Mod", "!next", True)["reply"] and "number 1" in say("Bo", "!place")["reply"], "!next calls the first viewer")
+say("Bo", "!leave"); ok(T.queue.people == [], "!leave works"); ok(ov("/poll?type=widgets&after=-1")["state"]["queue"]["open"] is True, "the queue reaches the overlay"); w.set_queue(False)
+
+w.s.set("shop_on", True); w.s.set("shop_items", [{"name": "Pick game", "cost": 200, "stock": 1}, {"name": "Song", "cost": 5000, "stock": -1}]); bal = T.points.balance(key("Ana"))
+ok("1. Pick game (200)" in say("Ana", "!shop")["reply"], "!shop lists the rewards")
+ok("bought" in say("Ana", "!buy 1")["reply"] and T.points.balance(key("Ana")) == bal - 200 and T.shop_items()[0]["stock"] == 0 and T.redeemed[0] == ("Ana", "Pick game"), "buying takes points, lowers stock and is listed")
+ok("sold out" in say("Ana", "!buy pick game")["reply"] and "costs" in say("Ana", "!buy 2")["reply"] and T.points.balance(key("Ana")) == bal - 200, "sold-out and too-expensive rewards take nothing")
+w.s.set("shop_items", []); w.s.set("shop_on", False)
+
+w.s.set("say_on", True); w.s.set("say_cost", 50); w.s.set("say_cooldown", 30); bal = T.points.balance(key("Ana"))
+ok(say("Ana", "!say hello bhai")["speak"] == "Ana says hello bhai" and T.points.balance(key("Ana")) == bal - 50, "!say spends points and reads the message")
+ok(say("Ana", "!say again")["skipped"] == "cooldown" and T.points.balance(key("Ana")) == bal - 50, "!say has a cooldown and charges nothing then")
+ok(say("Bo", "!say visit evil.com now")["skipped"] == "links are not read aloud", "links are never read")
+w.s.set("say_on", False)
+
+w.s.set("levels_on", True); w.s.set("level_base", 100); w.s.set("level_xp_msg", 100); w.s.set("points_msg_cooldown", 0); T.points.reset(); T.points.levelups = []
+m = Message("twitch", "Lev", "hi"); T.points.earn(m, 1000.0)
+ok(T.points.level(viewer_key(m)) == 2 and T.points.levelups == [("twitch", "Lev", 2)], "viewers level up and it is queued for chat")
+T.points.earn(m, 1001.0); ok(len(T.points.levelups) == 1, "a level is only announced once")
+w._announce_levels(); ok("Lev reached level 2" in w.feed.toPlainText() and T.points.levelups == [], "the level-up shows in the feed")
+ok("level 2" in say("Lev", "!level")["reply"], "!level shows progress")
+
+w.s.set("goals", [{"title": "Followers", "source": "follows", "target": 10, "value": 0}, {"title": "Tips", "source": "money", "target": 1000, "value": 0}, {"title": "Hand", "source": "manual", "target": 5, "value": 0}])
+w._push_alert({"platform": "twitch", "category": "follow", "name": "New"}); w._push_alert({"platform": "tip", "category": "tip", "name": "Rich", "amount": "\u20b91,200.50"})
+st = ov("/poll?type=widgets&after=-1")["state"]
+ok([g["value"] for g in st["goals"]] == [1, 1200, 0], "goals count their own kind of alert")
+w.s.set("latest_overlay", True); w.tools_changed(); st = ov("/poll?type=widgets&after=-1")["state"]
+ok({"label": "Latest tip", "value": "Rich \u20b91,200.50"} in st["latest"], "the latest supporters reach the overlay")
+w.s.set("goals", []); w.s.set("latest_overlay", False)
+T.stats.reset(); ok("not live" in say("Ana", "!uptime")["reply"], "!uptime when offline"); T.stats.begin(time.time() - 3700); ok("1h 1m" in say("Ana", "!uptime")["reply"], "!uptime counts the stream")
+ok("1h 1m" in render("{uptime}", V("a"), extra=T.command_values(Message("twitch", "Ana", "x"))), "{uptime} works in custom commands")
+T.stats.reset()
+T.points.add(key("Sav"), 500, "Sav"); T.prediction.__init__(); T.prediction.start("Q?", ["A", "B"], 60, now); say("Sav", "!bet 1 200")
+
+w.goto(11); wait(200); w.grab().save(os.path.join(os.environ["APPDATA"], "alerts.png"))
 w.goto(0); wait(600)
 print("\nALL PASSED" if not fails else "\n%d FAILED" % fails)
 w.close()
