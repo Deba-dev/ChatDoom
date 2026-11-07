@@ -92,6 +92,10 @@ class _MusicCatalogDialog(QDialog):
                 return
             if imported:
                 self.status.setText("Downloaded and imported %d track(s)." % len(imported))
+                try:
+                    os.remove(path)     # the tracks were copied into the library, so this copy only takes space
+                except OSError:
+                    pass
             else:
                 self.status.setText("Download saved, but it was not a supported audio file or album ZIP.")
         elif state in (QWebEngineDownloadRequest.DownloadState.DownloadCancelled,

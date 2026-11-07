@@ -181,6 +181,11 @@ class Updater(QObject):
                 os.remove(path)
             except OSError:
                 pass
+        try:
+            from . import cleanup
+            cleanup.run()           # crashed voice files, imported music downloads, oversized logs
+        except Exception:
+            pass                    # cleaning up must never get in the way of starting
 
     def _on_evt(self, kind, data):
         if kind == "found":
