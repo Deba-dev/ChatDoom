@@ -34,6 +34,13 @@ STAT_COLORS = {"violet": ("#a78bfa", "#6d28d9"), "green": ("#4ade80", "#059669")
                "blue": ("#7dd3fc", "#2563eb"), "pink": ("#f9a8d4", "#c026d3")}
 
 
+def glow_alpha(color, alpha):
+    """Bright accents (lime, yellow) wash a dark window out at the alpha a deep violet needs, so they glow softer."""
+    c = QColor(color)
+    light = 0.2126 * c.redF() ** 2.2 + 0.7152 * c.greenF() ** 2.2 + 0.0722 * c.blueF() ** 2.2
+    return int(alpha * (1.0 - 0.6 * min(light, 1.0)))
+
+
 class Backdrop(QWidget):
     """Canvas behind the pages. Aurora is drawn small and scaled up smoothly, which keeps each frame cheap."""
 
@@ -119,6 +126,7 @@ class Backdrop(QWidget):
             path.closeSubpath()
             g = QLinearGradient(0, 0, w, 0)
             start, mid, end = QColor(color), QColor(color), QColor(color)
+            alpha = glow_alpha(color, alpha)
             start.setAlpha(0 if i < 3 else alpha // 2)
             mid.setAlpha(alpha // 3 if i < 3 else alpha // 4)
             end.setAlpha(alpha)
@@ -178,7 +186,7 @@ class Backdrop(QWidget):
         for color, x, y, r in self.blobs(self.phase):
             grad = QRadialGradient(QPointF(x * w, y * h), r * w)
             inner, outer = QColor(color), QColor(color)
-            inner.setAlpha(strength)
+            inner.setAlpha(glow_alpha(color, strength))
             outer.setAlpha(0)
             grad.setColorAt(0, inner)
             grad.setColorAt(1, outer)

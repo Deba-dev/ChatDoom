@@ -35,7 +35,7 @@ DEFAULTS = {
     "per_viewer": False, "rate": 0, "volume": 100, "read_name": True, "muted": False,
     "skip_links": True, "skip_cmds": True, "ignore_bots": True, "mods_only": False,
     "read_super": True, "read_mode": "all", "translate_chat": False, "max_len": 150,
-    "theme": "Neon Violet", "lite_mode": False, "theme_custom": {"a1": "#7c3aed", "a2": "#c026d3", "bg": "#05031a"},
+    "theme": "Toxic Neon", "lite_mode": False, "theme_custom": {"a1": "#7c3aed", "a2": "#c026d3", "bg": "#05031a"},
     "bg_image": "builtin:nebula", "bg_dim": 55, "yt_bot_posts": True,
     "inv_youtube": "", "inv_twitch": "", "inv_kick": "", "inv_role_youtube": "", "inv_role_twitch": "", "inv_role_kick": "",
     "cloud_url": CLOUD_URL, "cloud_token": "", "guild_id": "", "guild_name": "", "webhook_url": "",
@@ -85,6 +85,9 @@ class Settings:
                 if k in loaded:
                     loaded[k] = unprotect(loaded[k])
             self.data.update(loaded)
+            if self.data.get("theme") == "Neon Violet" and not self.data.get("theme_neon_seen"):
+                self.data["theme"] = "Toxic Neon"       # the old default moves to the new look once; it can be picked again
+            self.data["theme_neon_seen"] = True
             if self.data.get("update_repo", "").strip().casefold() == "deba-dev/chatvoice":
                 self.data["update_repo"] = DEFAULTS["update_repo"]
             if str(self.data.get("yt_bot_title", "")).strip().casefold() in ("chat voice", "chatdoom moderator"):
