@@ -1306,6 +1306,10 @@ ev = QCloseEvent(); w.closeEvent(ev); ok(not ev.isAccepted() and not w.isVisible
 from PySide6.QtCore import QEvent, Qt
 from PySide6.QtGui import QKeyEvent
 esc_key = lambda code: QKeyEvent(QEvent.KeyPress, code, Qt.NoModifier)
+from PySide6.QtWidgets import QMessageBox as _Box
+_exec = _Box.exec; _Box.exec = lambda self: 0  # the Esc question, answered with Cancel (its default)
+w.keyPressEvent(esc_key(Qt.Key_Escape)); ok(w.isVisible(), "Esc asks first, and Cancel keeps the window"); _Box.exec = _exec
+w.s.set("esc_ask", False)
 w.keyPressEvent(esc_key(Qt.Key_Escape)); ok(not w.isVisible() and w.s.get("tray_hint_shown"), "Esc hides to the tray"); w.modes.show_again(); wait(30)
 w.s.set("esc_to_tray", False); w.keyPressEvent(esc_key(Qt.Key_Escape)); ok(w.isVisible(), "Esc can be told to stay"); w.s.set("esc_to_tray", True)
 w.tray = real_tray

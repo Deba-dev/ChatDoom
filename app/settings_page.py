@@ -106,6 +106,7 @@ class SettingsPage(SubPage):
         esc = sw("esc_to_tray")
         esc.toggled.connect(lambda _: host.sync_tray())
         cl.addWidget(option_switch_row("Esc hides it to the tray", "Esc first leaves a text box or fullscreen.", esc))
+        cl.addWidget(option_switch_row("Ask before Esc hides it", "Hide to tray, Quit or Cancel; Cancel is the default.", sw("esc_ask")))
         top = sw("always_on_top")
         top.toggled.connect(host.set_always_on_top)
         cl.addWidget(option_switch_row("Always on top", "Keeps the window above your other apps.", top))
