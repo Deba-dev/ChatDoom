@@ -12,6 +12,7 @@ from .theme import DEFAULT_THEME, THEMES
 from .ui_kit import SubPage, bind_switch, field_row, hrow, info_box, option_switch_row, section_card
 from .version import CREATOR, PRODUCT_NAME, label
 from .visuals import BACKGROUNDS
+from .window_modes import MODES
 
 SCALES = (("90%", 90), ("100% (normal)", 100), ("110%", 110), ("125%", 125), ("150%", 150))
 LINKS = (("Website", "https://zunimilabs.online/chatdoom/"), ("Guides", "https://zunimilabs.online/guides/"), ("Help", "https://zunimilabs.online/support/"),
@@ -92,9 +93,19 @@ class SettingsPage(SubPage):
         cl.addWidget(option_switch_row("Start with the voice muted", "", sw("start_muted")))
         lay.addWidget(c)
         c, cl = section_card("Window", "")
+        self.window_mode = QComboBox()
+        for text, value in MODES:
+            self.window_mode.addItem(text, value)
+        self.window_mode.setCurrentIndex(max(0, self.window_mode.findData(host.modes.mode)))
+        self.window_mode.currentIndexChanged.connect(lambda _: host.modes.set_mode(self.window_mode.currentData()))
+        host.modes.mode_changed.connect(self._show_window_mode)
+        cl.addWidget(field_row("Window mode", "Borderless fills the screen above the taskbar; Fullscreen covers it all. F11 switches fullscreen on and off.", self.window_mode))
         tray = sw("close_to_tray")
         tray.toggled.connect(lambda _: host.sync_tray())
         cl.addWidget(option_switch_row("Keep running in the tray", "Closing the window keeps CHATDOOM reading chat. Use the tray icon to quit.", tray))
+        esc = sw("esc_to_tray")
+        esc.toggled.connect(lambda _: host.sync_tray())
+        cl.addWidget(option_switch_row("Esc hides it to the tray", "Esc first leaves a text box or fullscreen.", esc))
         top = sw("always_on_top")
         top.toggled.connect(host.set_always_on_top)
         cl.addWidget(option_switch_row("Always on top", "Keeps the window above your other apps.", top))
@@ -184,6 +195,12 @@ class SettingsPage(SubPage):
         stamp = float(self.s.get("update_last") or 0)
         when = datetime.datetime.fromtimestamp(stamp).strftime("%d %b %Y, %H:%M") if stamp else "not yet"
         self.update_note.setText("Last checked: %s" % when)
+
+    def _show_window_mode(self, _mode):
+        """F11 and the corner buttons change the mode too; the box follows without saving again."""
+        self.window_mode.blockSignals(True)
+        self.window_mode.setCurrentIndex(max(0, self.window_mode.findData(self.host.modes.mode)))
+        self.window_mode.blockSignals(False)
 
     def _needs_restart(self, key, value):
         self.s.set(key, value)

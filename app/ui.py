@@ -49,6 +49,7 @@ from .voice_ui import fill_voice_page
 from .visuals import BACKGROUNDS, Backdrop, CardGlow, HeroCard, Motion, NavIndicator, StatCard, Toasts, count_to, stagger_in
 from .updater import Updater
 from .version import PRODUCT_NAME, VERSION, label
+from .window_modes import WindowModes
 
 COLORS = {"youtube": "#ff4d4d", "twitch": "#9146ff", "kick": "#53fc18", "test": "#00d4ff", "tip": "#ffd24d"}
 TAGS = {"youtube": "YT", "twitch": "TW", "kick": "KICK", "test": "TEST", "tip": "TIP"}
@@ -678,6 +679,7 @@ class MainWindow(ChatActions, StreamWatch, QWidget):
         self.pending_update = None
         self._quitting = False
         self.tray = None
+        self.modes = WindowModes(self, self.s, PRODUCT_NAME, tray=lambda: self.tray is not None and self.tray.isVisible())
 
         root = QHBoxLayout(self)
         root.setContentsMargins(0, 0, 0, 0)
@@ -2293,7 +2295,7 @@ class MainWindow(ChatActions, StreamWatch, QWidget):
             self.show()
 
     def sync_tray(self):
-        wanted = bool(self.s.get("close_to_tray")) and QSystemTrayIcon.isSystemTrayAvailable()
+        wanted = bool(self.s.get("close_to_tray") or self.s.get("esc_to_tray")) and QSystemTrayIcon.isSystemTrayAvailable()
         if wanted and self.tray is None:
             self.tray = QSystemTrayIcon(QApplication.windowIcon() or self.windowIcon(), self)
             self.tray.setToolTip(PRODUCT_NAME)
@@ -2306,15 +2308,17 @@ class MainWindow(ChatActions, StreamWatch, QWidget):
             self.tray.setVisible(wanted)
 
     def show_from_tray(self):
-        self.show()
-        self.raise_()
-        self.activateWindow()
+        self.modes.show_again()
 
     def start_window(self, autostart=False):
         """Called once at launch. Only Windows' own start can begin hidden, and only if there is a tray icon to get back."""
         if autostart and self.s.get("start_hidden") and self.tray is not None and self.tray.isVisible():
             return
-        self.show()
+        self.modes.show()           # in the saved window mode, at the saved size
+
+    def keyPressEvent(self, e):
+        if not self.modes.handle_key(e):      # F11 fullscreen, Esc to the tray
+            super().keyPressEvent(e)
 
     def quit_app(self):
         self._quitting = True
@@ -2326,17 +2330,17 @@ class MainWindow(ChatActions, StreamWatch, QWidget):
         self.quit_app()
 
     def closeEvent(self, e):
-        if not self._quitting and self.tray is not None and self.tray.isVisible():
+        if not self._quitting and self.s.get("close_to_tray") and self.modes.hide_to_tray():
             e.ignore()
-            self.hide()
             return
         if not self._quitting and self.s.get("confirm_quit") and self.connected:
             ask = QMessageBox.question(self, PRODUCT_NAME, "You are still connected. Close CHATDOOM and stop the voice and overlays?")
             if ask != QMessageBox.Yes:
                 e.ignore()
                 return
+        self.modes.remember()
         self.links.save()
-        if self.tools.prediction.active:              # nobody loses points because the app was closed
+        if self.tools.prediction.active:             # nobody loses points because the app was closed
             self.tools.settle_prediction(self.tools.prediction.refund()[0])
         self.tools.save()
         self.hotkeys.clear()

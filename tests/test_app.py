@@ -1303,7 +1303,15 @@ class FakeTray:
 real_tray, w.tray = w.tray, FakeTray()
 from PySide6.QtGui import QCloseEvent
 ev = QCloseEvent(); w.closeEvent(ev); ok(not ev.isAccepted() and not w.isVisible(), "with the tray on, closing keeps the app running"); w.show(); wait(30)
+from PySide6.QtCore import QEvent, Qt
+from PySide6.QtGui import QKeyEvent
+esc_key = lambda code: QKeyEvent(QEvent.KeyPress, code, Qt.NoModifier)
+w.keyPressEvent(esc_key(Qt.Key_Escape)); ok(not w.isVisible() and w.s.get("tray_hint_shown"), "Esc hides to the tray"); w.modes.show_again(); wait(30)
+w.s.set("esc_to_tray", False); w.keyPressEvent(esc_key(Qt.Key_Escape)); ok(w.isVisible(), "Esc can be told to stay"); w.s.set("esc_to_tray", True)
 w.tray = real_tray
+w.modes.set_mode("borderless"); wait(30); ok(bool(w.windowFlags() & Qt.FramelessWindowHint) and w.settingspage.window_mode.currentData() == "borderless", "borderless has no frame and the setting follows")
+w.modes.set_mode("windowed"); wait(30); w.keyPressEvent(esc_key(Qt.Key_F11)); wait(30); ok(w.isFullScreen() and w.s.get("window_mode") == "windowed", "F11 goes fullscreen without saving it")
+w.keyPressEvent(esc_key(Qt.Key_Escape)); wait(30); ok(not w.isFullScreen() and w.isVisible() and not w.windowFlags() & Qt.FramelessWindowHint, "Esc leaves fullscreen first, back to the window")
 ok("[Registry]" in open(os.path.join(here, "installer.iss"), encoding="utf-8").read() and "uninsdeletevalue" in open(os.path.join(here, "installer.iss"), encoding="utf-8").read(), "uninstalling removes the start-with-Windows entry")
 main_src = open(os.path.join(here, "main.py"), encoding="utf-8").read(); ok("QT_SCALE_FACTOR" in main_src and "start_window" in main_src, "the app uses the interface size and hidden start")
 
