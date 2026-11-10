@@ -16,7 +16,7 @@ def ok(c, msg):
     print(("PASS " if c else "FAIL ") + msg); fails += (not c)
 
 # ---------------- fake cloud ----------------
-C = {"grants": [], "tips": [], "config_puts": [], "links": {"youtube:UC1": "U1", "youtube:UC2": "U2"}, "deny": {"UC2"}}
+C = {"grants": [], "tips": [], "config_puts": [], "links": {"youtube:UC1": "U1", "twitch:tw1": "T1", "twitch:tw2": "T2"}, "deny": {"tw2"}}
 class Cloud(BaseHTTPRequestHandler):
     def log_message(self, *a): pass
     def send(self, o, code=200):
@@ -230,24 +230,28 @@ w.discord._paid_event_order.clear()
 w.s.set("post_super", False)
 w.s.set("cloud_url", "http://127.0.0.1:8811"); w.s.set("cloud_token", "KEY")
 w.links.refresh(); wait(500)
-ok(w.links.linked == {"youtube:UC1", "youtube:UC2"}, "linked viewers loaded from the cloud")
+ok(w.links.linked == {"youtube:UC1", "twitch:tw1", "twitch:tw2"}, "linked viewers loaded from the cloud")
 
 # ===== A. roles are counted in the app; the cloud is asked only at thresholds =====
 print("--- A. role thresholds ---")
 w.s.set("role_regular", "100002"); w.s.set("role_supporter", "100003"); w.s.set("regular_msgs", 3)
-for i in range(2): w.on_message(Message("youtube", "Rahul", "hello %d" % i, uid="UC1", mod=True))
+# YouTube's rules: a linked YouTube viewer earns no role for chatting or paying
+for i in range(5): w.on_message(Message("youtube", "Arjun", "yt %d" % i, uid="UC1", mod=True))
+w.on_message(Message("youtube", "Arjun", "thanks", "super", "₹100", uid="UC1", mod=True)); wait(500)
+ok(len(C["grants"]) == 0 and "youtube:UC1" not in w.links.counts, "YouTube chat and Super Chats earn no Discord roles")
+for i in range(2): w.on_message(Message("twitch", "Rahul", "hello %d" % i, uid="tw1", mod=True))
 wait(300); ok(len(C["grants"]) == 0, "no cloud call before the threshold")
-w.on_message(Message("youtube", "Rahul", "hello 3", uid="UC1", mod=True)); wait(500)
+w.on_message(Message("twitch", "Rahul", "hello 3", uid="tw1", mod=True)); wait(500)
 ok([g["role"] for g in C["grants"]] == ["regular"], "3rd message -> one request for the Regular role")
-for i in range(5): w.on_message(Message("youtube", "Rahul", "more %d" % i, uid="UC1", mod=True))
+for i in range(5): w.on_message(Message("twitch", "Rahul", "more %d" % i, uid="tw1", mod=True))
 wait(300); ok(len(C["grants"]) == 1, "no repeat requests after the role was given")
-w.on_message(Message("youtube", "Rahul", "thanks", "super", "₹100", uid="UC1", mod=True)); wait(500)
+w.on_message(Message("twitch", "Rahul", "thanks", "super", "₹100", uid="tw1", mod=True)); wait(500)
 ok([g["role"] for g in C["grants"]] == ["regular", "supporter"], "paid message -> Supporter role requested")
-for i in range(4): w.on_message(Message("youtube", "Neha", "hi %d" % i, uid="UC2", mod=True))
+for i in range(4): w.on_message(Message("twitch", "Neha", "hi %d" % i, uid="tw2", mod=True))
 wait(500); n = len(C["grants"])
-for i in range(4): w.on_message(Message("youtube", "Neha", "again %d" % i, uid="UC2", mod=True))
+for i in range(4): w.on_message(Message("twitch", "Neha", "again %d" % i, uid="tw2", mod=True))
 wait(300); ok(len(C["grants"]) == n and "move the CHATDOOM role above" in w.feed.toPlainText(), "failed grant (403): clear hint, and no retry flood")
-w.links.save(); ok(json.load(open(os.path.join(os.environ["APPDATA"], "ChatVoice", "counts.json")))["youtube:UC1"]["regular"], "counts saved to disk")
+w.links.save(); ok(json.load(open(os.path.join(os.environ["APPDATA"], "ChatVoice", "counts.json")))["twitch:tw1"]["regular"], "counts saved to disk")
 
 # ===== B. payments =====
 print("--- B. payments ---"); spoken.clear()
@@ -810,30 +814,41 @@ w.platform_auth.is_connected = lambda p: True
 sent.clear(); announced.clear(); w.speaker.announce = lambda *a: announced.append(a)
 w.on_status("youtube", "Connected", True)
 T = w.tools
-fan = Message("youtube", "Coin Fan", "hello", uid="UC" + "c" * 22, stream="youtube")
+fan = Message("twitch", "Coin Fan", "hello", uid="coinfan", stream="twitch")
 T.points.reset(); now = time.time()
 T.points.earn(fan, now); T.points.earn(fan, now + 5); T.points.earn(fan, now + 61)
-key = "youtube:" + "UC" + "c" * 22
+key = "twitch:coinfan"
 ok(T.points.balance(key) == 10, "chatting earns points once per cooldown (spam earns nothing extra)")
 T.points.file.data[key]["bonus"] = 0
 ok(T.points.tick(now + 70) == 1 and T.points.balance(key) == 20, "viewers who chatted recently get the watching bonus")
-w.on_message(Message("youtube", "Coin Fan", "!points", uid="UC" + "c" * 22, stream="youtube"))
+w.on_message(Message("twitch", "Coin Fan", "!points", uid="coinfan", stream="twitch"))
 ok(sent and sent[-1][0][1] == "Coin Fan has 20 coins", "!points replies with the viewer's balance")
-random.seed(1); w.on_message(Message("youtube", "Coin Fan", "!gamble 500", uid="UC" + "c" * 22, stream="youtube"))
+random.seed(1); w.on_message(Message("twitch", "Coin Fan", "!gamble 500", uid="coinfan", stream="twitch"))
 ok("only have 20 coins" in sent[-1][0][1], "!gamble refuses bets bigger than the balance")
-w.on_message(Message("youtube", "Coin Fan", "!gamble all", uid="UC" + "c" * 22, stream="youtube"))
+w.on_message(Message("twitch", "Coin Fan", "!gamble all", uid="coinfan", stream="twitch"))
 ok(T.points.balance(key) in (0, 40) and ("won 20" in sent[-1][0][1] or "lost 20" in sent[-1][0][1]), "!gamble all is double or nothing")
-w.on_message(Message("youtube", "Coin Fan", "!gamble 10", uid="UC" + "c" * 22, stream="youtube"))
+w.on_message(Message("twitch", "Coin Fan", "!gamble 10", uid="coinfan", stream="twitch"))
 ok("!gamble not run: cooldown" in w.feed.toPlainText(), "!gamble has a cooldown")
 
+
+yt_uid = "UC" + "y" * 22
+yt = Message("youtube", "Yt Fan", "hello", uid=yt_uid, stream="youtube")
+T.points.earn(yt, now); T.points.earn(yt, now + 100); T.points.tick(now + 200)
+ok("youtube:" + yt_uid not in T.points.file.data, "YouTube viewers earn no points or XP (YouTube rules)")
+w.on_message(Message("youtube", "Yt Fan", "!points", uid=yt_uid, stream="youtube"))
+ok(sent and "on our Discord" in sent[-1][0][1], "!points from YouTube points the viewer to the Discord instead")
+w.on_message(Message("youtube", "Yt Fan", "!gamble 10", uid=yt_uid, stream="youtube"))
+ok("!gamble not run: YouTube viewers can't use points" in w.feed.toPlainText(), "no point games for YouTube viewers")
 w.s.set("memes", [{"name": "bruh", "text": "bruh", "sound": snd, "image": img, "cooldown": 0, "cost": 50}])
 w.s.set("meme_gap", 0); T.points.file.data[key]["points"] = 30
-w.on_message(Message("youtube", "Coin Fan", "!bruh", uid="UC" + "c" * 22, stream="youtube"))
+w.on_message(Message("twitch", "Coin Fan", "!bruh", uid="coinfan", stream="twitch"))
 ok("!bruh not run: needs 50 coins" in w.feed.toPlainText() and T.points.balance(key) == 30, "a meme with a cost needs enough points")
 T.points.add(key, 40); announced.clear()
-w.on_message(Message("youtube", "Coin Fan", "!bruh", uid="UC" + "c" * 22, stream="youtube"))
+w.on_message(Message("twitch", "Coin Fan", "!bruh", uid="coinfan", stream="twitch"))
 ok(announced and T.points.balance(key) == 20, "with enough points the meme plays and the cost is taken")
 
+w.on_message(Message("youtube", "Yt Fan", "!bruh", uid=yt_uid, stream="youtube"))
+ok("YouTube viewers can't use" in w.feed.toPlainText(), "a meme that costs points is not for YouTube viewers")
 sent.clear()
 w.start_poll("Next game?", ["Valorant", "GTA", "", ""], 60)
 ok(T.poll.active and sent and sent[-1][0][1].startswith("Poll: Next game? Vote with !vote 1 = Valorant"), "starting a poll announces it in chat")
@@ -854,16 +869,19 @@ w.on_message(Message("twitch", "Late", "1", uid="late", stream="twitch"))
 ok(T.poll.tally() == [2, 1], "after the poll ends a plain number is ordinary chat again")
 
 w.open_giveaway("!Join", 0)
-for who, plat, uid in (("A", "youtube", "UC" + "a" * 22), ("B", "twitch", "tb"), ("A", "youtube", "UC" + "a" * 22)):
+for who, plat, uid in (("A", "kick", "ka"), ("B", "twitch", "tb"), ("A", "kick", "ka")):
     w.on_message(Message(plat, who, "!join", uid=uid, stream=plat))
 ok(T.giveaway.active and len(T.giveaway.entries) == 2 and "!join not run: already entered" in w.feed.toPlainText(), "viewers enter the giveaway once, from any platform")
+w.on_message(Message("youtube", "Yt Fan", "!join", uid=yt_uid, stream="youtube"))
+ok("youtube:" + yt_uid not in T.giveaway.entries and "!join not run: YouTube viewers can't" in w.feed.toPlainText(),
+   "YouTube viewers can't enter giveaways (YouTube rules)")
 random.seed(3); announced.clear(); w.pick_winner(); first = T.giveaway.winners[-1][1]; w.pick_winner(); second = T.giveaway.winners[-1][1]
 ok({first, second} == {"A", "B"} and announced and "giveaway winner" in announced[0][0], "picking winners never repeats a winner and reads the result aloud")
 w.pick_winner(); ok("Nobody (else)" in w.toasts.items[0].label.text(), "with everyone picked, a toast says there is nobody left")
 ok(ov("/poll?type=widgets&after=-1")["state"]["giveaway"]["winner"] == second, "the /widgets overlay shows the winner")
 w.clear_giveaway(); w.s.set("giveaway_cost", 25)
 w.open_giveaway("raffle", 25)
-w.on_message(Message("youtube", "Poor", "!raffle", uid="UC" + "p" * 22, stream="youtube"))
+w.on_message(Message("twitch", "Poor", "!raffle", uid="poor", stream="twitch"))
 ok("!raffle not run: needs 25 coins" in w.feed.toPlainText(), "a giveaway with an entry cost needs points")
 w.clear_giveaway()
 

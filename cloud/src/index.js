@@ -638,6 +638,8 @@ async function api(request, env, url) {
   if (route === "POST /api/grant") {
     const { platform, uid, role } = body;
     if (!PLATFORMS.includes(platform) || !uid || !["regular", "supporter"].includes(role)) return json({ error: "bad request" }, 400);
+    // YouTube's API rules: no rewards for YouTube activity, also for older app versions that still ask
+    if (platform === "youtube") return json({ ok: false, error: "YouTube viewers can't earn roles (YouTube rules)" }, 403);
     const links = (await kvGet(env, "links:" + guildId)) || {};
     const discordId = links[platform + ":" + uid];
     if (!discordId) return json({ ok: false, error: "viewer is not linked" }, 404);

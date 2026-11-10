@@ -168,7 +168,8 @@ class LinkManager(QObject):
                    lambda: self.cloud.call("POST", "/api/claim", {"code": code, "platform": plat, "uid": uid, "name": name}))
             return True
         key = "%s:%s" % (m.platform, m.uid)
-        if key in self.linked:
+        # roles for chatting or paying are rewards, which YouTube's rules don't allow for YouTube viewers
+        if key in self.linked and m.platform != "youtube":
             c = self.counts.setdefault(key, {"msgs": 0, "paid": 0, "regular": False, "supporter": False})
             c["msgs"] += 1
             if m.kind == "super":

@@ -12,6 +12,16 @@ from .models import viewer_key
 
 ACTIVE_WINDOW = 600            # a viewer who chatted in the last 10 minutes counts as watching for the points bonus
 
+# YouTube's API rules: YouTube viewers may not earn points or XP, enter giveaways, or use the points shop or point games
+# (Google confirmed this for CHATDOOM's OAuth verification, November 2026). Their loyalty lives in the streamer's
+# Discord instead (NOVA BOT's levels, economy and giveaways), which is not tied to watching on YouTube.
+NO_REWARDS = ("youtube",)
+YOUTUBE_NOTE = "points, giveaways and the shop are on our Discord"
+
+
+def rewards_allowed(m):
+    return m.platform not in NO_REWARDS
+
 
 LINK_RX = re.compile(r"https?://|www\.|\b[\w-]+\.(com|net|org|in|gg|tv|io|xyz|ru)\b", re.I)
 GOAL_SOURCES = {"follow": "follows", "subscription": "subs", "gift": "subs", "subscriber": "subs", "membership": "members", "tip": "money", "superchat": "money"}
@@ -61,6 +71,10 @@ class Points:
         self.s, self.file = settings, JsonFile(path, {})
         self.gambled = {}
         self.levelups = []           # (platform, viewer, level) waiting to be announced
+        # balances YouTube viewers built up before the rule above: they can no longer be used, so they go
+        for key in [k for k in self.file.data if k.split(":", 1)[0] in NO_REWARDS]:
+            del self.file.data[key]
+            self.file.dirty = True
 
     @property
     def name(self):
@@ -101,7 +115,7 @@ class Points:
 
     def earn(self, m, now):
         """Points for chatting, at most once per cooldown so spamming earns nothing extra."""
-        if not self.s.get("points_on") or m.platform in ("test", "tip"):
+        if not self.s.get("points_on") or m.platform in ("test", "tip") or not rewards_allowed(m):
             return
         row = self._row(viewer_key(m), m.author)
         row["active"] = now
@@ -119,7 +133,9 @@ class Points:
         if not self.s.get("points_on"):
             return 0
         every, amount, given = float(self.s.get("points_bonus_minutes") or 10) * 60, int(self.s.get("points_bonus") or 0), 0
-        for row in self.file.data.values():
+        for key, row in self.file.data.items():
+            if key.split(":", 1)[0] in NO_REWARDS:
+                continue
             if now - row.get("active", 0) <= ACTIVE_WINDOW and now - row.get("bonus", 0) >= every:
                 row["bonus"] = now
                 row["points"] = int(row["points"]) + amount
@@ -459,6 +475,13 @@ class Tools:
         word, args = word.lower(), args.strip()
         if word == "vote" and self.poll.active:
             return self._vote(m, int(args.split()[0]) if args.split() and args.split()[0].isdigit() else 0)
+        if not rewards_allowed(m):
+            rewarded = word in ("bet", "shop", "buy", "say", "points", "top", "gamble", "level") or \
+                (self.giveaway.active and clean_name(word) == self.giveaway.keyword)
+            if rewarded and word in ("points", "top", "level") and self.s.get("points_on"):
+                return action("points", word, reply="%s, %s" % (m.author, YOUTUBE_NOTE))      # where they can earn
+            if rewarded:
+                return action("points", word, "YouTube viewers can't use points (YouTube rules)")
         if self.giveaway.active and clean_name(word) == self.giveaway.keyword:
             return self._enter(m)
         counter = self._counter(m, word, args)
@@ -488,6 +511,8 @@ class Tools:
 
     def _enter(self, m):
         g, key = self.giveaway, viewer_key(m)
+        if not rewards_allowed(m):
+            return action("entry", g.keyword, "YouTube viewers can't enter giveaways (YouTube rules)")
         if key in g.entries:
             return action("entry", g.keyword, "already entered")
         if g.cost and self.s.get("points_on") and not self.points.spend(key, g.cost):

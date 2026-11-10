@@ -177,6 +177,8 @@ class Commands:
         if not (sound or image or speak):
             return self._result("meme", name, "meme file missing")
         cost = int(meme.get("cost") or 0)
+        if cost and m.platform == "youtube" and not m.mod:       # YouTube viewers can't spend points (YouTube rules)
+            return self._result("meme", name, "costs points, which YouTube viewers can't use")
         if cost and self.points is not None and self.s.get("points_on") and not m.mod and not self.points.spend(viewer_key(m), cost):
             return self._result("meme", name, "needs %d %s" % (cost, self.points.name))
         self.last_used[("meme", name)] = self.last_meme = now
