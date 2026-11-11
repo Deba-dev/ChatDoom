@@ -39,7 +39,7 @@ from .speech import Speaker
 from .stream_watch import FORMATS, StreamWatch, stream_format
 from .appearance import AppearanceDialog
 from .theme import CUSTOM_THEME, DEFAULT_THEME, FX, THEMES, build_qss, set_custom_theme
-from .tools import Tools
+from .tools import NO_REWARDS, Tools
 from .alerts_page import AlertsPage
 from .overlay_design_page import OverlayDesignPage
 from .settings_page import SettingsPage
@@ -1980,9 +1980,12 @@ class MainWindow(ChatActions, StreamWatch, QWidget):
         else:
             self.platform_auth.send_message(platform, text, video, quiet=True)
 
-    def _broadcast(self, text):
-        """Post a message in every main chat that is connected and signed in. Returns the platforms it went to."""
-        sent = [p for p in self.platform_auth.SUPPORTED if p in self.connected and self._can_post(p)]
+    def _broadcast(self, text, rewards=False):
+        """Post a message in every main chat that is connected and signed in. Returns the platforms it went to.
+        rewards: the message is about points, bets or giveaways, which YouTube viewers can't take part in (YouTube rules),
+        so it skips those chats instead of advertising something they can't join."""
+        sent = [p for p in self.platform_auth.SUPPORTED if p in self.connected and self._can_post(p)
+                and not (rewards and p in NO_REWARDS)]
         for p in sent:
             self._post_chat(p, text)
         where = ", ".join(PLATFORM_NAMES[p] for p in sent)
@@ -2066,14 +2069,14 @@ class MainWindow(ChatActions, StreamWatch, QWidget):
         if problem:
             self.toasts.show(problem, "warn")
             return
-        self._broadcast("Prediction: %s Bet with %s" % (guess.question, " | ".join("!bet %d 100 = %s" % (i + 1, o) for i, o in enumerate(guess.options))))
+        self._broadcast("Prediction: %s Bet with %s" % (guess.question, " | ".join("!bet %d 100 = %s" % (i + 1, o) for i, o in enumerate(guess.options))), rewards=True)
         self.toasts.show("Prediction started", "good")
         self.tools_changed()
 
     def lock_prediction(self):
         if self.tools.prediction.open:
             self.tools.prediction.lock()
-            self._broadcast("Bets are locked!")
+            self._broadcast("Bets are locked!", rewards=True)
             self.tools_changed()
 
     def resolve_prediction(self, number):
@@ -2081,7 +2084,7 @@ class MainWindow(ChatActions, StreamWatch, QWidget):
         if not text:
             return
         self.tools.settle_prediction(paid)
-        self._broadcast(text)
+        self._broadcast(text, rewards=True)
         self.toasts.show(text, "gold", 6)
         self.tools_changed()
 
@@ -2090,7 +2093,7 @@ class MainWindow(ChatActions, StreamWatch, QWidget):
         if guess.active:
             paid, text = guess.refund()
             self.tools.settle_prediction(paid)
-            self._broadcast(text)
+            self._broadcast(text, rewards=True)
         elif guess.result:
             guess.__init__()
         self.tools_changed()
@@ -2119,7 +2122,7 @@ class MainWindow(ChatActions, StreamWatch, QWidget):
             self.toasts.show(problem, "warn")
             return
         g = self.tools.giveaway
-        self._broadcast("Giveaway open! Type !%s to enter%s." % (g.keyword, " (costs %d %s)" % (g.cost, self.tools.points.name) if g.cost else ""))
+        self._broadcast("Giveaway open! Type !%s to enter%s." % (g.keyword, " (costs %d %s)" % (g.cost, self.tools.points.name) if g.cost else ""), rewards=True)
         self.toasts.show("Giveaway open: !%s" % g.keyword, "good")
         self.tools_changed()
 
@@ -2127,7 +2130,7 @@ class MainWindow(ChatActions, StreamWatch, QWidget):
         g = self.tools.giveaway
         if g.active:
             g.active = False
-            self._broadcast("Giveaway entries are closed (%d entered)." % len(g.entries))
+            self._broadcast("Giveaway entries are closed (%d entered)." % len(g.entries), rewards=True)
             self.tools_changed()
 
     def pick_winner(self):
@@ -2137,7 +2140,7 @@ class MainWindow(ChatActions, StreamWatch, QWidget):
             return
         _, name, platform = win
         text = "The giveaway winner is %s (%s)!" % (name, PLATFORM_NAMES.get(platform, platform.title()))
-        self._broadcast("Congratulations %s, you won the giveaway!" % name)
+        self._broadcast("Congratulations %s, you won the giveaway!" % name, rewards=True)
         self.speaker.announce(text)
         self.toasts.show(text, "gold", 8)
         self.tools_changed()

@@ -187,7 +187,8 @@ class DiscordPage(SubPage):
         al.addWidget(c)
 
         c, cl = section_card("Chat-activity roles",
-                             "Viewers who link their account get Verified. Active chatters become Regulars. Paid messages grant Supporter. "
+                             "Viewers who link their account get Verified. Active Twitch and Kick chatters become Regulars, and their paid messages grant Supporter. "
+                             "YouTube activity never earns roles (YouTube's rules): YouTube viewers earn levels, coins and giveaways by chatting on the Discord itself. "
                              "The CHATDOOM role must sit above these roles in Discord.")
         self.boxes = {}
         for key, label in (("role_verified", "Verified (after linking)"), ("role_regular", "Regular (after N messages)"),

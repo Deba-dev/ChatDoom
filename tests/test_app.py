@@ -868,6 +868,10 @@ ok(not T.poll.active and announced == [("Poll ended: Valorant wins with 2 of 3 v
 w.on_message(Message("twitch", "Late", "1", uid="late", stream="twitch"))
 ok(T.poll.tally() == [2, 1], "after the poll ends a plain number is ordinary chat again")
 
+saved_connected = set(w.connected); w.connected.update(("youtube", "twitch", "kick")); real_can = w._can_post; w._can_post = lambda p: True
+ok("youtube" not in w._broadcast("Giveaway test", rewards=True) and "youtube" in w._broadcast("Poll test"),
+   "giveaway and bet messages skip YouTube chat (YouTube rules), other messages still go there")
+w._can_post = real_can; w.connected.clear(); w.connected.update(saved_connected)
 w.open_giveaway("!Join", 0)
 for who, plat, uid in (("A", "kick", "ka"), ("B", "twitch", "tb"), ("A", "kick", "ka")):
     w.on_message(Message(plat, who, "!join", uid=uid, stream=plat))

@@ -462,7 +462,8 @@ async function linkCallback(env, origin, url) {
   await kvPut(env, "code:" + linkCode, { guildId: st.guildId, discordId: me.id, name: me.global_name || me.username }, 900);
   return page("Almost done, " + (me.global_name || me.username),
     `<p>Type this in the streamer's live chat within 15 minutes:</p><div class="big">!link ${esc(linkCode)}</div>
-     <p>It links your chat name to your Discord account. You can close this page.</p>`);
+     <p>It links your chat name to your Discord account. You can close this page.</p>
+     <p>Watching or chatting on YouTube never earns points, roles or giveaway entries: YouTube's rules don't allow rewards for YouTube viewers.</p>`);
 }
 
 // ---------------- payment webhook (called by the streamer's gateway) ----------------

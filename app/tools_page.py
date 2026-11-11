@@ -105,7 +105,9 @@ class ToolsPage(SubPage):
         sw = lambda key: bind_switch(self.s, key, accent)
 
         # ---------- points ----------
-        points, pl = section_card("Loyalty points", "Viewers earn points by chatting and spend them on memes, giveaways and !gamble.")
+        points, pl = section_card("Loyalty points", "Twitch and Kick viewers earn points by chatting and spend them on memes, giveaways and !gamble. "
+                                   "YouTube's rules don't allow rewards for YouTube viewers, so they earn nothing here: "
+                                   "!points, !top and !level on YouTube point them to your Discord, where NOVA BOT's levels, coins and giveaways run.")
         pl.addWidget(option_switch_row("Points", "Viewers can use !points, !top and !gamble.", sw("points_on")))
         pl.addWidget(field_row("Name of the points", "Shown in chat replies, like coins or bhai-points.", _text(self.s, "points_name", "coins", 20)))
         pl.addWidget(field_row("For chatting", "Given at most once per cooldown, so spam earns nothing extra.",
@@ -121,7 +123,8 @@ class ToolsPage(SubPage):
         pl.addWidget(hrow(self.reset_btn))
 
         # ---------- levels ----------
-        levels, ll = section_card("Levels", "Viewers level up by chatting and staying. Each level takes more XP than the last. !level shows their progress.")
+        levels, ll = section_card("Levels", "Twitch and Kick viewers level up by chatting and staying (not YouTube viewers: YouTube's rules). "
+                                   "Each level takes more XP than the last. !level shows their progress.")
         ll.addWidget(option_switch_row("Levels", "Needs Points to be on.", sw("levels_on")))
         ll.addWidget(field_row("XP for level 2", "Level 3 takes 4 times this, level 4 takes 9 times.", _spin(self.s, "level_base", 10, 100000, " XP")))
         ll.addWidget(field_row("XP for chatting and for the watching bonus", "Given at the same times as points.",
@@ -209,7 +212,8 @@ class ToolsPage(SubPage):
         bl.addLayout(self.bet_winners)
 
         # ---------- giveaway ----------
-        give, gl = section_card("Giveaway", "Viewers type the keyword to enter, from any platform. Pick as many winners as you like.")
+        give, gl = section_card("Giveaway", "Twitch and Kick viewers type the keyword to enter. YouTube's rules keep YouTube viewers out, and giveaway "
+                                   "messages aren't posted in YouTube chat. Run YouTube giveaways on your Discord instead. Pick as many winners as you like.")
         self.give_kw = _text(self.s, "giveaway_keyword", "join", 30)
         gl.addWidget(field_row("Keyword", "Viewers type it with !, like !join.", self.give_kw))
         gl.addWidget(field_row("Entry cost", "Loyalty points needed to enter (0 = free).", _spin(self.s, "giveaway_cost", 0, 1000000, " pts")))
