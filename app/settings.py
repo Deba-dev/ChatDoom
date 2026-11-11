@@ -42,7 +42,7 @@ DEFAULTS = {
     "announce_auto": False, "announce_title": "🔴 LIVE NOW", "announce_text": "I'm live! Come hang out", "post_super": False,
     "discord_announced_videos": [],
     "pay_gateway": "razorpay", "tip_link": "", "ov_port": 8765, "ov_seconds": 8, "ov_show_message": True, "ov_sound": False, "ov_chat_seconds": 20,
-    "ov_alert_style": "neon", "ov_chat_style": "glass", "ov_sound_file": "", "ov_alert_design": {}, "ov_alert_custom": {}, "ov_designs": {}, "ov_my_styles": {},
+    "ov_alert_style": "neon", "ov_chat_style": "glass", "ov_sound_file": "", "ov_alert_design": {}, "ov_alert_custom": {}, "ov_tip_tiers": [], "ov_designs": {}, "ov_my_styles": {},
     "ui_scale": 100, "show_stats": True, "autostart": False, "start_hidden": False, "start_page": 0, "last_page": 0, "auto_connect": False, "start_muted": False,
     "close_to_tray": True, "esc_to_tray": True, "esc_ask": True, "tray_hint_shown": False, "window_mode": "windowed", "window_geometry": "", "always_on_top": False, "confirm_quit": False, "toast_seconds": 4, "flash_paid": True,
     "levels_on": True, "level_base": 100, "level_xp_msg": 10, "level_xp_bonus": 20, "level_announce": True, "level_text": "{user} reached level {level}!",

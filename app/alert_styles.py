@@ -114,6 +114,104 @@ def design_for(settings, kind):
     return clean(custom[kind], main) if kind in custom else main
 
 
+# ---------- tips by amount: a bigger tip can get a bigger alert ----------
+MAX_TIERS = 5
+TIER_MAX_FROM = 10000000
+TIER_STARTS = (100, 500, 2000, 5000, 10000)    # what "Add tier" suggests, in rupees
+# What a new tier looks like, from small to big, so each step up is visibly bigger
+TIER_PRESETS = (
+    {"look": "neon", "effect": "sparkles", "size": 110, "enter": "pop", "seconds": 8},
+    {"look": "royal", "effect": "money", "size": 120, "enter": "zoom", "idle": "glow", "text": "glow", "font": "Cinzel", "seconds": 10},
+    {"look": "lava", "effect": "fire", "size": 135, "enter": "warp", "idle": "pulse", "text": "shake", "font": "Anton", "seconds": 12},
+    {"look": "holo", "effect": "party", "size": 150, "enter": "flip", "idle": "float", "text": "rainbow", "font": "Russo One", "seconds": 14},
+    {"look": "royal", "effect": "money", "size": 160, "enter": "unfold", "idle": "glow", "text": "pop", "font": "Rozha One", "seconds": 16,
+     "position": "mid-center"},
+)
+
+
+def tip_tiers(settings):
+    """The saved tiers, tidy and sorted by amount: [{"from": rupees, "design": {...}}]. Broken entries are dropped."""
+    raw = settings.get("ov_tip_tiers")
+    out, seen = [], set()
+    for t in raw if isinstance(raw, list) else []:
+        try:
+            start = int(t.get("from"))
+        except (AttributeError, TypeError, ValueError):
+            continue
+        if not 1 <= start <= TIER_MAX_FROM or start in seen:
+            continue
+        seen.add(start)
+        out.append({"from": start, "design": t.get("design") if isinstance(t.get("design"), dict) else {}})
+    return sorted(out, key=lambda t: t["from"])[:MAX_TIERS]
+
+
+def tier_design(settings, index):
+    """A tier's full design: what it changed, on top of the Tips design."""
+    tiers = tip_tiers(settings)
+    return clean(tiers[index]["design"], design_for(settings, "tip"))
+
+
+def tier_index(settings, rupees):
+    """Which tier a tip of this many rupees gets, or None for the normal Tips design."""
+    best = None
+    for i, t in enumerate(tip_tiers(settings)):
+        if rupees >= t["from"]:
+            best = i
+    return best
+
+
+def add_tier(settings, start=None):
+    """Adds a tier from the next suggested amount (or the one given). Returns its index, or None when full or taken."""
+    tiers = tip_tiers(settings)
+    if len(tiers) >= MAX_TIERS:
+        return None
+    taken = {t["from"] for t in tiers}
+    if start is None:
+        start = next((v for v in TIER_STARTS if v not in taken), max(taken or {0}) * 2 or 100)
+    start = int(start)
+    if start in taken or not 1 <= start <= TIER_MAX_FROM:
+        return None
+    preset = TIER_PRESETS[min(len(tiers), len(TIER_PRESETS) - 1)]
+    tiers.append({"from": start, "design": clean(preset, design_for(settings, "tip"))})
+    tiers.sort(key=lambda t: t["from"])
+    settings.set("ov_tip_tiers", tiers)
+    return next(i for i, t in enumerate(tiers) if t["from"] == start)
+
+
+def set_tier(settings, index, start=None, design=None):
+    """Changes one tier's amount and/or design. Returns its new index (tiers stay sorted), or None if the amount is taken."""
+    tiers = tip_tiers(settings)
+    tier = tiers[index]
+    if start is not None:
+        start = int(start)
+        if not 1 <= start <= TIER_MAX_FROM or any(t["from"] == start for i, t in enumerate(tiers) if i != index):
+            return None
+        tier["from"] = start
+    if design is not None:
+        tier["design"] = design
+    tiers.sort(key=lambda t: t["from"])
+    settings.set("ov_tip_tiers", tiers)
+    return tiers.index(tier)
+
+
+def remove_tier(settings, index):
+    tiers = tip_tiers(settings)
+    if 0 <= index < len(tiers):
+        tiers.pop(index)
+        settings.set("ov_tip_tiers", tiers)
+
+
+def overlay_tip_tiers(settings, sounds_dir, memes_dir):
+    """For the overlay: [{"from": rupees, "design": full design}] sorted by amount."""
+    out = []
+    for i, t in enumerate(tip_tiers(settings)):
+        d = for_overlay(tier_design(settings, i), sounds_dir, memes_dir)
+        d["tier"] = True
+        d["ownSound"] = bool(t["design"].get("sound"))      # a tier's own sound beats the Tips alert sound
+        out.append({"from": t["from"], "design": d})
+    return out
+
+
 def _inside(folder, name):
     """Only a plain file directly in the folder may reach the overlay."""
     name = os.path.basename(name or "")

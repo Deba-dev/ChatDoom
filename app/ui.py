@@ -889,6 +889,7 @@ class MainWindow(ChatActions, StreamWatch, QWidget):
                 "soundUrl": sound_url, "soundVolume": int(self.s.get("ov_sound_volume")),
                 "typeSounds": alert_styles.overlay_type_sounds(self.s, sound_dir),
                 "alertDesigns": alert_styles.overlay_designs(self.s, sound_dir, self.memes_dir),
+                "tipTiers": alert_styles.overlay_tip_tiers(self.s, sound_dir, self.memes_dir),
                 "designs": overlay_styles.all_designs(self.s),
                 "alertStyle": self.s.get("ov_alert_style"), "chatStyle": self.s.get("ov_chat_style"),
                 "showTips": bool(self.s.get("ov_alert_tips")),
@@ -1902,8 +1903,10 @@ class MainWindow(ChatActions, StreamWatch, QWidget):
                 self.overlay.push("chat", {"platform": m.platform, "name": m.author, "text": m.text, "mod": bool(m.mod), "emotes": m.emotes})
             if m.kind in ("super", "member"):
                 category = "membership" if m.kind == "member" else ("tip" if m.platform == "tip" else "superchat")
-                self._push_alert({"platform": m.platform, "category": category,
-                                  "name": m.author, "amount": m.amount, "message": m.text})
+                alert = {"platform": m.platform, "category": category, "name": m.author, "amount": m.amount, "message": m.text}
+                if m.rupees is not None:
+                    alert["value"] = m.rupees          # picks the tip's design by amount (Alerts > Tips by amount)
+                self._push_alert(alert)
             if m.kind == "super":
                 self.discord.post_paid(m)
             if m.kind in ("super", "member"):
@@ -2268,8 +2271,9 @@ class MainWindow(ChatActions, StreamWatch, QWidget):
             msg, note = "", "message hidden: blocked word"
         elif msg and ev.get("currency") == "INR" and float(ev.get("value") or 0) < int(self.s.get("tip_min")):
             msg, note = "", "message not read: below the minimum amount"
+        rupees = float(ev.get("value") or 0) if (ev.get("currency") or "INR") == "INR" else None
         self.on_message(Message("tip", ev.get("name") or "Someone", msg, "super", ev.get("display", ""),
-                               event_id=str(ev.get("id") or "")))
+                               event_id=str(ev.get("id") or ""), rupees=rupees))
         if note:
             self.feed.append("<span style='color:#5d667d'>%s</span>" % esc(note))
 

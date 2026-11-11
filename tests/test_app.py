@@ -1163,6 +1163,34 @@ ok(len(ov("/poll?type=alert&after=%d" % n0)["events"]) == len(AS.ALERT_TYPES), "
 ok(b'data-mode="preview"' in urllib.request.urlopen(w.overlay.url("preview")).read(), "the live preview page exists")
 w.s.set("ov_alert_design", {}); w.s.set("ov_alert_style", "neon"); w.s.set("ov_alert_custom", {}); A.load()
 
+# ---- tips by amount ----
+w.s.set("ov_tip_tiers", []); A._tiers_changed()
+ok(A.target.findData("tier:100") < 0 and A.add_tier_button.isEnabled(), "no amount steps to start with")
+A.add_tier(); A.add_tier()
+ok([t["from"] for t in AS.tip_tiers(w.s)] == [100, 500] and A.target.findData("tier:100") == A.target.findData("tip") + 1, "Add a step suggests ₹100 then ₹500, listed under Tips")
+tiers = ov("/poll?type=alert&after=-1")["cfg"]["tipTiers"]
+ok([t["from"] for t in tiers] == [100, 500] and tiers[1]["design"]["look"] == "royal" and tiers[1]["design"]["size"] > tiers[0]["design"]["size"], "the steps reach OBS, each one bigger than the last")
+A.edit_tier(500)
+ok(A.tier == 500 and A.kind == "tip" and not A.own.isVisibleTo(A), "Design it switches the editor to that step")
+A.pack_buttons[8].click()     # Lava burst
+tiers = ov("/poll?type=alert&after=-1")["cfg"]["tipTiers"]
+ok(tiers[1]["design"]["look"] == "lava" and tiers[0]["design"]["look"] == "neon" and "tip" not in AS.custom_designs(w.s), "a pack changes only that step, not Tips or the other steps")
+A.move_tier(1, 100); ok(len(AS.tip_tiers(w.s)) == 2 and "already starts" in A.tier_note.text(), "two steps cannot start at the same amount")
+A.move_tier(1, 1000)
+ok([t["from"] for t in AS.tip_tiers(w.s)] == [100, 1000] and A.tier == 1000 and A.target.currentData() == "tier:1000" and A.design()["look"] == "lava", "changing a step's amount keeps it selected with its design")
+ok(A.sample()["value"] == 1000.0 and A.sample()["amount"] == "₹1,000", "a step's test alert uses its own amount")
+n0 = ov("/poll?type=alert&after=-1")["latest"]
+w.on_tip({"name": "Big", "message": "", "value": 1500, "currency": "INR", "display": "₹1,500", "id": "tierA"})
+w.on_tip({"name": "Usd", "message": "", "value": 20, "currency": "USD", "display": "$20", "id": "tierB"})
+evs = [e for e in ov("/poll?type=alert&after=%d" % n0)["events"] if e.get("category") == "tip"]
+ok(len(evs) == 2 and evs[0]["value"] == 1500 and "value" not in evs[1], "a rupee tip carries its amount to OBS; other currencies use the normal Tips design")
+for _ in range(5): A.add_tier()
+ok(len(AS.tip_tiers(w.s)) == AS.MAX_TIERS and not A.add_tier_button.isEnabled(), "at most %d steps" % AS.MAX_TIERS)
+A.remove_tier(0); ok(len(AS.tip_tiers(w.s)) == AS.MAX_TIERS - 1 and A.add_tier_button.isEnabled(), "a step can be removed")
+w.s.set("ov_tip_tiers", [{"from": "x"}, {"from": 50, "design": "bad"}, {"from": 50}]);
+ok([t["from"] for t in AS.tip_tiers(w.s)] == [50] and AS.tier_design(w.s, 0)["look"], "broken saved steps are dropped safely")
+w.s.set("ov_tip_tiers", []); A.target.setCurrentIndex(0); A._tiers_changed()
+
 class V:
     def __init__(s, author, mod=False, platform="youtube"): s.author, s.mod, s.platform = author, mod, platform
 ok(render("{math:2*(3+4)} {math:__import__('os')} {math:9**9**9} {math:1/0}", V("a")) == "14 ? ? ?", "{math} only does plain sums and never runs code")

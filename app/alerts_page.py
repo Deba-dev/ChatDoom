@@ -7,7 +7,7 @@ import tempfile
 from PySide6.QtCore import Qt, QTimer, QUrl
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (QCheckBox, QColorDialog, QComboBox, QFileDialog, QGridLayout, QLabel, QLineEdit, QPushButton, QSlider, QSpinBox,
-                               QWidget)
+                               QVBoxLayout, QWidget)
 
 from . import alert_sounds
 from . import alert_styles as styles
@@ -36,12 +36,14 @@ class AlertsPage(DesignTools, SubPage):
         self.view = None
         self.player = None
         self.kind = ""                          # "" is the design every alert uses; otherwise one alert type
+        self.tier = None                        # editing a "Tips by amount" step: its starting amount in rupees
         self._loading = False
         self.boxes = {}
         accent = THEMES.get(self.s.get("theme"), THEMES[DEFAULT_THEME])["a1"]
 
         head, hl = section_card("Design alerts", "Changes reach OBS within a second. Pick one alert type to give it its own design.")
-        self.target = _combo((("All alerts", ""),) + styles.ALERT_TYPES)
+        self.target = QComboBox()
+        self._fill_targets()
         self.target.currentIndexChanged.connect(self._target_changed)
         self.own = QCheckBox("This alert has its own design")
         self.own.toggled.connect(self._own_toggled)
@@ -182,6 +184,26 @@ class AlertsPage(DesignTools, SubPage):
             cl.addWidget(field_row(title, "", hrow(box, self._play_button(box))))
         lay.addWidget(c)
 
+        lay = self.add_tab("Tips by amount")
+        c, cl = section_card(
+            "A bigger tip gets a bigger alert",
+            "Give tips from an amount upwards their own design, sound and time on screen, up to %d steps. A tip uses the "
+            "highest step it reaches; smaller tips use the normal Tips design. Works for rupee tips from your UPI tip page."
+            % styles.MAX_TIERS)
+        self.tier_rows = QVBoxLayout()
+        self.tier_rows.setSpacing(6)
+        holder = QWidget()
+        holder.setLayout(self.tier_rows)
+        cl.addWidget(holder)
+        self.add_tier_button = QPushButton("Add a step")
+        self.add_tier_button.setObjectName("primary")
+        self.add_tier_button.clicked.connect(self.add_tier)
+        self.tier_note = QLabel("")
+        self.tier_note.setObjectName("sub")
+        self.tier_note.setWordWrap(True)
+        cl.addWidget(hrow(self.add_tier_button, self.tier_note))
+        lay.addWidget(c)
+
         lay = self.add_tab("Alert types")
         c, cl = section_card("Choose which alerts show",
                              "YouTube subscriber alerts are limited to publicly visible subscriptions. Twitch alerts use EventSub and need the additional account permissions.")
@@ -198,6 +220,7 @@ class AlertsPage(DesignTools, SubPage):
         self.add_design_tools(("alert",))
         self.finish()
         self.reload_sounds()
+        self._fill_tier_rows()
         self.load()
 
     # ---------- reading and saving ----------
@@ -207,14 +230,21 @@ class AlertsPage(DesignTools, SubPage):
         self.boxes[key] = box
         return box
 
+    def _tier_index(self):
+        return next((i for i, t in enumerate(styles.tip_tiers(self.s)) if t["from"] == self.tier), None)
+
     def design(self):
+        if self.tier is not None and self._tier_index() is not None:
+            return styles.tier_design(self.s, self._tier_index())
         return styles.design_for(self.s, self.kind) if self.kind else styles.main_design(self.s)
 
     def tool_kind(self):
         return "alert"
 
     def reset_design(self):
-        if self.kind:
+        if self.tier is not None:
+            styles.set_tier(self.s, self._tier_index(), design={})
+        elif self.kind:
             custom = styles.custom_designs(self.s)
             custom.pop(self.kind, None)
             self.s.set("ov_alert_custom", custom)
@@ -224,10 +254,13 @@ class AlertsPage(DesignTools, SubPage):
         self.load()
 
     def _has_own(self):
-        return self.kind in styles.custom_designs(self.s)
+        return self.tier is not None or self.kind in styles.custom_designs(self.s)
 
     def _save(self, design):
-        if self.kind:
+        if self.tier is not None:
+            styles.set_tier(self.s, self._tier_index(), design=design)
+            self._fill_tier_rows()
+        elif self.kind:
             custom = styles.custom_designs(self.s)
             custom[self.kind] = design
             self.s.set("ov_alert_custom", custom)
@@ -254,8 +287,108 @@ class AlertsPage(DesignTools, SubPage):
         self._apply(pick)
 
     def _target_changed(self):
-        self.kind = self.target.currentData() or ""
+        data = self.target.currentData() or ""
+        if data.startswith("tier:"):
+            self.kind, self.tier = "tip", int(data[5:])
+        else:
+            self.kind, self.tier = data, None
         self.load()
+
+    # ---------- tips by amount ----------
+    def _fill_targets(self, keep=None):
+        """The Editing list: all alerts, each alert type, and each Tips step right under Tips."""
+        keep = keep if keep is not None else (self.target.currentData() or "")
+        self.target.blockSignals(True)
+        self.target.clear()
+        self.target.addItem("All alerts", "")
+        for label, value in styles.ALERT_TYPES:
+            self.target.addItem(label, value)
+            if value == "tip":
+                for t in styles.tip_tiers(self.s):
+                    self.target.addItem("   Tips ₹%s and up" % format(t["from"], ","), "tier:%d" % t["from"])
+        found = self.target.findData(keep)
+        self.target.setCurrentIndex(max(0, found))
+        self.target.blockSignals(False)
+        if found < 0 and keep:
+            self._target_changed()
+
+    def _fill_tier_rows(self):
+        while self.tier_rows.count():
+            item = self.tier_rows.takeAt(0)
+            if item.widget():
+                item.widget().deleteLater()
+        tiers = styles.tip_tiers(self.s)
+        if not tiers:
+            empty = QLabel("No steps yet: every tip uses the Tips design.")
+            empty.setObjectName("settingNote")
+            self.tier_rows.addWidget(empty)
+        looks = dict((v, k) for k, v in styles.LOOKS)
+        for i, t in enumerate(tiers):
+            amount = QSpinBox()
+            amount.setRange(1, styles.TIER_MAX_FROM)
+            amount.setPrefix("₹ ")
+            amount.setGroupSeparatorShown(True)
+            amount.setValue(t["from"])
+            amount.setFixedWidth(150)
+            amount.editingFinished.connect(lambda i=i, box=amount: self.move_tier(i, box.value()))
+            upto = tiers[i + 1]["from"] - 1 if i + 1 < len(tiers) else None
+            span = QLabel(("up to ₹%s" % format(upto, ",")) if upto else "and up")
+            span.setObjectName("settingNote")
+            d = styles.tier_design(self.s, i)
+            what = QLabel("%s, %d%% size" % (looks.get(d["look"], d["look"]), d["size"]))
+            what.setObjectName("settingNote")
+            edit = QPushButton("Design it")
+            edit.setObjectName(BUTTON)
+            edit.clicked.connect(lambda _=False, v=t["from"]: self.edit_tier(v))
+            test = QPushButton("Test")
+            test.setObjectName(BUTTON)
+            test.clicked.connect(lambda _=False, v=t["from"]: self.overlay.push("alert", self.tier_sample(v)))
+            remove = QPushButton("Remove")
+            remove.setObjectName(BUTTON)
+            remove.clicked.connect(lambda _=False, i=i: self.remove_tier(i))
+            self.tier_rows.addWidget(hrow(amount, span, what, edit, test, remove))
+        self.add_tier_button.setEnabled(len(tiers) < styles.MAX_TIERS)
+
+    def _tiers_changed(self, keep=None):
+        self._fill_tier_rows()
+        self._fill_targets(keep)
+        self.load()
+
+    def add_tier(self):
+        index = styles.add_tier(self.s)
+        if index is None:
+            self.tier_note.setText("You have the most steps (%d)." % styles.MAX_TIERS)
+            return
+        start = styles.tip_tiers(self.s)[index]["from"]
+        self.tier_note.setText("Added tips from ₹%s. Change the amount if you like, then Design it." % format(start, ","))
+        self._tiers_changed()
+
+    def move_tier(self, index, start):
+        tiers = styles.tip_tiers(self.s)
+        if index >= len(tiers) or tiers[index]["from"] == start:
+            return
+        old = tiers[index]["from"]
+        if styles.set_tier(self.s, index, start=start) is None:
+            self.tier_note.setText("Another step already starts at ₹%s." % format(start, ","))
+            self._fill_tier_rows()
+            return
+        self.tier_note.setText("")
+        keep = None
+        if self.tier == old:
+            self.tier, keep = start, "tier:%d" % start
+        self._tiers_changed(keep)
+
+    def remove_tier(self, index):
+        styles.remove_tier(self.s, index)
+        self.tier_note.setText("")
+        self._tiers_changed()
+
+    def edit_tier(self, start):
+        self.target.setCurrentIndex(max(0, self.target.findData("tier:%d" % start)))
+        self.tier_note.setText("Now editing tips from ₹%s: use the Packs, Style, Text, Media and Sounds tabs." % format(start, ","))
+
+    def tier_sample(self, start):
+        return dict(styles.SAMPLES["tip"], amount="₹" + format(start, ","), value=float(start))
 
     def _own_toggled(self, on):
         if self._loading or not self.kind:
@@ -271,7 +404,7 @@ class AlertsPage(DesignTools, SubPage):
     def load(self):
         self._loading = True
         d = self.design()
-        self.own.setVisible(bool(self.kind))
+        self.own.setVisible(bool(self.kind) and self.tier is None)
         self.own.setChecked(self._has_own())
         for key, box in self.boxes.items():
             box.setCurrentIndex(max(0, box.findData(d[key])))
@@ -374,6 +507,8 @@ class AlertsPage(DesignTools, SubPage):
 
     # ---------- testing ----------
     def sample(self):
+        if self.tier is not None:
+            return self.tier_sample(self.tier)
         return dict(styles.SAMPLES[self.kind or "tip"])
 
     def send_test(self):

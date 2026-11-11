@@ -289,7 +289,10 @@ function letters(node,text,fx){ var parts=[];
 function nameNode(text,fx){ var n=document.createElement('span'); n.className='name'; if(fx&&fx!=='none') letters(n,text,fx); else n.textContent=text; return n; }
 function amountNode(text){ var a=document.createElement('span'); a.className='amt'; a.textContent=text; return a; }
 function category(e){ return e.category||(e.platform==='tip'?'tip':(e.amount?'superchat':'other')); }
-function designFor(cat){ var all=cfg.alertDesigns||{}; return all[cat]||all.default||{look:cfg.alertStyle||'neon'}; }
+function designFor(cat,e){ var all=cfg.alertDesigns||{};
+  if(cat==='tip'&&e&&typeof e.value==='number'){ var t=tierFor(e.value); if(t) return t; }   // a bigger tip can get a bigger alert
+  return all[cat]||all.default||{look:cfg.alertStyle||'neon'}; }
+function tierFor(v){ var pick=null; (cfg.tipTiers||[]).forEach(function(t){ if(v>=t.from) pick=t.design; }); return pick; }
 function wordsNode(e,d){
   var who=document.createElement('div'); who.className='who'; var name=e.name||'Someone';
   if(d.template){                                    // {name} and {amount} are filled in as plain text, never as HTML
@@ -326,7 +329,7 @@ function render(e,d){
 }
 // The alert type's own sound wins, then the design's, then the normal sound.
 function playSound(kind,d){
-  var own=(cfg.typeSounds||{})[kind], s=own||d;
+  var own=(d.tier&&d.ownSound)?null:(cfg.typeSounds||{})[kind], s=own||d;
   if(s.noSound) return;
   var pick=s.soundRandom&&s.soundRandom.length?s.soundRandom[Math.floor(Math.random()*s.soundRandom.length)]:'';
   var url=pick||s.soundUrl||d.soundUrl||cfg.soundUrl;
@@ -336,7 +339,7 @@ function playSound(kind,d){
 }
 function next(){
   if(!queue.length){ busy=false; return; }
-  busy=true; var e=queue.shift(), d=designFor(category(e)), shown=render(e,d);
+  busy=true; var e=queue.shift(), d=designFor(category(e),e), shown=render(e,d);
   playSound(category(e),d);
   var ms=(d.seconds||cfg.seconds||8)*1000+Math.min(8000,shown.text.length*60);
   setTimeout(function(){ shown.box.classList.add('out'); setTimeout(function(){ shown.box.remove(); setTimeout(next,300); },550); },ms);

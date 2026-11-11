@@ -67,6 +67,23 @@ function make(file, cfg) {
   t.push({ platform: "tip", category: "tip", name: "Sam", amount: "", message: "" }); await sleep(120);
   ok(!ad3.querySelector(".alert img") && !t.dom.window.hacked && ![...ad3.querySelectorAll("link")].length, "bad wording, outside pictures and bad font names do nothing");
   t.dom.window.close();
+  // ---- tips by amount ----
+  const tierCfg = { seconds: 0.2, showMessage: true, sound: false, colors: {}, alertDesigns: { default: { look: "neon" }, tip: { look: "minimal" } },
+    tipTiers: [{ from: 100, design: { look: "royal", tier: true } }, { from: 2000, design: { look: "lava", tier: true } }] };
+  const looks = [];
+  for (const [value, amount] of [[50, "₹50"], [100, "₹100"], [1999, "₹1,999"], [2000, "₹2,000"], [99999, "₹99,999"], [undefined, "$5"]]) {
+    t = make(require("path").join(__dirname, "out", "alert.html"), tierCfg);
+    const td = t.dom.window.document; await sleep(80);
+    t.push({ platform: "tip", category: "tip", name: "Rahul", amount, value, message: "" }); await sleep(100);
+    looks.push((td.querySelector(".alert").className.match(/style-(\w+)/) || [])[1]);
+    t.dom.window.close();
+  }
+  ok(looks.join(",") === "minimal,royal,royal,lava,lava,minimal", "a tip gets the highest step it reaches, and a tip with no rupee amount the normal Tips design: " + looks.join(","));
+  t = make(require("path").join(__dirname, "out", "alert.html"), tierCfg);
+  const sc = t.dom.window.document; await sleep(80);
+  t.push({ platform: "youtube", category: "superchat", name: "Neha", amount: "₹5,000", value: 5000, message: "" }); await sleep(100);
+  ok(sc.querySelector(".alert").className.includes("style-neon"), "steps are only for tips, not Super Chats");
+  t.dom.window.close();
   // ---- chat ----
   t = make(require("path").join(__dirname, "out", "chat.html"), { chatSeconds: 0.4, maxLines: 8, colors: {} });
   const d3 = t.dom.window.document; await sleep(120);
