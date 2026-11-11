@@ -17,6 +17,9 @@ def ok(c, msg):
 
 # ---------------- fake cloud ----------------
 C = {"grants": [], "tips": [], "config_puts": [], "links": {"youtube:UC1": "U1", "twitch:tw1": "T1", "twitch:tw2": "T2"}, "deny": {"tw2"}}
+TIP_TERMS = {"commissionPct": 2, "gatewayFeePct": 0, "streamerSharePct": 98, "sandbox": True, "configured": True, "minTip": 10}
+
+
 class Cloud(BaseHTTPRequestHandler):
     def log_message(self, *a): pass
     def send(self, o, code=200):
@@ -24,8 +27,12 @@ class Cloud(BaseHTTPRequestHandler):
     def body(self):
         n = int(self.headers.get("content-length") or 0); return json.loads(self.rfile.read(n) or b"{}")
     def do_GET(self):
+        if self.path.endswith("/qr.svg"):
+            b = b'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><rect width="5" height="5"/></svg>'
+            self.send_response(200); self.send_header("content-type", "image/svg+xml"); self.end_headers(); self.wfile.write(b); return
         if self.headers.get("Authorization") != "Bearer KEY": return self.send({"error": "bad server key"}, 401)
         u = urllib.parse.urlparse(self.path); q = urllib.parse.parse_qs(u.query)
+        if u.path == "/api/tips": return self.send({"page": C.get("tip_page"), "terms": TIP_TERMS})
         if u.path == "/api/roles": self.send({"roles": [{"id": "100003", "name": "Supporter"}, {"id": "100001", "name": "YouTube Viewer"}, {"id": "100002", "name": "Regular"}]})
         elif u.path == "/api/links": self.send({"keys": list(C["links"])})
         elif u.path == "/api/config": self.send({"guildId": "G1", "guildName": "Srv", "config": {"hasStripeSecret": "stripe" in C.get("gw", set()), "hasGenericSecret": "generic" in C.get("gw", set()), "hasCashfreeSecret": False, "hookUrls": {g: "https://cv.example/hook/%s/abc" % g for g in ("razorpay", "stripe", "cashfree", "generic")} if (C.get("secret") or C.get("gw")) else {}, "hasRazorpaySecret": bool(C.get("secret")), "hookUrl": "https://cv.example/hook/razorpay/abc" if C.get("secret") else "", "inviteRules": C.get("invite_rules", [])}})
@@ -35,7 +42,10 @@ class Cloud(BaseHTTPRequestHandler):
         else: self.send({"error": "nf"}, 404)
     def do_PUT(self):
         if self.headers.get("Authorization") != "Bearer KEY": return self.send({"error": "x"}, 401)
-        b = self.body(); C["config_puts"].append(b)
+        b = self.body()
+        if self.path == "/api/tips":
+            C["tip_page"]["enabled"] = bool(b.get("enabled")); return self.send({"ok": True, "page": C["tip_page"]})
+        C["config_puts"].append(b)
         if "inviteRules" in b: C["invite_rules"] = [dict(r, code=r["code"].split("/")[-1]) for r in b["inviteRules"]]
         if b.get("razorpaySecret"): C["secret"] = b["razorpaySecret"]
         for g in ("stripe", "generic", "cashfree"):
@@ -44,6 +54,13 @@ class Cloud(BaseHTTPRequestHandler):
                                           "hookUrl": "https://cv.example/hook/razorpay/abc", "hookUrls": {g: "https://cv.example/hook/%s/abc" % g for g in ("razorpay", "stripe", "cashfree", "generic")}}})
     def do_POST(self):
         b = self.body()
+        if self.path == "/api/tips/setup":
+            C["tip_setups"] = C.get("tip_setups", []) + [b]
+            if b.get("pan") == "BAD": return self.send({"error": "Cashfree did not accept these details: invalid pan"}, 400)
+            base = "http://127.0.0.1:%d/t/%s" % (self.server.server_address[1], b["slug"])
+            C["tip_page"] = {"slug": b["slug"], "name": b["name"], "status": "IN_BENE_CREATION", "remarks": "", "payout": "UPI dr***i@okicici",
+                             "minAmount": b["minAmount"], "enabled": True, "url": base, "qrUrl": base + "/qr.svg", "ready": False}
+            return self.send({"ok": True, "page": C["tip_page"], "terms": TIP_TERMS})
         if self.path == "/api/discord/setup":
             C["setup_calls"] = C.get("setup_calls", 0) + 1
             nice = {"youtube": "YouTube", "twitch": "Twitch", "kick": "Kick"}
@@ -274,8 +291,6 @@ ok(got["Sam"][1] == "Hello from the USA" and got["Sam"][2] == "$5", "USD payment
 ok(w.s.get("tip_cursor") == 5, "cursor advanced; nothing is read twice")
 w.poller.poll(); wait(500); ok(len(spoken) == 4, "next poll finds nothing new")
 txt = w.feed.toPlainText(); ok("TIP Rahul [₹100]: Great stream bhai!" in txt, "tip shown in the live chat feed")
-w.payments.secret.setText("whsec_123"); w.payments.save_secret(); wait(500)
-ok(C["config_puts"][-1] == {"razorpaySecret": "whsec_123"} and w.payments.hook.text().endswith("/hook/razorpay/abc"), "secret saved on its own (roles untouched), webhook address shown")
 w.payments.test_tip(); wait(300); ok(spoken[-1][0] == "Rahul" and spoken[-1][2] == "₹100", "test payment button works")
 
 # ===== C. YouTube moderation through the hosted bot =====
@@ -368,7 +383,7 @@ w.goto(5); wait(300); w.grab().save(os.path.join(os.environ["APPDATA"], "payment
 print("--- D. invite roles, look and feel ---")
 d = w.discord; d.url.setText("http://127.0.0.1:8811"); d.key.setText("KEY"); d.test(); wait(1200)
 d.inv_edits["youtube"].setText("https://discord.gg/yt1")
-d.save_invites(); wait(300); ok("Pick a role for the YouTube invite" in d.istatus.text() and "inviteRules" not in C["config_puts"][-1], "invite without a role: asks for one, nothing sent")
+d.save_invites(); wait(300); ok("Pick a role for the YouTube invite" in d.istatus.text() and not any("inviteRules" in x for x in C["config_puts"]), "invite without a role: asks for one, nothing sent")
 d.inv_boxes["youtube"].setCurrentIndex(d.inv_boxes["youtube"].findData("100001")); d.save_invites(); wait(500)
 ok(C["config_puts"][-1] == {"inviteRules": [{"code": "https://discord.gg/yt1", "role": "100001", "label": "YouTube"}]} and "Saved" in d.istatus.text(), "invite + role sent to the cloud, only that field")
 d.check_invites(); wait(500)
@@ -529,19 +544,35 @@ raw = json.load(open(sp)); S2 = stg.Settings(sp)
 stg.protect, stg.unprotect = stg_p, stg_u
 ok(raw["cloud_token"].startswith("dpapi:") and "KEY-SECRET" not in open(sp).read() and raw["youtube"] == "plain-value" and S2.get("cloud_token") == "KEY-SECRET" and S2.get("g_client_secret") == "GSEC", "settings file keeps sign-in keys encrypted, other values readable, loads back correctly")
 
-# ===== H. payment gateway choice =====
-print("--- H. gateways ---")
-pg = w.payments; labels = [pg.gw.itemText(i) for i in range(pg.gw.count())]
-ok(len(labels) == 4 and "Stripe" in labels and any("Any other tool" in l for l in labels), "payments page offers Razorpay, Stripe, Cashfree and any other tool")
+# ===== H. UPI tip page =====
+print("--- H. UPI tip page ---")
+pg = w.payments
+ok(not hasattr(pg, "gw") and pg._names == ["UPI tip page", "Read aloud", "Other tip link"], "the old payment gateway tab is gone: " + ", ".join(pg._names))
+pg.refresh_upi(); wait(500)
+ok("you get 98%" in pg.upi_terms.text() and "ZunimiLabs keeps 2%" in pg.upi_terms.text() and "TEST MODE" in pg.upi_terms.text(), "the page explains the 98% / 2% split and test mode")
+ok("Not set up yet" in pg.upi_state.text(), "before setup the page says it is not set up")
+f = pg.upi_fields
+for k, v in {"slug": "drxshi", "name": "DRXSHI", "vpa": "drxshi@okicici", "holder": "Debarshi Parasar", "pan": "BAD", "email": "a@b.in", "phone": "9876543210"}.items():
+    f[k].setText(v)
+pg.save_upi(); wait(500)
+ok("invalid pan" in pg.upi_save_state.text(), "Cashfree's refusal is shown next to Save")
+f["pan"].setText("ABCDE1234F"); pg.save_upi(); wait(800)
+sent = C["tip_setups"][-1]
+ok(sent["vpa"] == "drxshi@okicici" and sent["pan"] == "ABCDE1234F" and "account" not in sent and sent["minAmount"] == 20, "Save sends the UPI ID, PAN and smallest tip")
+ok(pg.upi_url.text().endswith("/t/drxshi") and "checking your account" in pg.upi_state.text() and f["pan"].text() == "", "the link shows, Cashfree is checking, and the PAN box is cleared")
+wait(800); ok(pg.qr.isVisibleTo(pg) or not pg.qr.isHidden(), "the QR code is shown in the app")
+f["name"].setText("DRXSHI LIVE"); pg.save_upi(); wait(500)
+ok("pan" not in C["tip_setups"][-1] and C["tip_setups"][-1]["name"] == "DRXSHI LIVE", "renaming later does not resend bank details")
+pg.upi_payout.setCurrentIndex(pg.upi_payout.findData("bank"))
+ok(not pg.upi_rows["account"].isHidden() and pg.upi_rows["vpa"].isHidden(), "choosing a bank account shows account number and IFSC instead of UPI ID")
+C["tip_page"]["status"] = "ACTIVE"; pg.refresh_upi(); wait(500)
+ok(pg.upi_state.text().startswith("Live") and pg.upi_pause.text() == "Pause tips", "an active page says it is live")
+pg.toggle_upi_pause(); wait(500)
+ok(pg.upi_state.text().startswith("Paused") and pg.upi_pause.text() == "Resume tips", "the streamer can pause tips")
 pg.tip_link.setText("https://tips.example/creator"); ok(pg.save_tip_link() and w.s.get("tip_link") == "https://tips.example/creator",
-   "quick tip link accepts and saves a public HTTPS payment URL")
+   "another tip link accepts and saves a public HTTPS payment URL")
 pg.tip_link.setText("javascript:alert(1)"); ok(not pg.save_tip_link() and w.s.get("tip_link") == "https://tips.example/creator",
-   "quick tip link rejects unsafe schemes without replacing the saved URL")
-pg.gw.setCurrentIndex(pg.gw.findData("stripe")); ok("whsec_" in pg.secret.placeholderText() and "checkout.session.completed" in pg.how.text(), "choosing Stripe shows Stripe's own instructions")
-pg.secret.setText("whsec_abc"); pg.save_secret(); wait(500)
-ok(C["config_puts"][-1] == {"stripeSecret": "whsec_abc"} and pg.hook.text().endswith("/hook/stripe/abc") and "saved" in pg.state.text().lower(), "Stripe secret saved on its own; Stripe address shown")
-pg.gw.setCurrentIndex(pg.gw.findData("generic")); ok(pg.hook.text().endswith("/hook/generic/abc") and "X-ChatVoice-Secret" in pg.how.text(), "switching to 'any other tool' shows its address and header")
-pg.gw.setCurrentIndex(pg.gw.findData("cashfree")); ok(pg.hook.text().endswith("/hook/cashfree/abc") and "No secret" in pg.state.text(), "gateway without a secret says so")
+   "another tip link rejects unsafe schemes without replacing the saved URL")
 
 # ===== I. creator credit and version label =====
 print("--- I. credit and version ---")

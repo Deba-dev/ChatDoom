@@ -985,7 +985,9 @@ class MainWindow(ChatActions, StreamWatch, QWidget):
             return (("discord", "violet", "Linked" if s.get("cloud_token") else "Not set", "Server"),
                     ("people", "green", len(self.links.linked), "Linked viewers"), ("star", "orange", len(self.links.counts), "Known viewers"))
         if i == 5:
-            return (("money", "violet", str(s.get("pay_gateway")).capitalize(), "Payment service"),
+            page = self.payments.tip
+            state = ("Live" if page.get("enabled") else "Paused") if page.get("status") == "ACTIVE" else ("Checking" if page else "Not set")
+            return (("money", "violet", state, "UPI tip page"),
                     ("check", "green", on_off(s.get("tips_on")), "Listening"), ("star", "orange", self.tools.stats.paid_count, "Paid this stream"))
         if i == 6:
             state = {"online": "Online", "offline": "Offline", "waking": "Checking"}.get(self.ytmod.bot_state, "Unknown")

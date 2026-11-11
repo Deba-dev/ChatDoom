@@ -5,6 +5,13 @@ compatibility_date = "2024-11-01"
 # Own address. The ZunimiLabs website (separate Worker, not in this repo) serves zunimilabs.online itself.
 routes = [{ pattern = "cloud.zunimilabs.online", custom_domain = true }]
 
+# UPI tip pages: "production" moves real money, anything else uses Cashfree's sandbox. ZunimiLabs keeps
+# TIP_COMMISSION_PCT of each tip; TIP_GATEWAY_FEE_PCT (Cashfree's own fee) is also taken from the streamer's share.
+[vars]
+CASHFREE_ENV = "sandbox"
+TIP_COMMISSION_PCT = "2"
+TIP_GATEWAY_FEE_PCT = "0"
+
 # Checks every 2 minutes which invite new Discord members used (free plan)
 [triggers]
 crons = ["*/2 * * * *"]
@@ -29,3 +36,5 @@ binding = "AI"
 #   PLATFORM_TOKEN_ENCRYPTION_KEY
 #   Website support page (optional): SUPPORT_WEBHOOK_URL, SUPPORT_ROLE_ID
 #   YouTube moderator bot (see YT-MODERATION-SETUP.txt): YT_BOT_KEY, YT_BOT_CLIENT_ID, YT_BOT_CLIENT_SECRET, YT_BOT_REFRESH_TOKEN
+#   UPI tip pages (src/tips.js, ZunimiLabs' Cashfree account with Easy Split): CASHFREE_CLIENT_ID, CASHFREE_CLIENT_SECRET
+#   In Cashfree add the webhook https://cloud.zunimilabs.online/cashfree/webhook (payment success).

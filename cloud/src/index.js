@@ -7,6 +7,7 @@ import { handleSupport } from "./support.js";
 import { handleYoutubeBot } from "./youtube-bot.js";
 import { recordUptime, statusFeed } from "./uptime.js";
 import { handleStudio } from "./studio.js";
+import { handleTipApi, handleTipPublic, tipsConfigured } from "./tips.js";
 
 const API = "https://discord.com/api/v10";
 const PLATFORMS = ["youtube", "twitch", "kick"];
@@ -388,6 +389,7 @@ function health(env) {
     DISCORD_CLIENT_SECRET: { set: set("DISCORD_CLIENT_SECRET"), looks_right: (env.DISCORD_CLIENT_SECRET || "").length >= 28 },
     DISCORD_BOT_TOKEN: { set: set("DISCORD_BOT_TOKEN"), looks_right: (env.DISCORD_BOT_TOKEN || "").split(".").length === 3 },
     payments_storage_ok: !!env.DB,
+    tip_pages_ok: tipsConfigured(env),
     GOOGLE_OAUTH_CLIENT_ID: { set: set("GOOGLE_OAUTH_CLIENT_ID"), looks_right: (env.GOOGLE_OAUTH_CLIENT_ID || "").endsWith(".apps.googleusercontent.com") },
     GOOGLE_OAUTH_CLIENT_SECRET: { set: set("GOOGLE_OAUTH_CLIENT_SECRET") },
     TWITCH_CLIENT_ID: { set: set("TWITCH_CLIENT_ID"), looks_right: (env.TWITCH_CLIENT_ID || "").length >= 10 },
@@ -510,12 +512,17 @@ async function paymentHook(request, env, gateway, hookId) {
   else result = parseGeneric(body);
   if (!result.tip) return json({ ok: true, ignored: result.ignored });
 
-  const t = result.tip;
-  const d = await db(env);
-  await d.prepare("INSERT OR IGNORE INTO tips (guild, pay_id, ts, name, message, amount, currency, display) VALUES (?, ?, ?, ?, ?, ?, ?, ?)")
-    .bind(guildId, t.id, Math.floor(Date.now() / 1000), t.name, t.message, t.value, t.currency, t.display).run();
-  await d.prepare("DELETE FROM tips WHERE ts < ?").bind(Math.floor(Date.now() / 1000) - 3 * 86400).run();
+  await addTip(env, guildId, result.tip);
   return json({ ok: true });
+}
+
+// A payment alert for the desktop app to read aloud. The same payment is stored once, whichever way it arrives.
+async function addTip(env, guildId, t) {
+  const d = await db(env);
+  const display = t.display || displayAmount(t.value, t.currency);
+  await d.prepare("INSERT OR IGNORE INTO tips (guild, pay_id, ts, name, message, amount, currency, display) VALUES (?, ?, ?, ?, ?, ?, ?, ?)")
+    .bind(guildId, t.id, Math.floor(Date.now() / 1000), t.name, t.message, t.value, t.currency, display).run();
+  await d.prepare("DELETE FROM tips WHERE ts < ?").bind(Math.floor(Date.now() / 1000) - 3 * 86400).run();
 }
 
 // ---------------- API (desktop app) ----------------
@@ -535,6 +542,8 @@ async function api(request, env, url) {
     return { ...rest, hasRazorpaySecret: !!razorpaySecret, hasStripeSecret: !!stripeSecret, hasCashfreeSecret: !!cashfreeSecret,
       hasGenericSecret: !!genericSecret, hookUrl: hookUrls.razorpay, hookUrls };
   };
+
+  if (url.pathname === "/api/tips" || url.pathname.startsWith("/api/tips/")) return handleTipApi(request, env, url, guildId, body);
 
   if (route === "POST /api/translate") {
     if (!env.AI || typeof env.AI.run !== "function")
@@ -678,6 +687,10 @@ async function route(request, env, url) {
   if (p.startsWith("/v1/")) return handleYoutubeBot(request, env, url);      // the YouTube moderator bot (its own secrets)
   if (p.startsWith("/support/")) return handleSupport(request, env, url);    // the website's support page
   if (p.startsWith("/studio/")) return handleStudio(request, env, url);      // Overlay Studio: saved designs and uploads
+  if (p.startsWith("/t/") || p === "/cashfree/webhook") {                     // ZunimiLabs tip pages (Cashfree Easy Split)
+    const r = await handleTipPublic(request, env, url, (guildId, tip) => addTip(env, guildId, tip));
+    if (r) return r;
+  }
   const missing = missingConfig(env);
   if (missing.length)
     return p.startsWith("/api/")

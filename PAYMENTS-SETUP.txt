@@ -1,49 +1,29 @@
-PAYMENTS  -  viewers pay on the streamer's OWN payment page; CHATDOOM reads name, amount and message aloud
-and shows an alert in OBS. Money goes straight from the viewer to the streamer. CHATDOOM and the cloud never hold it.
+PAYMENTS  -  your own UPI tip page and QR code. Viewers pay by UPI; CHATDOOM reads the name, amount and message aloud
+and shows an alert in OBS. Payments are processed by Cashfree Payments (RBI-authorised payment aggregator) and Cashfree
+pays you directly to your bank account or UPI ID, two working days later. ZunimiLabs never holds your money.
 
-Works with:  Razorpay, Stripe, Cashfree, and ANY other tool that can send a webhook (Zapier, Make, n8n, Google Apps Script...).
-Do FIRST: the Discord page (server key). Payments use the same connection. The cloud needs the D1 step in CLOUD-SETUP.txt.
+Each tip: you get 98%, ZunimiLabs keeps 2%. Viewers pay by UPI only. The smallest tip is up to you (at least Rs 10).
 
-SET UP (same for every gateway)
-1. CHATDOOM > Payments > choose your gateway.
-2. Type the secret asked for (see the table) and click "Save secret". A webhook ADDRESS appears: click Copy.
-3. In your payment service, add that address as a webhook (see the table), using the same secret.
-4. Put two fields on your payment page, labelled  Name  and  Message  (CHATDOOM finds them by their labels).
-5. Test in the service's TEST MODE. Then tick "Listen for payments and read them aloud".
+DO FIRST: the Discord page (server key). Tips use the same connection.
 
-QUICK TIP LINK (simpler, no payment alert)
-If you already have a public tip/donation URL, open CHATDOOM > Payments > Quick tip link, paste the HTTPS link, and save it.
-Copy/open the link to share it with viewers. Viewers pay on the provider's page; this shortcut does not verify payments,
-read messages, or create OBS alerts. Use the webhook setup above if you want payment notifications.
-
-WHERE TO PUT IT
-  Razorpay : Settings > Webhooks > Add. Secret = the one you typed. Event: payment.captured (only).
-  Stripe   : Developers > Webhooks > Add endpoint. Event: checkout.session.completed. After saving, Stripe shows a
-             "signing secret" (whsec_...): paste THAT into CHATDOOM. Add custom fields Name / Message to your Payment Link.
-  Cashfree : Developers > Webhooks. The secret is your Payment Gateway secret key. Works with payment success and
-             payment-form webhooks.
-  Any tool : send a POST with JSON to the address:  {"name":"Rahul","message":"Great stream","amount":100,"currency":"INR"}
-             with the header  X-ChatVoice-Secret: <your secret>   (or put  "secret":"..."  inside the JSON).
-             Optional "id" prevents the same payment being read twice.
-
-TEST THE WHOLE CHAIN WITHOUT ANY PAYMENT (Windows PowerShell), using the "Any other tool" address and secret:
-  Invoke-RestMethod -Method Post -Uri "ADDRESS" -Headers @{"X-ChatVoice-Secret"="YOURSECRET"} -ContentType "application/json" -Body '{"name":"Rahul","message":"Great stream bhai","amount":100,"currency":"INR"}'
-  Within about 10 seconds CHATDOOM reads it aloud and the OBS alert pops up.
+SET UP (once, about 5 minutes)
+1. CHATDOOM > Payments > UPI tip page.
+2. Fill in: page name (your link becomes cloud.zunimilabs.online/t/<page name>), the name viewers see, the smallest tip,
+   where to get paid (UPI ID, or bank account + IFSC), the account holder's name exactly as the bank has it, PAN,
+   email and mobile number. Click "Save my tip page".
+   Your PAN and account number go to Cashfree only (it needs them to pay you); ZunimiLabs does not keep them.
+3. Cashfree checks your account, usually within a day. The page says "Live" when it is ready.
+4. Put the QR on stream: click "Copy QR link for OBS", then in OBS add a Browser source with that address, 400 x 400.
+   Or share your page link in chat and your channel description.
+5. Payments > Read aloud: tick "Listen for tips and read them aloud". "Send a test tip" tries the alert.
 
 HOW IT BEHAVES
 - A message with a blocked word is never read or shown; the name and amount still are.
-- INR payments below the minimum amount (Payments page) show/read the name and amount without the message.
-- The same payment is never read twice. Alerts normally arrive within about 10 seconds.
-- Amounts show as the currency symbol and number (₹100, $5). Currencies without cents (yen) are handled.
+- INR tips below the "minimum amount for the message" show/read the name and amount without the message.
+- The same tip is never read twice. Alerts normally arrive within a few seconds of the viewer paying.
+- "Pause tips" closes your page until you resume it.
+- To change your page name or title later, change them and Save; leave the payout fields empty to keep your account.
+  To change where you get paid, fill in the payout fields again (with your PAN) and Save.
 
-HOW SURE I AM ABOUT EACH GATEWAY (honest version, from the services' own documentation)
-- Razorpay: signature and the payment.captured event confirmed in the documentation. I have not seen a real payment from
-  your page, so where your Name/Message fields appear may differ.
-- Stripe: the signature scheme (t=...,v1=..., 5 minute tolerance) is confirmed; the custom-field layout is from my knowledge of Stripe's
-  format, not from a real payment.
-- Cashfree: the signature scheme (timestamp + body, base64) is confirmed. Cashfree's documentation I could read does not
-  show where payment-form fields such as Name/Message appear, so CHATDOOM searches the whole payload for fields labelled
-  like a name or a message. Test it first in Cashfree's sandbox.
-- Any tool: my own simple format, fully tested.
-If a name or message does not show up in test mode, send me the webhook payload from your dashboard and I will adjust it.
-International cards need to be enabled by the payment service on the streamer's account.
+Already connected a Razorpay, Stripe, Cashfree or custom webhook in an older version? It keeps working; there is just
+no setup screen for new ones any more.
