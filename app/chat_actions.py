@@ -13,6 +13,7 @@ from .commands import PLATFORM_NAMES
 from .discord import run_bg
 from .models import viewer_key
 from .platforms import youtube_id
+from .viewer_memory import short_date
 from .voice_ui import VoicePicker
 
 TIMEOUTS = (("1 minute", 60), ("5 minutes", 300), ("10 minutes", 600), ("1 hour", 3600), ("24 hours", 86400))
@@ -141,8 +142,8 @@ class ChatActions:
     def _stamp(self):
         return span("#8a93a8", time.strftime("%H:%M")) + " " if self.s.get("chat_show_time") else ""
 
-    def feed_message(self, m, tag, amount, author, text):
-        """One allowed message. Returns its line id."""
+    def feed_message(self, m, tag, amount, author, text, note=""):
+        """One allowed message. Returns its line id. note: a short grey reason, e.g. blocked name."""
         key = viewer_key(m)
         new = key not in self.seen_viewers and m.platform != "test"
         self.seen_viewers.add(key)
@@ -150,6 +151,8 @@ class ChatActions:
         marked = highlighted = mentions(m.text, self._highlight_words())
         star = span("#7cf0c0", "★ ") if new and self.s.get("chat_mark_new") else ""
         line = "%s%s%s <b>%s</b>%s: %s" % (star, self._stamp(), tag, esc(author), amount, words)
+        if note:
+            line += span("#5d667d", " <i>(%s)</i>" % esc(note))
         if marked:
             line = "<span style='background-color:rgba(255,210,77,0.18)'>%s</span>" % line
         line_id = self.feed.append(line, "chat", m, m.stream, highlighted, new)
@@ -249,6 +252,9 @@ class ChatActions:
         menu.addAction("Let the voice read this viewer again" if muted else "Stop reading this viewer", lambda: self.toggle_muted(m))
         menu.addAction("Choose a voice for this viewer...", lambda: self.pick_viewer_voice(m))
         menu.addAction("Viewer details...", lambda: self.viewer_details(m))
+        has_note = bool(self.tools.memory.note(viewer_key(m)))
+        menu.addAction("Edit note..." if has_note else "Add note...", lambda: self.edit_note(m))
+        menu.addAction("Forget this viewer...", lambda: self.forget_viewer(m))
         menu.addSeparator()
         menu.addAction("Copy message", lambda: QGuiApplication.clipboard().setText(m.text))
         menu.addAction("Copy name", lambda: QGuiApplication.clipboard().setText(m.author))
@@ -353,8 +359,32 @@ class ChatActions:
             lines.append("%s: %d" % (str(self.s.get("points_name")).title(), self.tools.points.balance(key)))
         if self.s.get("levels_on"):
             lines.append("Level: %d" % self.tools.points.level(key))
+        r = self.tools.memory.record(key)
+        if r:
+            lines.append("Streams chatted in: %d" % int(r.get("streams") or 0))
+            if r.get("first_seen"):
+                lines.append("First seen: %s" % short_date(r["first_seen"]))
+            if r.get("note"):
+                lines.append("Your note: %s" % r["note"])
         lines += ["", "Latest messages:"] + said[-5:]
         QMessageBox.information(self, m.author, "\n".join(lines))
+
+    def edit_note(self, m):
+        """A private note about a viewer, shown on their card when they come back. Only the streamer sees it."""
+        key = viewer_key(m)
+        text, ok = QInputDialog.getText(self, "Note about %s" % m.author,
+                                        "Only you see this. It shows on %s's card when they come back:" % m.author,
+                                        QLineEdit.Normal, self.tools.memory.note(key))
+        if ok:
+            self.tools.memory.set_note(key, text, m.author)
+            self.feed.append("<span style='color:#8a93a8'>%s</span>" % esc("Note saved for %s." % m.author if text.strip() else "Note removed for %s." % m.author))
+
+    def forget_viewer(self, m):
+        ask = QMessageBox.question(self, "Forget this viewer", "Forget %s? Their note, stream count and first-seen date are deleted, "
+                                   "and they are welcomed as new next time. Points are kept." % m.author)
+        if ask == QMessageBox.Yes:
+            self.tools.forget_viewer(viewer_key(m))
+            self.feed.append("<span style='color:#8a93a8'>%s</span>" % esc("Forgot %s." % m.author))
 
     # ---------- where the send box posts ----------
     def _target_label(self, platform, key=""):

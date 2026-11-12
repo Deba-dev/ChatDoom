@@ -1,0 +1,13 @@
+{"continuationContents": {"liveChatContinuation": {
+  "continuations": [{"timedContinuationData": {"timeoutMs": 800, "continuation": "NEXT-SUPER"}}],
+  "actions": [
+    {"addChatItemAction": {"item": {"liveChatPaidMessageRenderer": {
+      "id": "SUPER-1", "timestampUsec": "1794500000000010",
+      "authorName": {"simpleText": "@TestDonor"}, "authorExternalChannelId": "UCtesttesttesttesttest03",
+      "purchaseAmountText": {"simpleText": "₹200.00"},
+      "message": {"runs": [{"text": "keep going bhai"}]}}}}},
+    {"addChatItemAction": {"item": {"liveChatPaidMessageRenderer": {
+      "id": "SUPER-2", "timestampUsec": "1794500000000011",
+      "authorName": {"simpleText": "@QuietDonor"}, "authorExternalChannelId": "UCtesttesttesttesttest04",
+      "purchaseAmountText": {"simpleText": "$5.00"}}}}}
+  ]}}}

@@ -1,0 +1,8 @@
+{"ok": {"responseContext": {}, "contents": {"liveChatRenderer": {
+    "continuations": [{"invalidationContinuationData": {"timeoutMs": 10000, "continuation": "TOP-CHAT-TOKEN"}}],
+    "header": {"liveChatHeaderRenderer": {"viewSelector": {"sortFilterSubMenuRenderer": {"subMenuItems": [
+      {"title": "Top chat", "continuation": {"reloadContinuationData": {"continuation": "TOP-CHAT-TOKEN"}}},
+      {"title": "Live chat", "continuation": {"reloadContinuationData": {"continuation": "ALL-CHAT-TOKEN"}}}]}}}},
+    "actions": []}}},
+ "disabled": {"responseContext": {}, "contents": {"messageRenderer": {"text": {"runs": [{"text": "Chat is disabled for this live stream."}]}}}},
+ "ended": {"responseContext": {}, "contents": {"liveChatRenderer": {"actions": []}}}}

@@ -9,6 +9,7 @@ from PySide6.QtWidgets import (QComboBox, QDialog, QDialogButtonBox, QHBoxLayout
 from .commands import clean_name
 from .commands_page import MODES, _button, _combo
 from .hotkeys import ACTIONS
+from .viewer_memory import MODES as MEMORY_MODES
 from .theme import DEFAULT_THEME, THEMES
 from .ui_kit import SubPage, bind_switch, field_row, hrow, info_box, option_switch_row, section_card
 
@@ -279,6 +280,10 @@ class ToolsPage(SubPage):
         wl.addWidget(field_row("Message", "{user} is the viewer's name.", _text(self.s, "welcome_text", "Welcome {user}!", 200)))
         wl.addWidget(option_switch_row("Read it aloud", "", sw("welcome_speak")))
         wl.addWidget(option_switch_row("Reply in chat", "Needs the account signed in on the Connect page.", sw("welcome_reply")))
+        self.memory_box = _combo(MEMORY_MODES, self.s.get("memory_cards"))
+        self.memory_box.currentIndexChanged.connect(lambda _: self.s.set("memory_cards", self.memory_box.currentData()))
+        wl.addWidget(field_row("Viewer memory cards", "When a viewer comes back, a small card on your screen only (never on stream): "
+                               "their stream count, first visit and your note. Right-click a name in Live chat to add a note.", self.memory_box))
         forget = _button("Forget who has chatted before")
         forget.clicked.connect(lambda: (self.tools.forget_viewers(), forget.setText("Forgotten")))
         wl.addWidget(hrow(forget))

@@ -1,0 +1,15 @@
+{"continuationContents": {"liveChatContinuation": {
+  "continuations": [{"invalidationContinuationData": {"timeoutMs": 10000, "continuation": "NEXT-GIFT"}}],
+  "actions": [
+    {"addChatItemAction": {"item": {"liveChatSponsorshipsGiftPurchaseAnnouncementRenderer": {
+      "id": "GIFT-1", "timestampUsec": "1794500000000040", "authorExternalChannelId": "UCtesttesttesttesttest08",
+      "header": {"liveChatSponsorshipsHeaderRenderer": {
+        "authorName": {"simpleText": "@GenerousFan"},
+        "primaryText": {"runs": [{"text": "Gifted "}, {"text": "5"}, {"text": " "}, {"text": "Test Channel"}, {"text": " memberships"}]}}}}}}},
+    {"addChatItemAction": {"item": {"liveChatSponsorshipsGiftRedemptionAnnouncementRenderer": {
+      "id": "GIFT-2", "timestampUsec": "1794500000000041",
+      "authorName": {"simpleText": "@LuckyViewer"}, "authorExternalChannelId": "UCtesttesttesttesttest09",
+      "message": {"runs": [{"text": "received a gift membership by "}, {"text": "@GenerousFan"}]}}}}},
+    {"addChatItemAction": {"item": {"giftMessageViewModel": {
+      "id": "JEWEL-1", "text": {"content": "sent Star"}, "authorName": {"content": "@JewelFan "}}}}}
+  ]}}}

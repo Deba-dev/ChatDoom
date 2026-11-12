@@ -214,10 +214,17 @@ res = await r.json(); ok(res.ok && res.roleGranted && res.discordName === "Rahul
 ok(puts.includes("100001"), "Discord got Verified role request");
 r = await call("/api/claim", { method: "POST", headers: H, body: JSON.stringify({ code, platform: "youtube", uid: "UC2" }) }); ok(r.status === 404, "code is single-use");
 r = await call("/api/links", { headers: H }); ok((await r.json()).keys[0] === "youtube:UC1", "links list returned to the app");
+// a Twitch viewer links too, since only non-YouTube viewers can earn roles
+r = await call("/link/G1"); r = await call("/link/callback?code=x&state=" + stateFrom(r));
+const twitchCode = (await r.text()).match(/!link ([A-Z0-9]{4}-[A-Z0-9]{4})/)?.[1];
+r = await call("/api/claim", { method: "POST", headers: H, body: JSON.stringify({ code: twitchCode, platform: "twitch", uid: "UC1" }) });
+ok((await r.json()).ok, "Twitch viewer linked");
 
 // 5. app reports a threshold -> role is granted (counting happens in the app, so the cloud writes almost nothing)
-const grant = (role, uid = "UC1", platform = "youtube") => call("/api/grant", { method: "POST", headers: H, body: JSON.stringify({ platform, uid, role }) });
+const grant = (role, uid = "UC1", platform = "twitch") => call("/api/grant", { method: "POST", headers: H, body: JSON.stringify({ platform, uid, role }) });
 puts.length = 0; roleStatus = 204;
+r = await grant("regular", "UC1", "youtube"); res = await r.json();
+ok(r.status === 403 && res.error.includes("YouTube rules") && puts.length === 0, "YouTube viewer is refused a role (YouTube rules)");
 r = await grant("regular"); res = await r.json(); ok(res.ok && puts.includes("100002"), "regular role granted through /api/grant");
 r = await grant("supporter"); res = await r.json(); ok(res.ok && puts.includes("100003"), "supporter role granted through /api/grant");
 r = await grant("regular", "nobody"); ok(r.status === 404, "unlinked viewer cannot be granted a role");
@@ -489,7 +496,7 @@ let kickHeaders = { Authorization: "Bearer " + kickAccount.session, "content-typ
 const kickVerifier = kickTokenCalls[0]?.get("code_verifier") || "";
 const kickChallenge = createHash("sha256").update(kickVerifier).digest("base64url");
 ok(kickLogin.authorize.origin + kickLogin.authorize.pathname === "https://id.kick.com/oauth/authorize"
-  && kickLogin.authorize.searchParams.get("scope") === "user:read channel:read chat:write moderation:ban moderation:chat_message:manage"
+  && kickLogin.authorize.searchParams.get("scope") === "user:read channel:read chat:write moderation:ban moderation:chat_message:manage events:subscribe"
   && kickLogin.authorize.searchParams.get("code_challenge_method") === "S256"
   && kickVerifier.length >= 43 && kickLogin.authorize.searchParams.get("code_challenge") === kickChallenge
   && !kickLogin.authorize.toString().includes(kickVerifier),

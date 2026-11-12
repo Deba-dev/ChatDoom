@@ -185,6 +185,93 @@ w.set_read_mode("all"); ok(w.s.get("read_mode") == "all" and w.tts_btn.text() ==
 w.tts_btn.click(); ok(w.s.get("read_mode") == "tts" and w.tts_btn.text() == "!tts only", "one click switches to !tts only")
 w._hotkey("hk_tts"); ok(w.s.get("read_mode") == "all", "Ctrl+Alt+T switches back to all chat")
 spoken.clear(); w.on_message(Message("twitch", "ViewerI", "!tts in all mode")); ok([a[1] for a in spoken] == ["in all mode"], "all chat: !tts is read without the !tts")
+# ----- blocked words in viewer names -----
+w.mod.blocked = ["badword"]; spoken.clear(); pushed = []; w.overlay.push = lambda kind, data: pushed.append((kind, data))
+ok(w.s.get("blocked_name_action") == "anonymous" and w.name_action.currentData() == "anonymous", "a blocked name is hidden (not skipped) by default")
+feed_before = len(w.feed.toPlainText())
+w.on_message(Message("twitch", "Badword_99", "hello everyone", uid="twbn1"))
+ok(spoken and spoken[-1][:2] == ("Ek viewer", "hello everyone") and "badword" not in str(spoken).lower(),
+   "blocked name + clean message: the message is read, the name is said as Ek viewer")
+ok([d["name"] for k, d in pushed if k == "chat"] == ["Ek viewer"], "the OBS chat box hides the blocked name too")
+new_feed = w.feed.toPlainText()[feed_before:]
+ok("Ek viewer" in new_feed and "(blocked name)" in new_feed and "Badword_99" not in new_feed, "the feed shows the stand-in name and the reason")
+w.s.set("en_voice", "en-US-GuyNeural"); spoken.clear()
+w.on_message(Message("twitch", "Badword_98", "english voice here", uid="twbn2"))
+ok(spoken and spoken[-1][0] == "A viewer", "with an English voice the stand-in is A viewer")
+w.s.set("en_voice", "hi-IN-MadhurNeural"); pushed.clear(); spoken.clear()
+w.on_message(Message("youtube", "Badword Fan", "keep going", "super", "₹200.00", uid="UCbn"))
+w.on_tip({"name": "badword king", "message": "nice", "value": 100, "currency": "INR", "display": "₹100"})
+ok([a[0] for a in spoken] == ["Ek viewer", "Ek viewer"] and [d["name"] for k, d in pushed if k == "alert"] == ["Ek viewer", "Ek viewer"],
+   "Super Chats and tips from a blocked name: amount and message read, name hidden in speech and alerts")
+ok(w.mod.check(Message("twitch", "CleanName", "all good here")) == (True, ""), "a clean name is not affected")
+w.name_action.setCurrentIndex(w.name_action.findData("skip")); spoken.clear(); pushed.clear(); feed_before = len(w.feed.toPlainText())
+ok(w.s.get("blocked_name_action") == "skip", "the Moderation page dropdown saves the choice")
+w.on_message(Message("twitch", "Badword_97", "please read me", uid="twbn4"))
+new_feed = w.feed.toPlainText()[feed_before:]
+ok(not spoken and not [d for k, d in pushed if k == "chat"] and "skipped: blocked name" in new_feed and "Badword_97" not in new_feed,
+   "skip mode: nothing is spoken or sent to OBS, and the feed shows why")
+w.name_action.setCurrentIndex(w.name_action.findData("anonymous")); w.overlay.push = old_push; w.mod.blocked = []
+# ----- blocked words that can't be dodged -----
+from app.wordguard import WordGuard, canonical
+from app.hinglish import parse_words, WORDS_TXT
+ok(canonical("ＢＨ３ＮＮＮＮ") == "bhenn" and canonical("ʙᴄ") == "bc" and canonical("b̷̛̖c̸") == "bc", "canonical: fullwidth, leetspeak, long runs, small caps and zalgo become plain letters")
+TEST_BLOCKED = ["bc", "mc", "bhen", "chod", "gandu", "madarchod", "चूतिया"]   # a small sample, the app ships no word list
+w.mod.blocked = TEST_BLOCKED
+for trick in ["b.c", "b c", "b-c", "bhennnnn", "bh3n", "ch0d", "ʙᴄ", "ｂｃ", "b̷̛̖c̸", "сhоd", "चोद",
+              "मादरचोद", "madrchod", "chootiya", "gaaandu", "you B . C"]:
+    ok(w.mod._blocked_hit(trick), "blocked even when dodged: %r" % trick)
+for fine in ["abc deal", "class assassin", "plan b", "bcz yaar", "bhenji kaise ho", "mcdonalds chalein"]:
+    ok(not w.mod._blocked_hit(fine), "normal chat is not blocked: %r" % fine)
+words = parse_words(WORDS_TXT); every = list(words) + list(words.values())
+ok(not [x for x in every if w.mod._blocked_hit(x)] and not w.mod._blocked_hit(" ".join(words)) and not w.mod._blocked_hit(" ".join(words.values())),
+   "none of the %d Hinglish words and short forms are blocked (false-positive check)" % len(every))
+w.mod.allowed = ["chod de"]
+ok(not w.mod._blocked_hit("bhai chod de yaar") and w.mod._blocked_hit("tu chod"), "the allow list is checked first, the blocked word still works elsewhere")
+w.allowed_edit.setPlainText("# test\nchod de\n"); w._save_allowed()
+ok(w.mod.allowed == ["chod de"] and os.path.exists(w.mod.allowed_path) and "Allowed words saved (1)" in w.feed.toPlainText(), "the Allowed words tab saves allowed_words.txt")
+w.allowed_edit.setPlainText(""); w._save_allowed(); w.mod.blocked = []
+ok(WordGuard(["bc"]).hit("b.c") and not WordGuard().hit("anything"), "an empty list blocks nothing")
+# ----- raid shield -----
+from app.raidguard import RaidGuard
+rg = RaidGuard(w.s); t0 = 1000.0
+ok(not any(rg.feed("twitch:old%d" % i, "hello %d" % i, False, t0 + i) for i in range(30)), "known viewers chatting a lot is not a raid")
+fired = [rg.feed("twitch:r%d" % i, "hi %d" % i, True, t0 + 40 + i * 0.5) for i in range(20)]
+ok(rg.on and fired.index(next(f for f in fired if f)) == 14 and "15 new chatters" in rg.reason, "20 new chatters in 10 seconds -> safe mode on at the 15th")
+ok(not rg.tick(t0 + 40 + 120) and rg.on and rg.tick(t0 + 50 + 180) and not rg.on, "it stays on while chat is hot, then turns off after 3 quiet minutes")
+rg = RaidGuard(w.s)
+ok(not any(rg.feed("twitch:k%d" % i, "gg", False, t0 + i) for i in range(20)), "20 short 'gg' messages are hype, not a raid")
+copies = ["follow my channel pls", "F0LLOW my channel pls!!", "follow   my channel pls 😀"] * 3
+fired = [rg.feed("twitch:s%d" % i, txt, False, t0 + 30 + i) for i, txt in enumerate(copies)]
+ok(rg.on and bool(fired[7]) and "8 copies" in rg.reason, "8 near-identical messages (leetspeak, spaces, emoji) -> safe mode on")
+w.s.set("raid_on", False); rg = RaidGuard(w.s)
+ok(not any(rg.feed("twitch:x%d" % i, "hey", True, t0 + i) for i in range(30)), "with the shield switched off nothing turns on by itself")
+w.s.set("raid_on", True)
+w.raid.stop()                                     # forget the new chatters from the tests above
+w.s.set("read_mode", "all"); w.s.set("user_cooldown", 0); w.s.set("dedupe_secs", 0); w.s.set("skip_links", False); spoken.clear()
+for i in range(20):
+    w.on_message(Message("twitch", "Raider%d" % i, "raid message number %d" % i, uid="raid%d" % i))
+ok(w.raid.on and w.mod.safe == "paid" and len(spoken) == 14 and "Safe mode ON" in w.feed.toPlainText() and w.safe_btn.isChecked(),
+   "a live raid turns safe mode on: the 15th new chatter and everyone after is not read")
+ok(w.s.get("read_mode") == "all" and w.s.get("skip_links") is False, "safe mode does not touch the streamer's settings")
+spoken.clear()
+w.on_message(Message("youtube", "Donor", "thanks for the stream", "super", "₹100.00", uid="UCsafe1"))
+w.on_message(Message("youtube", "Spammer", "see www.spam.com", "super", "₹100.00", uid="UCsafe2"))
+w.on_message(Message("twitch", "ModRavi", "calm down chat", mod=True))
+w.on_message(Message("twitch", "Raider99", "!meme airhorn", uid="raid99"))
+ok([a[0] for a in spoken] == ["Donor"], "safe mode: paid messages still read, links skipped even in paid ones, mods and !memes not read")
+w.raid_mode_box.setCurrentIndex(w.raid_mode_box.findData("mods")); spoken.clear()
+w.on_message(Message("twitch", "ModRavi", "chat please calm down", mod=True))
+ok(w.mod.safe == "mods" and [a[0] for a in spoken] == ["ModRavi"], "the 'paid messages and mods' choice reads mods during a raid")
+w.raid_mode_box.setCurrentIndex(w.raid_mode_box.findData("paid"))
+w.raid.last_hot -= 3 * 60 + 1; w._raid_tick(); spoken.clear()
+w.on_message(Message("twitch", "Regular", "is the raid over", uid="tw-reg"))
+ok(not w.raid.on and w.mod.safe == "" and spoken and "Safe mode OFF" in w.feed.toPlainText() and not w.safe_btn.isChecked()
+   and w.s.get("read_mode") == "all", "after the quiet minutes safe mode turns off and the original reading comes back")
+w.safe_btn.click(); ok(w.raid.on and w.raid.manual and w.mod.safe == "paid", "the Safe mode button turns it on by hand")
+w.raid.last_hot -= 3600; w._raid_tick(); ok(w.raid.on, "turned on by hand, it stays on until you turn it off")
+w._hotkey("hk_safe"); ok(not w.raid.on and w.mod.safe == "" and w.safe_now_btn.text() == "Turn safe mode on now", "the hotkey turns it off")
+w.s.set("skip_links", True)
+w.s.set("raid_on", False)                         # the rest of the tests add many new viewers quickly on purpose
 w.mute_btn.setChecked(True)
 # ----- logs -----
 from app import logs as LOGS
@@ -1483,6 +1570,133 @@ chat = SimpleNamespace(message="hi :thumbs_up::hand-pink-waving:", messageEx=["h
 words, em = youtube_text(chat)
 ok(words == "hi 👍:hand-pink-waving:" and em == {":hand-pink-waving:": "https://yt3.ggpht.com/b"}, "a YouTube emoji shows as the emoji, and a picture emote keeps its picture")
 ok(youtube_text(SimpleNamespace(message="plain"))[0] == "plain", "a message with no emoji data still reads")
+# ----- YouTube reader A (our own youtube.com poller), tested with saved samples: no internet -----
+from app import yt_innertube as YT
+from app.platforms import YouTubeSource
+FIX = os.path.join(os.path.dirname(os.path.abspath(__file__)), "fixtures")
+def fixture(name):
+    return json.load(open(os.path.join(FIX, name), encoding="utf-8"))
+def batch(name):
+    chat = fixture(name)["continuationContents"]["liveChatContinuation"]
+    return chat, YT.parse_actions(chat["actions"], youtube_text)
+chat, got = batch("yt_text.json")
+(m1, t1), (m2, t2) = got
+ok(len(got) == 2 and m1.author == "@TestViewer" and m1.text == "bhai mast stream 🙏 :yt:" and m1.emotes == {":yt:": "https://yt3.ggpht.com/custom-emoji=w48"}
+   and m1.uid == "UCtesttesttesttesttest01" and m1.event_id == "TEXT-1" and t1 == 1794500000000001 and m1.kind == "chat" and not m1.mod,
+   "reader A: a chat message keeps emoji as emoji, custom emotes with their picture, the channel id and the message id")
+ok(m2.mod and m2.text == "please be nice in chat", "reader A: the Moderator badge marks a mod; deletions and YouTube's own notices are not read")
+ok(YT.next_continuation(chat) == ("NEXT-TEXT", YT.POLL_SECS), "reader A: polls every 1.5 s even when YouTube suggests 10 s")
+chat, got = batch("yt_superchat.json")
+ok([(m.kind, m.amount, m.text, m.author) for m, _ in got] == [("super", "₹200.00", "keep going bhai", "@TestDonor"), ("super", "$5.00", "", "@QuietDonor")]
+   and YT.next_continuation(chat) == ("NEXT-SUPER", 1.0), "reader A: Super Chats with and without a message; a short YouTube wait is respected (at least 1 s)")
+_, got = batch("yt_sticker.json")
+ok([(m.kind, m.amount, m.event_id) for m, _ in got] == [("super", "₹85.00", "STICKER-1")], "reader A: Super Stickers are paid messages with their amount")
+_, got = batch("yt_membership.json")
+ok([(m.kind, m.text) for m, _ in got] == [("member", "became a channel member"), ("member", "6 months already!")], "reader A: new members and milestone messages")
+_, got = batch("yt_gift.json")
+ok([(m.kind, m.author, m.text, m.amount) for m, _ in got] == [("member", "@GenerousFan", "Gifted 5 Test Channel memberships", ""),
+                                                             ("member", "@LuckyViewer", "received a gift membership by @GenerousFan", ""),
+                                                             ("super", "@JewelFan", "", "Star")],
+   "reader A: gifted memberships, gift receivers and Jewels gifts")
+pages = fixture("yt_page.json")
+page = lambda d: '<script>window["ytInitialData"] = %s;</script><script>ytcfg.set({"INNERTUBE_CONTEXT":{"client":{"clientName":"WEB","clientVersion":"2.1"}},"INNERTUBE_CONTEXT_CLIENT_NAME":1})</script>' % json.dumps(d)
+ctx, token = YT.parse_page(page(pages["ok"]))
+ok(token == "ALL-CHAT-TOKEN" and ctx["client"]["clientVersion"] == "2.1", "reader A: the page gives the 'Live chat' (all messages) continuation, not Top chat")
+def unavailable(d):
+    try:
+        YT.parse_page(page(d))
+    except YT.ChatUnavailable as e:
+        return str(e)
+ok(unavailable(pages["disabled"]) == "Chat is disabled for this live stream." and "ended" in unavailable(pages["ended"]) and "without chat" in unavailable({}),
+   "reader A: a video without chat gives YouTube's own reason")
+# ----- reader failover, with fake readers -----
+def fake(label, script):
+    """A reader whose open()/poll() follow a script shared by all its instances: items, 'fail', or 'quiet'."""
+    class R:
+        wait = 0.01
+        opened = []
+        def __init__(self, vid): pass
+        def open(self):
+            R.opened.append(label)
+            if script["open_fails"] > 0:
+                script["open_fails"] -= 1
+                raise ConnectionError("no chat")
+        def poll(self):
+            step = script["steps"].pop(0) if script["steps"] else "quiet"
+            if step == "fail":
+                raise ConnectionError("broken")
+            return [] if step == "quiet" else step
+        def close(self): pass
+    R.label = label
+    return R
+def ymsg(i, ts):
+    return (Message("youtube", "V%d" % i, "m%d" % i, event_id="id%d" % i), ts)
+def run_source(readers, seconds, quiet=0.15):
+    msgs, stats = [], []
+    hub = SimpleNamespace(message=SimpleNamespace(emit=msgs.append), status=SimpleNamespace(emit=lambda k, t, s: stats.append(t)))
+    src = type("S", (YouTubeSource,), {"READERS": readers, "QUIET": quiet, "RETRY": 0.01})(hub)
+    src.start("abcdefghijk"); time.sleep(seconds); src.stop(); time.sleep(0.1)
+    return msgs, stats, src
+a = {"open_fails": 0, "steps": [[ymsg(0, 100)], [ymsg(1, 200)], "fail", "fail", "fail"]}
+c = {"open_fails": 0, "steps": [[ymsg(0, 100), ymsg(1, 200), ymsg(2, 300)], [ymsg(3, 400)]]}
+RA, RC = fake("A", a), fake("C", c)
+msgs, stats, src = run_source((RA, RC), 0.6, quiet=60)
+ok([m.text for m in msgs] == ["m1", "m2", "m3"] and "Connected (reader A)" in stats and "Connected (reader C)" in stats and RC.opened == ["C"],
+   "3 failures in a row switch to the next reader; it picks up where the last one stopped, with no repeats and no gap")
+a = {"open_fails": 0, "steps": []}; c = {"open_fails": 0, "steps": []}
+RA, RC = fake("A", a), fake("C", c)
+msgs, stats, src = run_source((RA, RC), 0.8)
+ok(RA.opened == ["A", "A"] and RC.opened == ["C"] and src.reader == "A", "no messages for a while: one try of the next reader, then back to reader A (quiet chat is not a broken reader)")
+a = {"open_fails": 9, "steps": []}; c = {"open_fails": 9, "steps": []}
+RA, RC = fake("A", a), fake("C", c)
+msgs, stats, src = run_source((RA, RC), 0.3)
+ok(stats[-1].startswith("Could not connect (is it live?) no chat") and RA.opened == ["A"] and RC.opened == ["C"] and not src.running,
+   "if no reader can connect at the start, it says so and stops, and the reason stays on the card (not replaced by Disconnected)")
+msgs, stats, src = run_source((fake("A", {"open_fails": 0, "steps": []}),), 0.1, quiet=60)
+ok(stats[-1] == "Disconnected" and "Connected (reader A)" in stats, "a stream you disconnect yourself still says Disconnected")
+# ----- Kick: official webhooks through the cloud, Pusher as backup (fake cloud, no internet) -----
+from app.platforms import KickSource, kick_cloud_message
+class FakeKickCloud:
+    def __init__(self, sub, reads):
+        self.sub, self.reads, self.asked, self.unsubscribed, self.subscribes = sub, list(reads), [], 0, 0
+    def is_connected(self, platform): return platform == "kick"
+    def kick_subscribe(self, channel): self.subscribes += 1; return dict(self.sub)
+    def kick_chat(self, after):
+        self.asked.append(after)
+        return self.reads.pop(0) if self.reads else {"messages": [], "latest": after}
+    def kick_unsubscribe(self): self.unsubscribed += 1; return {"ok": True}
+def run_kick(cloud, seconds, slug="test-kick"):
+    msgs, stats = [], []
+    hub = SimpleNamespace(message=SimpleNamespace(emit=msgs.append), status=SimpleNamespace(emit=lambda k, t, s: stats.append(t)))
+    pushers = []
+    class K(KickSource):
+        POLL = 0.05
+        async def _pusher(self, slug, room):
+            pushers.append(slug); self._status("Connected" + self.hint, True)
+    src = K(hub, cloud=cloud); src.start(slug); time.sleep(seconds); src.stop(); time.sleep(0.3)
+    return msgs, stats, pushers, src
+km = kick_cloud_message({"id": "k1", "name": "ModUser", "uid": "777", "text": "hi [emote:37226:KEKW]", "mod": True})
+ok(km.text == "hi KEKW" and km.emotes == {"KEKW": "https://files.kick.com/emotes/37226/fullsize"} and km.mod and km.uid == "777" and km.event_id == "k1",
+   "a Kick webhook message reads emote names and keeps the emote picture, mod badge, viewer id and message id")
+cloud = FakeKickCloud({"ok": True, "channel": "test-kick", "latest": 5},
+                      [{"messages": [{"seq": 6, "id": "a", "name": "Fan", "text": "hello"}], "latest": 6}, {"messages": [], "latest": 6}])
+msgs, stats, pushers, src = run_kick(cloud, 0.4)
+ok([m.text for m in msgs] == ["hello"] and "Connected (official)" in stats and cloud.asked[:2] == [5, 6] and not pushers and cloud.unsubscribed == 1,
+   "signed in to your own Kick channel: chat comes through Kick's official webhooks, and disconnecting unsubscribes")
+cloud = FakeKickCloud({"ok": False, "notMine": True, "channel": "test-kick"}, [])
+msgs, stats, pushers, src = run_kick(cloud, 0.2, "friend-channel")
+ok(pushers == ["friend-channel"] and not cloud.asked and src.reader == "backup", "another streamer's Kick channel uses the Pusher reader")
+cloud = FakeKickCloud({"ok": True, "latest": 0}, [{"error": "boom"}] * 3)
+msgs, stats, pushers, src = run_kick(cloud, 0.5)
+ok(pushers == ["test-kick"] and "Connected (official)" in stats and stats[-2].startswith("Connected"), "3 failed reads in a row fall back to the Pusher reader")
+cloud = FakeKickCloud({"ok": True, "latest": 0}, [{"error": "Not subscribed", "resubscribe": True}, {"messages": [{"id": "b", "name": "X", "text": "back"}], "latest": 1}])
+msgs, stats, pushers, src = run_kick(cloud, 0.4)
+ok(cloud.subscribes == 2 and [m.text for m in msgs] == ["back"] and not pushers, "a lapsed subscription is renewed once, without falling back")
+cloud = FakeKickCloud({"error": "Kick needs a new sign-in", "needsLogin": True}, [])
+msgs, stats, pushers, src = run_kick(cloud, 0.2)
+ok(pushers and "Connected (sign in to Kick again for official chat)" in stats, "signed in before chat events were allowed: Pusher, with a hint to sign in again")
+msgs, stats, pushers, src = run_kick(None, 0.2)
+ok(pushers == ["test-kick"], "not signed in to Kick: the Pusher reader, as before")
 tw = parse_twitch_line("@emotes=25:0-4;id=abc;user-id=9 :x!x@x PRIVMSG #c :Kappa nice")
 ok(tw.emotes == {"Kappa": "https://static-cdn.jtvnw.net/emoticons/v2/25/default/dark/1.0"} and tw.event_id == "abc", "Twitch emotes get their pictures")
 kk = parse_kick_event("App\\Events\\ChatMessageEvent", {"id": "u-1", "content": "yo [emote:37:KEKW]", "sender": {"id": 5, "username": "k"}})
@@ -1729,6 +1943,78 @@ w.s.set("ov_sound", True); w.s.set("ov_sound_file", "builtin:chime"); ok(w._over
 A._set("soundVolume", 40); ok(AST.main_design(w.s)["soundVolume"] == 40 and A.sound_volume.value() == 40, "alert sound volume is saved"); A._set("soundVolume", 80)
 ok(os.path.isfile(A.play_sound("builtin:coin")) and A.play_sound("none") is None, "Play makes the sound in the app")
 
+# ----- viewer memory cards -----
+print("--- viewer memory cards ---")
+from app.tools import Tools
+from app.viewer_memory import ViewerMemory, ordinal, CARD_GAP
+mem_dir = tempfile.mkdtemp(dir=os.environ["APPDATA"])
+json.dump(["twitch:oldfan", "youtube:UCold"], open(os.path.join(mem_dir, "viewers.json"), "w"))
+T2 = Tools(w.s, mem_dir)
+ok(T2.seen_ever == {"twitch:oldfan", "youtube:UCold"} and T2.memory.record("twitch:oldfan")["streams"] == 1 and T2.memory.record("twitch:oldfan")["first_seen"] is None,
+   "an old viewers.json (a plain list) still loads: everyone in it is a known viewer with 1 stream")
+T2.save(); saved = json.load(open(os.path.join(mem_dir, "viewers.json"), encoding="utf-8"))
+ok(isinstance(saved, dict) and saved["twitch:oldfan"]["streams"] == 1 and Tools(w.s, mem_dir).seen_ever == {"twitch:oldfan", "youtube:UCold"},
+   "it is saved in the new shape and loads again")
+ok([ordinal(n) for n in (1, 2, 3, 4, 11, 12, 13, 21, 22, 23)] == ["1st", "2nd", "3rd", "4th", "11th", "12th", "13th", "21st", "22nd", "23rd"], "stream numbers read 1st, 2nd, 23rd")
+w.s.set("welcome_on", False); w.s.set("memory_cards", "returning")
+fan = Message("twitch", "Rahul", "hi", uid="rahul1")
+T2.observe(fan, 1000); T2.observe(fan, 1001); T2.observe(fan, 1002)
+r = T2.memory.record("twitch:rahul1")
+ok(r["streams"] == 1 and r["messages"] == 3 and r["first_seen"] == 1000 and r["name"] == "Rahul" and not T2.memory.waiting,
+   "a new viewer: 3 messages count as 1 stream, first seen is remembered, no card the first time")
+T2.seen_stream = set()                              # next stream
+T2.observe(fan, 90000); T2.observe(fan, 90001)
+ok(T2.memory.record("twitch:rahul1")["streams"] == 2 and list(T2.memory.waiting) == ["twitch:rahul1"], "the next stream counts once, and a returning viewer gets a card")
+T2.memory.set_note("twitch:rahul1", "exam on Monday")
+card = T2.memory.next_card(100000)
+ok(card.startswith("Rahul: 2nd stream · first seen ") and card.endswith('note: "exam on Monday"'), "the card: name, stream number, first visit and the streamer's note")
+for name in ("Amit", "Neha", "Sam"):
+    v = Message("twitch", name, "yo", uid=name)
+    T2.observe(v, 100000)
+    T2.seen_stream.discard(viewer_key(v))
+    T2.observe(v, 100001)
+ok(len(T2.memory.waiting) == 3 and T2.memory.next_card(100000 + CARD_GAP - 1) == "" and T2.memory.next_card(100000 + CARD_GAP).startswith("Amit")
+   and T2.memory.next_card(100000 + CARD_GAP + 5) == "" and T2.memory.next_card(100000 + 2 * CARD_GAP).startswith("Neha"),
+   "at most one card every 10 seconds; the rest wait their turn")
+w.s.set("memory_cards", "regulars"); T2.memory.waiting.clear()
+T2.seen_stream = set(); T2.observe(fan, 200000)
+ok(not T2.memory.waiting, "regulars only: a viewer on their 3rd stream gets no card")
+for i in range(2):
+    T2.seen_stream = set(); T2.observe(fan, 300000 + i)
+ok(T2.memory.record("twitch:rahul1")["streams"] == 5 and list(T2.memory.waiting) == ["twitch:rahul1"], "regulars only: the 5th stream gets a card")
+w.s.set("memory_cards", "off"); T2.memory.waiting.clear(); T2.seen_stream = set(); T2.observe(fan, 400000)
+ok(not T2.memory.waiting, "cards can be turned off")
+T2.forget_viewer("twitch:rahul1")
+ok(T2.memory.record("twitch:rahul1") is None and "twitch:rahul1" not in T2.seen_ever, "Forget this viewer deletes the card data and note; they are new again")
+before = os.path.getmtime(os.path.join(mem_dir, "viewers.json")); T2.save()
+T2.observe(Message("twitch", "Amit", "new stream", uid="Amit"), 500000)          # first message this stream: a real change
+T2.memory.unsaved = False; T2.viewers.dirty = False
+T2.observe(Message("twitch", "Amit", "again", uid="Amit"), 500001)
+ok(T2.memory.unsaved and not T2.viewers.dirty, "a message from a known viewer in the same stream does not rewrite viewers.json every minute")
+T2.save(final=True); ok(json.load(open(os.path.join(mem_dir, "viewers.json"), encoding="utf-8"))["twitch:Amit"]["messages"] == 4, "message counts are written when the app closes")
+# in the app: the card stays on the streamer's screen, never the overlay
+w.s.set("memory_cards", "returning"); pushed = []; old_push = w.overlay.push; w.overlay.push = lambda kind, data: pushed.append((kind, data))
+w.tools.memory.waiting.clear(); w.tools.memory.last_card = -1e9
+w.tools.memory.set_note("twitch:memo1", "loves Valorant", "Memo")
+w.tools.memory.data["twitch:memo1"].update(streams=4)
+w.tools.seen_ever.add("twitch:memo1"); w.tools.seen_stream.discard("twitch:memo1")
+w.on_message(Message("twitch", "Memo", "back again", uid="memo1"))
+shown = w._memory_card()
+w.overlay.push = old_push
+ok(shown.startswith("Memo: 5th stream") and 'note: "loves Valorant"' in shown and "Memo: 5th stream" in w.feed.toPlainText()
+   and not any("Valorant" in json.dumps(d) for k, d in pushed), "the card shows in the app (pop-up and Live chat), and nothing of it reaches the OBS overlay")
+line = next(l for l in reversed(w.feed.lines) if l.message is not None and l.message.author == "Memo")
+labels = [a.text() for a in w.build_chat_menu(line).actions()]
+ok("Edit note..." in labels and "Forget this viewer..." in labels, "right-click a viewer: Edit note and Forget this viewer")
+from PySide6.QtWidgets import QInputDialog as _QID, QMessageBox as _QMB
+real_get, real_q = _QID.getText, _QMB.question
+_QID.getText = staticmethod(lambda *a, **k: ("exam on Monday", True))
+w.edit_note(line.message); ok(w.tools.memory.note("twitch:memo1") == "exam on Monday", "Add note saves what the streamer typed")
+_QMB.question = staticmethod(lambda *a, **k: _QMB.Yes)
+w.forget_viewer(line.message); ok(w.tools.memory.record("twitch:memo1") is None, "Forget this viewer works from the menu after a yes")
+_QID.getText, _QMB.question = real_get, real_q
+w.toolspage.memory_box.setCurrentIndex(w.toolspage.memory_box.findData("off")); ok(w.s.get("memory_cards") == "off", "the Stream tools page saves the card choice")
+w.toolspage.memory_box.setCurrentIndex(w.toolspage.memory_box.findData("regulars"))
 w.goto(11); wait(200); w.grab().save(os.path.join(os.environ["APPDATA"], "alerts.png"))
 w.goto(0); wait(600)
 print("\nALL PASSED" if not fails else "\n%d FAILED" % fails)

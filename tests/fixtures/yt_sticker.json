@@ -1,0 +1,9 @@
+{"continuationContents": {"liveChatContinuation": {
+  "continuations": [{"invalidationContinuationData": {"timeoutMs": 10000, "continuation": "NEXT-STICKER"}}],
+  "actions": [
+    {"addChatItemAction": {"item": {"liveChatPaidStickerRenderer": {
+      "id": "STICKER-1", "timestampUsec": "1794500000000020",
+      "authorName": {"simpleText": "@StickerFan"}, "authorExternalChannelId": "UCtesttesttesttesttest05",
+      "purchaseAmountText": {"simpleText": "₹85.00"},
+      "sticker": {"accessibility": {"accessibilityData": {"label": "Dancing cat"}}}}}}}
+  ]}}}

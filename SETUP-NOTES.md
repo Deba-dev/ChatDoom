@@ -1,3 +1,15 @@
+# Kick official chat release steps (2026-11-12, upgrade plan Task 6)
+1. Kick developer portal (kick.com/settings/developer), Edit the app, BEFORE deploying:
+   - tick the scope `events:subscribe` (the cloud now asks for it; without it Kick sign-in fails),
+   - turn on "Enable Webhooks" and enter `https://<cloud address>/kick/webhook`.
+2. In cloud/: `node test-kick.mjs`, then `npx wrangler deploy`.
+3. Release the app. Streamers who want official Kick chat sign out and in again on Kick (until then they get the old Pusher reader,
+   and the Kick card says "Connected (sign in to Kick again for official chat)").
+4. Test with a real Kick account: Connect shows "Connected (official)", messages arrive, Disconnect removes the subscription
+   (check the Kick dev portal or the log).
+Limits to know: unverified Kick apps get at most 1,000 chat.message.sent subscriptions. Each Kick chat message is one Worker
+request and one D1 write, and each streamer's app reads the cloud every 2 s (~1,800 requests an hour), so watch the Cloudflare plan.
+
 # V1.4.0 release steps (2026-11-06)
 1. Kick developer portal: tick the new scopes on the app BEFORE deploying: channel:read, moderation:ban, moderation:chat_message:manage.
    Without them Kick sign-in fails, because the cloud now asks for them.
