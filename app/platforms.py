@@ -1,6 +1,7 @@
 """Chat readers for YouTube (no login), Twitch (anonymous read) and Kick (public chat)."""
 import asyncio
 import json
+import logging
 import re
 import threading
 import time
@@ -9,9 +10,12 @@ import urllib.request
 
 from PySide6.QtCore import QObject, Signal
 
+from . import logs
 from .models import Message
 
 PUSHER_URL = "wss://ws-us2.pusher.com/app/32cbd69e4b950bf97679?protocol=7&client=js&version=8.4.0&flash=false"
+
+CHAT_LOG = logs.get("chat")
 
 
 # ---------- pure parsers (easy to test) ----------
@@ -142,6 +146,9 @@ class Source:
         self.stop_evt.set()
 
     def _status(self, text, ok=False):
+        if text != getattr(self, "_last_status", None):
+            self._last_status = text
+            CHAT_LOG.log(logging.WARNING if text.startswith(("Error", "Could not")) else logging.INFO, "%s %s: %s", type(self).__name__, self.key, text)
         self.hub.status.emit(self.key, text, ok)
 
     def _emit(self, m):
@@ -152,6 +159,7 @@ class Source:
         try:
             self._run(*args)
         except Exception as e:
+            CHAT_LOG.warning("%s %s stopped with an error", type(self).__name__, self.key, exc_info=True)
             self._status("Error: %s" % str(e)[:90])
         else:
             self._status("Disconnected")

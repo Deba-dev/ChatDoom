@@ -1,5 +1,6 @@
 """Look and motion: the animated background, the sliding sidebar highlight, toast notifications and number count-ups.
 Motion stops in Lite mode and whenever CHATDOOM is not the active window, so games keep the CPU."""
+import logging
 import math
 import os
 import sys
@@ -453,6 +454,8 @@ class Toasts:
         self.canvas, self.s, self.items = canvas, settings, []
 
     def show(self, text, kind="info", seconds=None):
+        if kind in ("warn", "bad", "error"):          # problems are kept in the log even when pop-ups are off
+            logging.getLogger("chatdoom.notice").warning(text)
         if not self.s.get("toasts"):
             return None
         seconds = float(self.s.get("toast_seconds") or 4) if seconds is None else seconds

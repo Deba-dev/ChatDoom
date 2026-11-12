@@ -67,6 +67,6 @@ def run(now=None):
             path = os.path.join(downloads, name)
             if old(path, now):
                 freed += remove(path)
-    for name in ("crash.log", "update.log"):
-        freed += trim_log(os.path.join(data_dir(), name))
+    for name in ("crash.log", "update.log", os.path.join("logs", "crash.log"), os.path.join("logs", "native-crash.log")):
+        freed += trim_log(os.path.join(data_dir(), name))      # chatdoom.log rotates by itself (app/logs.py)
     return freed

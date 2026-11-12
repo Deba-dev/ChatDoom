@@ -140,11 +140,20 @@ def _who_tab(w):
 def _reading_tab(w):
     options, lay = w._voice_section("Voice options", "Small choices for how messages are spoken.")
     read_mode = QComboBox()
-    read_mode.addItem("Read every allowed chat message", "all")
+    read_mode.addItem("Read all chat", "all")
+    read_mode.addItem("Read only !tts messages", "tts")
     read_mode.addItem("Read paid messages only", "paid")
     read_mode.setCurrentIndex(max(0, read_mode.findData(w.s.get("read_mode") or "all")))
-    read_mode.currentIndexChanged.connect(lambda _: w.s.set("read_mode", read_mode.currentData()))
-    lay.addWidget(w._voice_field("Chat reading mode", "Paid-only mode skips regular chat but still reads enabled Super Chats, Bits, memberships, and tips.", read_mode))
+    read_mode.currentIndexChanged.connect(lambda _: w.set_read_mode(read_mode.currentData()))
+    w.read_mode_box = read_mode
+    lay.addWidget(w._voice_field("Chat reading mode",
+                                 "!tts only: viewers type !tts and their message to have it read. Tips, Super Chats, Bits, memberships and mods are "
+                                 "always read. Paid only skips mods too. Switch fast with the All chat button at the top or Ctrl+Alt+T.", read_mode))
+    bots = QLineEdit(", ".join(w.s.get("bot_names") or []))
+    bots.setPlaceholderText("e.g. MyChannelHelper, Sumo")
+    bots.editingFinished.connect(lambda: w.s.set("bot_names", [b.strip() for b in bots.text().split(",") if b.strip()]))
+    lay.addWidget(w._voice_field("More bots to never read",
+                                 "Nightbot, StreamElements, names ending in bot and CHATDOOM's own replies are already skipped. Add other bot names here, separated by commas.", bots))
     lay.addWidget(w._voice_switch("Say the viewer's name first", "Speak the viewer's name before reading their message.", "read_name"))
     lay.addWidget(w._voice_switch("Tidy viewer names", "Read Rahul_1234 as Rahul.", "say_clean_names"))
     lay.addWidget(w._voice_switch("Read paid messages", "Allow Super Chats, Bits, memberships, and tips to be read.", "read_super"))

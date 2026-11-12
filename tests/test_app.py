@@ -147,6 +147,44 @@ ok(w.mod.check(Message("youtube", "Viewer", "regular chat")) == (False, "normal 
    and w.mod.check(Message("twitch", "Supporter", "thanks", "super", "100 bits")) == (True, ""),
    "paid-only chat mode skips regular messages but keeps enabled paid messages")
 w.s.set("read_mode", "all")
+# ----- bots, CHATDOOM's own echoes, !tts-only mode -----
+from app import moderation as MOD
+for name in ("@Nightbot", "@StreamElements", "Sery_Bot", "MooBot", "MyChannelBot", "bot"):
+    ok(w.mod.check(Message("youtube", name, "hello %s" % name))[1] == "bot", "bot by name is never read: " + name)
+for name in ("Abbot", "Talbot", "robot_lover", "Rahul"):
+    ok(not MOD.looks_like_bot(Message("youtube", name, "hi")), "a real viewer is not taken for a bot: " + name)
+w.s.set("bot_names", ["Sumo"]); ok(w.mod.check(Message("twitch", "sumo", "hey"))[1] == "bot", "the streamer's own bot list is skipped"); w.s.set("bot_names", [])
+MOD.remember_sent("Rahul has 120 coins and is level 3")
+ok(w.mod.check(Message("youtube", "Streamer", "Rahul has 120 coins and is level 3", mod=True))[1] == "CHATDOOM's own message", "CHATDOOM's own replies coming back in chat are not read")
+w.s.set("read_mode", "tts")
+ok(w.mod.check(Message("youtube", "ViewerA", "normal chat line")) == (False, MOD.NOT_TTS), "!tts only: normal chat is not spoken")
+ok(w.mod.check(Message("youtube", "ViewerB", "!tts hello streamer")) == (True, ""), "!tts only: a !tts message is spoken")
+ok(w.mod.check(Message("youtube", "ModC", "mods are read", mod=True)) == (True, ""), "!tts only: mods are still read")
+ok(w.mod.check(Message("tip", "Fan", "great stream", "super", "₹100")) == (True, ""), "!tts only: tips are still read")
+ok(w.mod.check(Message("youtube", "MemberD", "became a channel member", "member")) == (True, ""), "!tts only: members are still read")
+ok(w.mod.check(Message("youtube", "ViewerE", "!tts"))[1] == "empty !tts", "an empty !tts is skipped")
+ok(w.mod.check(Message("youtube", "ViewerF", "!tts look www.spam.com"))[1] == "link", "!tts messages still pass the link filter")
+spoken.clear(); w.mute_btn.setChecked(False); pushed = []; old_push = w.overlay.push; w.overlay.push = lambda kind, data: pushed.append((kind, data))
+w.on_message(Message("twitch", "ViewerG", "just chatting here"))
+w.on_message(Message("twitch", "ViewerH", "!tts read me please"))
+w.overlay.push = old_push
+ok([a[1] for a in spoken] == ["read me please"], "!tts only: only the !tts message is spoken, without the !tts")
+ok([d["text"] for k, d in pushed if k == "chat"] == ["just chatting here", "!tts read me please"], "!tts only: every chat line still reaches the OBS chat box")
+w.set_read_mode("all"); ok(w.s.get("read_mode") == "all" and w.tts_btn.text() == "All chat" and not w.tts_btn.isChecked(), "the All chat button shows the mode")
+w.tts_btn.click(); ok(w.s.get("read_mode") == "tts" and w.tts_btn.text() == "!tts only", "one click switches to !tts only")
+w._hotkey("hk_tts"); ok(w.s.get("read_mode") == "all", "Ctrl+Alt+T switches back to all chat")
+spoken.clear(); w.on_message(Message("twitch", "ViewerI", "!tts in all mode")); ok([a[1] for a in spoken] == ["in all mode"], "all chat: !tts is read without the !tts")
+w.mute_btn.setChecked(True)
+# ----- logs -----
+from app import logs as LOGS
+LOGS.setup(); LOGS.LOG.info("test line token=abc123secret and Bearer abcdefghijklmnop1234")
+LOGS.crash("test", ValueError, ValueError("boom"), None)
+for h in LOGS.LOG.handlers: h.flush()
+body = open(LOGS.path(), encoding="utf-8").read()
+ok("test line" in body and "abc123secret" not in body and "abcdefghijklmnop1234" not in body, "the log blanks tokens")
+ok("boom" in open(LOGS.path("crash.log"), encoding="utf-8").read(), "a crash is written to crash.log")
+zip_path = os.path.join(os.environ["APPDATA"], "logs-test.zip")
+ok(LOGS.save_zip(zip_path) >= 2 and os.path.getsize(zip_path) > 0, "Save logs for support makes a zip")
 from app.hinglish import normalize
 ok(normalize("Nice 😂👍 1️⃣ :heart:") == "Nice face with tears of joy thumbs up one heart",
    "emoji and emoji shortcodes are spoken by name rather than removed or read as symbols")
@@ -559,14 +597,17 @@ ok("invalid pan" in pg.upi_save_state.text(), "Cashfree's refusal is shown next 
 f["pan"].setText("ABCDE1234F"); pg.save_upi(); wait(800)
 sent = C["tip_setups"][-1]
 ok(sent["vpa"] == "drxshi@okicici" and sent["pan"] == "ABCDE1234F" and "account" not in sent and sent["minAmount"] == 20, "Save sends the UPI ID, PAN and smallest tip")
-ok(pg.upi_url.text().endswith("/t/drxshi") and "checking your account" in pg.upi_state.text() and f["pan"].text() == "", "the link shows, Cashfree is checking, and the PAN box is cleared")
-wait(800); ok(pg.qr.isVisibleTo(pg) or not pg.qr.isHidden(), "the QR code is shown in the app")
+ok(pg.upi_url.text() == "" and pg.upi_link_row.isHidden() and pg.upi_qr_row.isHidden() and pg.upi_wait.isActive()
+   and "checking your account" in pg.upi_state.text() and f["pan"].text() == "", "while Cashfree checks the account there is no link or QR yet, the PAN box is cleared, and the app asks again every minute")
 f["name"].setText("DRXSHI LIVE"); pg.save_upi(); wait(500)
 ok("pan" not in C["tip_setups"][-1] and C["tip_setups"][-1]["name"] == "DRXSHI LIVE", "renaming later does not resend bank details")
 pg.upi_payout.setCurrentIndex(pg.upi_payout.findData("bank"))
 ok(not pg.upi_rows["account"].isHidden() and pg.upi_rows["vpa"].isHidden(), "choosing a bank account shows account number and IFSC instead of UPI ID")
 C["tip_page"]["status"] = "ACTIVE"; pg.refresh_upi(); wait(500)
-ok(pg.upi_state.text().startswith("Live") and pg.upi_pause.text() == "Pause tips", "an active page says it is live")
+ok("Verified" in pg.upi_state.text() and "Live" in pg.upi_state.text() and pg.upi_pause.text() == "Pause tips", "an active page says it is verified and live")
+wait(800); ok(not pg.qr.isHidden(), "the QR code is shown in the app once verified")
+ok("/t/drxshi" in pg.upi_url.text() and not pg.upi_link_row.isHidden() and not pg.upi_qr_row.isHidden() and not pg.upi_wait.isActive(),
+   "once verified the tip link and QR appear and the app stops asking")
 pg.toggle_upi_pause(); wait(500)
 ok(pg.upi_state.text().startswith("Paused") and pg.upi_pause.text() == "Resume tips", "the streamer can pause tips")
 pg.tip_link.setText("https://tips.example/creator"); ok(pg.save_tip_link() and w.s.get("tip_link") == "https://tips.example/creator",

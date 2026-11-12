@@ -14,6 +14,7 @@ from datetime import date
 
 from PySide6.QtCore import QObject, QTimer, Signal
 
+from .moderation import remember_sent
 from .discord import run_bg
 from .platforms import youtube_id
 from .settings import data_dir
@@ -97,6 +98,7 @@ class YtModerator(QObject):
         if not vid:
             self.notice.emit("The bot needs your live link on the Connect page to post in chat.")
             return
+        remember_sent(text)
         body = {"videoId": vid, "text": text, "limit": int(self.s.get("mod_budget"))}
         token = self.s.get("yt_bot_token")
         run_bg(self.bridge, "yt:say", lambda: bot_call(self.s, "POST", "/v1/say", body, token))

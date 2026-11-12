@@ -11,7 +11,7 @@ from PySide6.QtWidgets import (QMenu, QMessageBox, QSystemTrayIcon, QApplication
                                QLabel, QLineEdit, QPlainTextEdit, QPushButton, QScrollArea, QSlider, QSpinBox, QStackedWidget,
                                QTextEdit, QVBoxLayout, QWidget)
 
-from . import alert_sounds, alert_styles, hinglish, overlay_styles, system
+from . import alert_sounds, alert_styles, hinglish, logs, overlay_styles, system
 from .chat_actions import ALL_CHATS, ChatActions, compact
 from .chat_feed import ChatFeed
 from .commands import PLATFORM_NAMES, Commands
@@ -32,7 +32,7 @@ from .ytmod import YtModerator
 from .ytmod_page import YtModPage
 from PySide6.QtCore import QSize
 from .models import Message, viewer_key
-from .moderation import KNOWN_BOTS, Moderator
+from .moderation import SHOW_ONLY, Moderator, looks_like_bot, spoken_text
 from .platforms import SOURCES, Hub, KickSource, TwitchSource, YouTubeSource, youtube_id
 from .settings import Settings, data_dir
 from .speech import Speaker
@@ -49,6 +49,8 @@ from .voice_ui import fill_voice_page
 from .visuals import BACKGROUNDS, Backdrop, CardGlow, HeroCard, Motion, NavIndicator, StatCard, Toasts, count_to, stagger_in
 from .updater import Updater
 from .version import PRODUCT_NAME, VERSION, label
+
+CHAT_LOG = logs.get("chat")
 from .window_modes import WindowModes
 
 COLORS = {"youtube": "#ff4d4d", "twitch": "#9146ff", "kick": "#53fc18", "test": "#00d4ff", "tip": "#ffd24d"}
@@ -729,7 +731,12 @@ class MainWindow(ChatActions, StreamWatch, QWidget):
         self._start_chat()
         self._start_stream_watch()
         self.speaker.note.connect(lambda t: self.feed.append("<span style='color:#ffb020'>%s</span>" % esc(t)))
+        self.speaker.note.connect(lambda t: logs.get("voice").warning(t))
+        if logs.last_run_unclean():
+            QTimer.singleShot(3500, lambda: self.toasts.show("CHATDOOM did not close normally last time. If it crashed, "
+                                                             "Settings > Data and backup > Save logs for support makes a zip you can send us.", "warn", 10))
         self.links.notice.connect(lambda t: self.feed.append("<span style='color:#7c9cff'>Discord: %s</span>" % esc(t)))
+        self.links.notice.connect(lambda t: logs.get("discord").info(t))
         self.sync = QTimer(self)                      # report activity to Discord once a minute
         self.sync.timeout.connect(self.links.save)
         self.sync.timeout.connect(self.tools.save)
@@ -748,14 +755,18 @@ class MainWindow(ChatActions, StreamWatch, QWidget):
         QTimer.singleShot(2000, self.links.refresh)
         self.poller.tip.connect(self.on_tip)
         self.poller.notice.connect(lambda t: self.feed.append("<span style='color:#ffd24d'>%s</span>" % esc(t)))
+        self.poller.notice.connect(lambda t: logs.get("tips").info(t))
         self.ytmod.notice.connect(lambda t: self.feed.append("<span style='color:#ff8a5c'>YouTube mod: %s</span>" % esc(t)))
+        self.ytmod.notice.connect(lambda t: logs.get("ytmod").info(t))
         QTimer.singleShot(2500, self.poller.apply)
         self.speaker.busy_changed.connect(self.music.duck)                     # music gets quieter while a message is read aloud
         self.music.notice.connect(lambda t: self.feed.append("<span style='color:#7cf0c0'>Music: %s</span>" % esc(t)))
+        self.music.notice.connect(lambda t: logs.get("music").info(t))
         QTimer.singleShot(1500, lambda: self.music.next() if self.s.get("music_autoplay") and self.music.tracks else None)
         self.updater.found.connect(self._update_found)
         self.updater.status.connect(self._update_status)
         self.updater.message.connect(lambda t: self.feed.append("<span style='color:#7cf0c0'>Update: %s</span>" % esc(t)))
+        self.updater.message.connect(lambda t: logs.get("update").info(t))
         self.updater.progress.connect(self.banner_text.setText)
         self.updater.quit_now.connect(lambda: QTimer.singleShot(400, self.quit_app))
         QTimer.singleShot(3000, self.updater.after_start)
@@ -947,6 +958,12 @@ class MainWindow(ChatActions, StreamWatch, QWidget):
         self._update_mute_button(self.s.get("muted"))
         self.mute_btn.setCursor(Qt.PointingHandCursor)
         self.mute_btn.toggled.connect(self._mute)
+        self.tts_btn = QPushButton()
+        self.tts_btn.setObjectName("quiet")
+        self.tts_btn.setCheckable(True)
+        self.tts_btn.setCursor(Qt.PointingHandCursor)
+        self._show_read_mode()
+        self.tts_btn.clicked.connect(lambda on: self.set_read_mode("tts" if on else "all"))
         skip = QPushButton("Skip")
         skip.setIcon(utility_icon("skip"))
         skip.setObjectName("quiet")
@@ -959,7 +976,7 @@ class MainWindow(ChatActions, StreamWatch, QWidget):
         test.setToolTip("Speak a short sample")
         test.setCursor(Qt.PointingHandCursor)
         test.clicked.connect(self.test_voice)
-        for b in (self.mute_btn, skip, test):
+        for b in (self.mute_btn, self.tts_btn, skip, test):
             lay.addWidget(b, 0, Qt.AlignTop)
         return bar
 
@@ -1819,6 +1836,29 @@ class MainWindow(ChatActions, StreamWatch, QWidget):
         else:
             self.feed.append("<span style='color:#7cf0c0'>Voice reading resumed.</span>")
 
+    def set_read_mode(self, mode):
+        """all: every allowed chat message. tts: only messages starting with !tts. paid: only paid messages.
+        Tips, Super Chats, Bits and memberships are read in every mode; moderators are read in all and tts."""
+        self.s.set("read_mode", mode)
+        self._show_read_mode()
+        box = getattr(self, "read_mode_box", None)
+        if box is not None:
+            box.blockSignals(True)
+            box.setCurrentIndex(max(0, box.findData(mode)))
+            box.blockSignals(False)
+        text = {"all": "Reading all chat again.",
+                "tts": "Reading only !tts messages now. Tips, Super Chats, members and mods are still read.",
+                "paid": "Reading only paid messages now."}.get(mode, "")
+        self.feed.append("<span style='color:#7cf0c0'>%s</span>" % esc(text))
+        logs.get("voice").info("Read mode: %s", mode)
+
+    def _show_read_mode(self):
+        tts = self.s.get("read_mode") == "tts"
+        self.tts_btn.setChecked(tts)
+        self.tts_btn.setText("!tts only" if tts else "All chat")
+        self.tts_btn.setToolTip("Reading only messages that start with !tts (plus tips, members and mods). Click to read all chat."
+                                if tts else "Reading all chat. Click to read only messages that start with !tts (tips, members and mods are still read).")
+
     def _update_mute_button(self, muted):
         self.mute_btn.setText("Unmute" if muted else "Mute")
         self.mute_btn.setToolTip(
@@ -1881,6 +1921,8 @@ class MainWindow(ChatActions, StreamWatch, QWidget):
         ok, reason = self.mod.check(m)
         if ok and viewer_key(m) in (self.s.get("chat_muted") or []):
             ok, reason = False, "you stopped reading this viewer"
+        CHAT_LOG.debug("%s %s %s %s: %s%s", m.platform, m.kind, "READ" if ok else "skip (%s)" % reason, m.author,
+                       (m.text or "")[:80], " [%s]" % m.amount if m.amount else "")
         self.msg_seen += 1
         self.msg_read += bool(ok)
         self.msg_skipped += not ok
@@ -1891,14 +1933,15 @@ class MainWindow(ChatActions, StreamWatch, QWidget):
         color = COLORS.get(m.platform, "#8a93a8")
         amt = " <span style='color:#ffd24d'>[%s]</span>" % esc(m.amount) if m.amount else ""
         tag = "<span style='color:%s'><b>%s</b></span>" % (color, esc(self._tag(m)))
-        if ok:
+        if ok or reason in SHOW_ONLY:            # !tts-only and paid-only modes still show chat, they just don't speak it
             author = shape_chat_text(m.author, self.s.get("chat_transform"))
             text = shape_chat_text(m.text, self.s.get("chat_transform"))
             self.feed_message(m, tag, amt, author, text)
             welcome = self.tools.observe(m)
             if welcome:
                 self._welcome(m, welcome)
-            self.speaker.say(m.author, m.text, m.amount if m.kind == "super" else "", self._who(m))
+            if ok:
+                self.speaker.say(m.author, spoken_text(m.text), m.amount if m.kind == "super" else "", self._who(m))
             if m.platform != "tip":
                 self.overlay.push("chat", {"platform": m.platform, "name": m.author, "text": m.text, "mod": bool(m.mod), "emotes": m.emotes})
             if m.kind in ("super", "member"):
@@ -1922,7 +1965,7 @@ class MainWindow(ChatActions, StreamWatch, QWidget):
         text = (m.text or "").strip()
         if m.platform == "tip" or not (text.startswith("!") or (self.tools.poll.active and text.isdigit())):
             return False
-        if m.platform != "test" and ((self.s.get("ignore_bots") and (m.bot or m.author.lower() in KNOWN_BOTS))
+        if m.platform != "test" and ((self.s.get("ignore_bots") and looks_like_bot(m, self.s.get("bot_names")))
                                      or self.mod._blocked_hit(m.text)):
             return False                          # moderation skips it and shows why
         act = self.commands.handle(m) or self.tools.handle(m)
@@ -1968,7 +2011,7 @@ class MainWindow(ChatActions, StreamWatch, QWidget):
     def _welcome(self, m, text):
         self.feed.append("<span style='color:#ffd24d'>\u2605 %s</span>" % esc(text))
         self.toasts.show("New chatter: %s" % m.author, "good")
-        if self.s.get("welcome_speak"):
+        if self.s.get("welcome_speak") and (self.s.get("read_mode") or "all") == "all":   # !tts-only and paid-only stay quiet
             self.speaker.announce(text)
         if self.s.get("welcome_reply"):
             video, _ = self._reply_target(m)
@@ -2222,6 +2265,9 @@ class MainWindow(ChatActions, StreamWatch, QWidget):
                 self._mute(want)
             else:
                 self.mute_btn.setChecked(want)
+        elif act == "hk_tts":
+            self.set_read_mode("all" if self.s.get("read_mode") == "tts" else "tts")
+            self.toasts.show("Reading only !tts messages" if self.s.get("read_mode") == "tts" else "Reading all chat")
         elif act == "hk_music":
             self.music.toggle()
         elif act == "hk_counter":
@@ -2348,6 +2394,7 @@ class MainWindow(ChatActions, StreamWatch, QWidget):
                 e.ignore()
                 return
         self.modes.remember()
+        logs.LOG.info("Closing: %d chat messages seen, %d read aloud, %d skipped", self.msg_seen, self.msg_read, self.msg_skipped)
         self.links.save()
         if self.tools.prediction.active:             # nobody loses points because the app was closed
             self.tools.settle_prediction(self.tools.prediction.refund()[0])

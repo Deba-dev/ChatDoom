@@ -142,5 +142,30 @@ ok(r.status === 400, "the smallest tip cannot go under ₹10");
 r = await call("POST", "/api/tips/setup", { body: { slug: "drxshi-live", name: "DRXSHI LIVE" } });
 ok(r.status === 200 && r.data.page.url.endsWith("/t/drxshi-live") && cf.calls.filter((c) => c.method === "PATCH").length === 0, "renaming the page leaves the Cashfree account alone");
 
+// ---- every streamer has their own link, QR and Cashfree account; old links never move to someone else
+r = await call("GET", "/t/drxshi", { key: null });
+ok(r.status === 301 || (r.status === 200 && String(r.data).includes("DRXSHI LIVE")), "the old link still goes to the same streamer after a rename");
+await env.KV.put("token:appkey2", JSON.stringify("987654321098765432"));
+await env.KV.put("guild:987654321098765432", JSON.stringify({ guildName: "OTHER", config: {} }));
+const other = { ...good, slug: "drxshi", name: "Someone else", vpa: "else@okaxis", pan: "zyxwv9876k" };
+r = await call("POST", "/api/tips/setup", { body: other, key: "appkey2" });
+ok(r.status === 409, "another streamer cannot take a page name the first streamer used before (old QR codes stay safe)");
+r = await call("POST", "/api/tips/setup", { body: { ...other, slug: "drxshi-live" }, key: "appkey2" });
+ok(r.status === 409, "another streamer cannot take a page name in use");
+r = await call("POST", "/api/tips/setup", { body: { ...other, slug: "someone-else" }, key: "appkey2" });
+const vendors = cf.calls.filter((c) => c.method === "POST" && c.path === "/pg/easy-split/vendors").map((c) => c.body.vendor_id);
+ok(r.status === 200 && r.data.page.url.endsWith("/t/someone-else") && vendors.at(-1) === "cd_987654321098765432" && !vendors.slice(0, -1).includes("cd_987654321098765432"),
+   "a second streamer gets their own page and their own Cashfree account");
+const qrA = await call("GET", "/t/drxshi-live/qr.svg", { key: null }), qrB = await call("GET", "/t/someone-else/qr.svg", { key: null });
+ok(qrA.status === 200 && qrB.status === 200 && qrA.data !== qrB.data, "each streamer's QR code is different");
+cf.vendorStatus = "ACTIVE"; await call("GET", "/api/tips", { key: "appkey2" });
+r = await call("POST", "/t/someone-else/order", { key: null, body: { name: "V", amount: 100 }, headers: { "cf-connecting-ip": "9.9.9.9" } });
+const order2 = cf.calls.filter((c) => c.path === "/pg/orders").pop();
+ok(r.status === 200 && order2.body.order_splits[0].vendor_id === "cd_987654321098765432", "a tip on the second page is split to the second streamer only");
+r = await call("GET", "/t/drxshi-live/status/" + r.data.orderId, { key: null });
+ok(r.status === 404, "one streamer's page cannot see or settle another streamer's order");
+r = await call("POST", "/api/tips/setup", { body: { slug: "drxshi", name: "DRXSHI" } });
+ok(r.status === 200 && r.data.page.url.endsWith("/t/drxshi"), "the first streamer can take their own old name back");
+
 console.log(fails ? fails + " FAILED" : "all passed");
 process.exit(fails ? 1 : 0);

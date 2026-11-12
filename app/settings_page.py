@@ -6,7 +6,7 @@ from PySide6.QtCore import Qt, QUrl
 from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import QComboBox, QFileDialog, QLabel, QPushButton, QSlider, QSpinBox
 
-from . import system
+from . import logs, system
 from .settings import data_dir
 from .theme import DEFAULT_THEME, THEMES
 from .ui_kit import SubPage, bind_switch, field_row, hrow, info_box, option_switch_row, section_card
@@ -154,10 +154,17 @@ class SettingsPage(SubPage):
         cl.addWidget(self.backup_note)
         lay.addWidget(c)
         c, cl = section_card("Files and connection", "")
-        folder, logs = _button("Open my data folder"), _button("Open the crash log")
+        folder, log_folder = _button("Open my data folder"), _button("Open the logs folder")
         folder.clicked.connect(lambda: QDesktopServices.openUrl(QUrl.fromLocalFile(data_dir())))
-        logs.clicked.connect(self._open_log)
-        cl.addWidget(hrow(folder, logs))
+        log_folder.clicked.connect(lambda: QDesktopServices.openUrl(QUrl.fromLocalFile(logs.folder())))
+        cl.addWidget(hrow(folder, log_folder))
+        save_logs = _button("Save logs for support")
+        save_logs.setToolTip("Puts every log into one zip file you can send to ZunimiLabs support. Passwords and keys are blanked out.")
+        save_logs.clicked.connect(self._save_logs)
+        cl.addWidget(hrow(save_logs))
+        detailed = sw("detailed_logs")
+        detailed.toggled.connect(logs.set_detailed)
+        cl.addWidget(option_switch_row("Detailed logs", "Also writes down why each chat message was read or skipped. Turn on when support asks you to.", detailed))
         self.port = QSpinBox()
         self.port.setRange(1024, 65000)
         self.port.setValue(int(self.s.get("ov_port")))
@@ -214,12 +221,17 @@ class SettingsPage(SubPage):
             self.autostart.blockSignals(False)
             self.host.toasts.show("Windows did not allow that change.", "warn")
 
-    def _open_log(self):
-        path = os.path.join(data_dir(), "crash.log")
-        if os.path.isfile(path):
-            QDesktopServices.openUrl(QUrl.fromLocalFile(path))
-        else:
-            self.host.toasts.show("No crashes have been logged.", "good")
+    def _save_logs(self):
+        stamp = datetime.datetime.now().strftime("%Y%m%d-%H%M")
+        path, _ = QFileDialog.getSaveFileName(self, "Save logs for support", os.path.expanduser("~/Desktop/chatdoom-logs-%s.zip" % stamp), "Zip file (*.zip)")
+        if not path:
+            return
+        try:
+            count = logs.save_zip(path)
+            self.host.toasts.show("Saved %d log files. Send this zip to support." % count, "good")
+            QDesktopServices.openUrl(QUrl.fromLocalFile(os.path.dirname(path)))
+        except OSError as error:
+            self.host.toasts.show("Could not save the logs: %s" % error, "warn")
 
     def save_backup(self, path):
         self.backup_note.setText("Saved %d settings." % system.write_backup(self.s, path))

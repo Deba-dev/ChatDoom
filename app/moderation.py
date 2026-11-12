@@ -2,18 +2,85 @@
 import os
 import re
 import time
+from collections import deque
 
 from .hinglish import has_devanagari
 
 KNOWN_BOTS = {"nightbot", "streamelements", "streamlabs", "moobot", "fossabot", "wizebot",
               "botrix", "kickbot", "sery_bot", "soundalerts", "serybot", "commanderroot",
               "deepbot", "coebot", "phantombot", "vivbot", "stay_hydrated_bot", "streamlabsbot",
-              "ankhbot", "botisimo", "twitchbot"}
+              "ankhbot", "botisimo", "twitchbot", "pretzelrocks", "streamstickers", "frostytoolsdotcom",
+              "own3d", "lumiastream", "blerp", "kofistreambot", "tangiabot", "songlistbot", "creatisbot",
+              "playwithviewersbot", "pokemoncommunitygame", "dixperbro", "streamholics", "rainmaker", "stream_elements",
+              "streamerbot", "botrixoficial", "kicklet", "chatdoom"}
+BOT_TAIL = re.compile(r"(?:^|[_\-.\s\d])bot$", re.I)       # sery_bot, my-bot, Chat 2 Bot
+CAMEL_BOT = re.compile(r"[a-z0-9]Bot$")                     # MooBot, ChannelBot (but not Abbot)
+TTS_RX = re.compile(r"^\s*!tts\b[\s:,-]*", re.I)
+NOT_PAID, NOT_TTS = "normal messages off", "not a !tts message"
+SHOW_ONLY = (NOT_PAID, NOT_TTS)                             # read mode reasons: the message is fine, it is just not spoken
+SENT = deque(maxlen=60)                                     # (time, text) of what CHATDOOM itself posted in chat
+ECHO_SECS = 180
 LINK_RX = re.compile(r"https?://|www\.|\b[\w-]+\.(?:com|in|net|org|tv|gg|io|me|co)\b", re.I)
 
 BLOCKED_HELP = """# One word or phrase per line. Messages containing them are NOT read aloud.
 # Lines starting with # are ignored. Add words in English letters and/or Devanagari.
 """
+
+
+def plain_name(name):
+    """@Nightbot, Sery_Bot and nightbot all become nightbot / serybot."""
+    return re.sub(r"[^a-z0-9]", "", (name or "").strip().lstrip("@").lower())
+
+
+KNOWN_PLAIN = {plain_name(b) for b in KNOWN_BOTS}
+
+
+def looks_like_bot(m, extra=()):
+    """Chat bots (Nightbot, StreamElements, names ending in bot) and any name the streamer listed. YouTube now sends @handles."""
+    if m.bot:
+        return True
+    raw = (m.author or "").strip().lstrip("@")
+    plain = plain_name(raw)
+    if not plain:
+        return False
+    if plain in KNOWN_PLAIN or plain in {plain_name(x) for x in extra or ()}:
+        return True
+    return bool(BOT_TAIL.search(raw) or CAMEL_BOT.search(raw))
+
+
+def _norm(text):
+    return re.sub(r"\s+", " ", re.sub(r"^@\S+\s+", "", (text or "").strip())).lower()
+
+
+def remember_sent(text, now=None):
+    """Called for every line CHATDOOM posts (command answers, timers, giveaways), so its echo in chat is not read aloud."""
+    if (text or "").strip():
+        SENT.append((time.time() if now is None else now, _norm(text)))
+
+
+def is_echo(text, now=None):
+    now = time.time() if now is None else now
+    got = _norm(text)
+    if not got:
+        return False
+    for when, sent in SENT:
+        if now - when > ECHO_SECS:
+            continue
+        if got == sent or (len(got) >= 20 and (sent.startswith(got) or got.startswith(sent[:len(got)]))):
+            return True
+    return False
+
+
+def tts_text(text):
+    """The words after !tts, or None when the message is not a !tts message."""
+    found = TTS_RX.match(text or "")
+    return (text[found.end():].strip()) if found else None
+
+
+def spoken_text(text):
+    """What is read aloud: a !tts message without the !tts."""
+    asked = tts_text(text)
+    return text if asked is None else asked
 
 
 class Moderator:
@@ -60,14 +127,25 @@ class Moderator:
         if not text and not paid:
             return False, "empty"
         name = m.author.lower()
-        if s.get("ignore_bots") and (m.bot or name in KNOWN_BOTS):
+        if s.get("ignore_bots") and looks_like_bot(m, s.get("bot_names")):
             return False, "bot"
+        if not paid and is_echo(text, now):
+            return False, "CHATDOOM's own message"
         if self._blocked_hit(text):
             return False, "blocked word"
-        if not paid and s.get("read_mode") == "paid":
-            return False, "normal messages off"
+        mode = s.get("read_mode") or "all"
         if paid:
             return (True, "") if s.get("read_super") else (False, "paid messages off")
+        quiet = ""                       # shown in the feed and the OBS chat box, but not spoken
+        asked = tts_text(text)
+        if mode == "paid":
+            quiet = NOT_PAID
+        elif asked is not None:
+            if not asked:
+                return False, "empty !tts"
+            text = asked
+        elif mode == "tts" and not m.mod:
+            quiet = NOT_TTS
         if s.get("mods_only") and not m.mod:
             return False, "mods only"
         if s.get("skip_cmds") and text.startswith("!"):
@@ -82,6 +160,8 @@ class Moderator:
         self.recent[key] = now
         if len(self.recent) > 500:
             self.recent = {k: t for k, t in self.recent.items() if now - t < 60}
+        if quiet:
+            return False, quiet
         if not m.mod and now - self.last_spoken.get(name, -1e9) < s.get("user_cooldown"):
             return False, "too fast"
         self.last_spoken[name] = now

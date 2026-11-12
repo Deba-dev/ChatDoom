@@ -6,11 +6,12 @@ share to their own bank account or UPI ID, and each paid tip arrives through the
 import urllib.parse
 import urllib.request
 
-from PySide6.QtCore import QByteArray, QUrl
+from PySide6.QtCore import QByteArray, QTimer, QUrl
 from PySide6.QtGui import QDesktopServices, QGuiApplication
 from PySide6.QtSvgWidgets import QSvgWidget
 from PySide6.QtWidgets import QComboBox, QLabel, QLineEdit, QPushButton, QSpinBox
 
+from . import logs
 from .discord import run_bg
 from .theme import DEFAULT_THEME, THEMES
 from .ui_kit import SubPage, bind_switch, field_row, hrow, option_switch_row, section_card
@@ -131,7 +132,9 @@ class PaymentsPage(SubPage):
         copy_url.clicked.connect(lambda: QGuiApplication.clipboard().setText(self.upi_url.text()))
         open_url = QPushButton("Open")
         open_url.clicked.connect(self.open_upi_page)
-        il.addWidget(hrow(self.upi_url, copy_url, open_url))
+        self.upi_link_row = hrow(self.upi_url, copy_url, open_url)
+        self.upi_link_row.hide()                  # appears once Cashfree has verified the streamer's account
+        il.addWidget(self.upi_link_row)
         self.qr = QSvgWidget()
         self.qr.setFixedSize(180, 180)
         self.qr.hide()
@@ -140,7 +143,12 @@ class PaymentsPage(SubPage):
         copy_qr.clicked.connect(lambda: QGuiApplication.clipboard().setText(self.tip.get("qrUrl", "")))
         self.upi_pause = QPushButton("Pause tips")
         self.upi_pause.clicked.connect(self.toggle_upi_pause)
-        il.addWidget(hrow(self.qr, copy_qr, self.upi_pause))
+        self.upi_qr_row = hrow(self.qr, copy_qr, self.upi_pause)
+        self.upi_qr_row.hide()
+        il.addWidget(self.upi_qr_row)
+        self.upi_wait = QTimer(self)              # while Cashfree checks the account, ask again every minute
+        self.upi_wait.setInterval(60000)
+        self.upi_wait.timeout.connect(self.refresh_upi)
         lay.addWidget(intro)
 
         form, fl = section_card(
@@ -229,18 +237,29 @@ class PaymentsPage(SubPage):
         if res.get("terms"):
             self.upi_terms.setText(describe_terms(res["terms"]))
         page = res.get("page")
+        was_waiting = self.tip.get("status") not in (None, "ACTIVE")
         self.tip = page or {}
         self.upi_state.setText(describe_page(page))
+        verified = bool(page) and page.get("status") == "ACTIVE"
+        self.upi_link_row.setVisible(verified)    # link and QR only once the account is verified
+        self.upi_qr_row.setVisible(verified)
+        if page and page.get("status") not in ("ACTIVE", "BLOCKED"):
+            self.upi_wait.start()
+        else:
+            self.upi_wait.stop()
         if not page:
             return
-        self.upi_url.setText(page["url"])
+        if verified and was_waiting:
+            self.upi_state.setText("Verified! Your tip link and QR code are ready below.  " + describe_page(page))
+            logs.get("tips").info("Tip page %s verified by Cashfree", page.get("slug"))
+        self.upi_url.setText(page["url"] if verified else "")
         if not self.upi_fields["slug"].text():
             self.upi_fields["slug"].setText(page["slug"])
             self.upi_fields["name"].setText(page["name"])
             self.upi_min.setValue(int(page["minAmount"]))
         self.upi_pause.setText("Pause tips" if page.get("enabled") else "Resume tips")
         url = page.get("qrUrl")
-        if url:
+        if url and verified:
             def fetch():
                 with urllib.request.urlopen(url, timeout=15) as r:
                     return {"svg": r.read().decode("utf-8")}

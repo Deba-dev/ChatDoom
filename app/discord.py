@@ -1,5 +1,6 @@
 """Discord side of CHATDOOM: cloud calls, !link claims, activity reporting, and webhook posts."""
 import json
+import logging
 import re
 import threading
 import time
@@ -8,10 +9,13 @@ import urllib.request
 
 from PySide6.QtCore import QObject, Signal
 
+from . import logs
 from .platforms import youtube_id
 
 LINK_RX = re.compile(r"^!link\s+([A-Za-z0-9]{4}-[A-Za-z0-9]{4})\s*$", re.I)
 UA = "CHATDOOM/1.0 (+desktop app)"
+
+BG_LOG = logs.get("cloud")
 
 
 class Bridge(QObject):
@@ -19,12 +23,17 @@ class Bridge(QObject):
 
 
 def run_bg(bridge, tag, fn):
-    """Run a blocking call in a thread and deliver its result to the UI thread."""
+    """Run a blocking call in a thread and deliver its result to the UI thread. Failures are written to the log."""
     def work():
         try:
             res = fn()
         except Exception as e:
+            BG_LOG.warning("%s failed", tag, exc_info=True)
             res = {"error": str(e)[:120]}
+        else:
+            if isinstance(res, dict) and res.get("error"):
+                quiet = "Enter the cloud address" in str(res.get("error"))     # not set up yet: normal, not a problem
+                BG_LOG.log(logging.DEBUG if quiet else logging.WARNING, "%s: %s", tag, res.get("error"))
         bridge.done.emit(tag, res)
     threading.Thread(target=work, daemon=True).start()
 

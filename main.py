@@ -1,14 +1,13 @@
-import datetime
 import os
 import sys
-import traceback
 
 from PySide6.QtCore import QTimer
 from PySide6.QtGui import QFontDatabase, QIcon, QImage
 from PySide6.QtWidgets import QApplication, QMessageBox
 
-from app.settings import Settings, data_dir
-from app.version import PRODUCT_NAME, VERSION
+from app import logs
+from app.settings import Settings
+from app.version import PRODUCT_NAME
 
 
 def resource(name):
@@ -28,13 +27,8 @@ def lower_priority():
 
 
 def log_crash(kind, exc, value, tb):
-    """The installed app has no console, so problems go to a file that can be read later."""
-    try:
-        with open(os.path.join(data_dir(), "crash.log"), "a", encoding="utf-8") as f:
-            f.write("\n--- %s  v%s  %s\n" % (datetime.datetime.now().isoformat(timespec="seconds"), VERSION, kind))
-            f.write("".join(traceback.format_exception(exc, value, tb)))
-    except OSError:
-        pass
+    """The installed app has no console, so problems go to logs/crash.log (see app/logs.py)."""
+    logs.crash(kind, exc, value, tb)
 
 
 def selftest(win):
@@ -47,15 +41,18 @@ def selftest(win):
     QApplication.processEvents()
     if bad:
         log_crash("selftest", RuntimeError, RuntimeError("missing or broken: " + ", ".join(bad)), None)
+    logs.closing("selftest " + ("failed" if bad else "passed"))
     os._exit(1 if bad else 0)
 
 
 def main():
-    sys.excepthook = lambda exc, value, tb: log_crash("error", exc, value, tb)
+    settings = Settings()
+    logs.setup(bool(settings.get("detailed_logs")))
     lower_priority()
-    scale = int(Settings().get("ui_scale") or 100)
+    scale = int(settings.get("ui_scale") or 100)
     if scale != 100:                              # must be set before the app starts
         os.environ["QT_SCALE_FACTOR"] = str(scale / 100)
+    logs.hook_qt()
     app = QApplication(sys.argv)
     app.setApplicationName(PRODUCT_NAME)
     app.setStyle("Fusion")
@@ -72,19 +69,24 @@ def main():
     win.start_window("--autostart" in sys.argv and "--selftest" not in sys.argv)
     if "--selftest" in sys.argv:
         QTimer.singleShot(2500, lambda: selftest(win))
-    sys.exit(app.exec())
+    code = app.exec()
+    logs.closing("exit code %d" % code)
+    sys.exit(code)
 
 
 if __name__ == "__main__":
     try:
         main()
+    except SystemExit:
+        raise
     except Exception:
+        logs.setup()
         log_crash("startup", *sys.exc_info())
         if "--selftest" in sys.argv:
             os._exit(1)
         try:
             QMessageBox.critical(None, PRODUCT_NAME, "CHATDOOM could not start. Please reinstall it from zunimilabs.online/chatdoom.\n\n"
-                                                     "Details: " + os.path.join(data_dir(), "crash.log"))
+                                                     "Details: " + logs.path("crash.log"))
         except Exception:
             pass
         sys.exit(1)

@@ -7,6 +7,7 @@ import urllib.request
 from PySide6.QtCore import QObject, QUrl, Signal
 from PySide6.QtGui import QDesktopServices
 
+from .moderation import remember_sent
 from .discord import run_bg
 from .oauth_local import Loopback
 from .platforms import youtube_id
@@ -120,6 +121,7 @@ class PlatformAuth(QObject):
     def send_message(self, platform, text, video="", quiet=False, reply_to=""):
         """video: a YouTube link or ID to post in (the main YouTube stream when empty). quiet: only report failures.
         reply_to: the message id on Twitch and Kick. YouTube has no replies for apps."""
+        remember_sent(text)                       # its echo in chat is not read aloud
         self._action(platform, "message", {
             "platform": platform,
             "text": text,
