@@ -9,12 +9,12 @@ import urllib.request
 from PySide6.QtCore import QByteArray, QTimer, QUrl
 from PySide6.QtGui import QDesktopServices, QGuiApplication
 from PySide6.QtSvgWidgets import QSvgWidget
-from PySide6.QtWidgets import QComboBox, QLabel, QLineEdit, QPushButton, QSpinBox
+from PySide6.QtWidgets import QComboBox, QInputDialog, QLabel, QLineEdit, QMessageBox, QPushButton, QSpinBox
 
 from . import logs
 from .discord import run_bg
 from .theme import DEFAULT_THEME, THEMES
-from .ui_kit import SubPage, bind_switch, field_row, hrow, option_switch_row, section_card
+from .ui_kit import SubPage, bind_switch, field_row, hrow, info_box, option_switch_row, section_card
 
 
 def describe_page(page):
@@ -152,11 +152,15 @@ class PaymentsPage(SubPage):
         lay.addWidget(intro)
 
         form, fl = section_card(
-            "Set up or change your page",
+            "Set up your page",
             "Cashfree checks your account before the first tip (usually within a day). Your PAN and account number go to "
-            "Cashfree only; ZunimiLabs does not keep them. To change only the page name, title or smallest tip, leave the "
-            "payout fields empty.",
+            "Cashfree only; ZunimiLabs does not keep them.",
         )
+        self.upi_setup_card = form
+        fl.addWidget(info_box(
+            "Your page link and the account you get paid to are permanent. To change either one later you have to delete your "
+            "tip page and set it up again from the start: Cashfree verifies you again (up to a day), and the QR codes you "
+            "already shared stop working until your new page is verified. Check everything carefully before you save.", "Check before you save"))
         self.upi_fields = {}
 
         def field(key, title, note, placeholder="", password=False):
@@ -190,7 +194,7 @@ class PaymentsPage(SubPage):
         field("email", "Email", "Cashfree sends payout notices here.")
         field("phone", "Mobile number", "10-digit Indian mobile number.", "98765 43210")
         self._payout_changed()
-        save = QPushButton("Save my tip page")
+        save = QPushButton("Create my tip page")
         save.setObjectName("primary")
         save.clicked.connect(self.save_upi)
         self.upi_save_state = QLabel("")
@@ -198,6 +202,31 @@ class PaymentsPage(SubPage):
         self.upi_save_state.setWordWrap(True)
         fl.addWidget(hrow(save, self.upi_save_state))
         lay.addWidget(form)
+
+        edit, el = section_card("Your page", "You can change the name viewers see and the smallest tip at any time.")
+        self.upi_edit_card = edit
+        self.edit_name = QLineEdit()
+        self.edit_name.setMaxLength(40)
+        el.addWidget(field_row("Name viewers see", "Shown at the top of your tip page.", self.edit_name))
+        self.edit_min = QSpinBox()
+        self.edit_min.setRange(10, 100000)
+        self.edit_min.setPrefix("₹ ")
+        el.addWidget(field_row("Smallest tip", "Tips under this amount are refused on the page.", self.edit_min))
+        save_edit = QPushButton("Save changes")
+        save_edit.setObjectName("primary")
+        save_edit.clicked.connect(self.save_edit)
+        self.edit_state = QLabel("")
+        self.edit_state.setObjectName("sub")
+        self.edit_state.setWordWrap(True)
+        el.addWidget(hrow(save_edit, self.edit_state))
+        self.locked_note = info_box("-", "Link and payout account are permanent")
+        el.addWidget(self.locked_note)
+        delete = QPushButton("Delete my tip page")
+        delete.setObjectName("danger")
+        delete.clicked.connect(self.delete_upi)
+        el.addWidget(hrow(delete))
+        edit.hide()
+        lay.addWidget(edit)
 
     def _payout_changed(self):
         upi = self.upi_payout.currentData() == "upi"
@@ -208,21 +237,65 @@ class PaymentsPage(SubPage):
         run_bg(self.bridge, "upi:get", lambda: self.cloud.call("GET", "/api/tips"))
 
     def upi_body(self):
-        """What Save sends. Payout details only when typed (or on the first setup), so a rename keeps the account."""
+        """What Create sends: the page and the payout account, once."""
         f = {k: w.text().strip() for k, w in self.upi_fields.items()}
-        body = {"slug": f["slug"], "name": f["name"], "minAmount": self.upi_min.value()}
-        if not self.tip or any(f[k] for k in ("vpa", "account", "pan")):
-            body.update(holder=f["holder"], pan=f["pan"], email=f["email"], phone=f["phone"])
-            if self.upi_payout.currentData() == "upi":
-                body["vpa"] = f["vpa"]
-            else:
-                body.update(account=f["account"], ifsc=f["ifsc"])
+        body = {"slug": f["slug"].lower(), "name": f["name"], "minAmount": self.upi_min.value(),
+                "holder": f["holder"], "pan": f["pan"], "email": f["email"], "phone": f["phone"]}
+        if self.upi_payout.currentData() == "upi":
+            body["vpa"] = f["vpa"]
+        else:
+            body.update(account=f["account"], ifsc=f["ifsc"])
         return body
+
+    def confirm_create(self, body):
+        """The last look before the permanent parts are saved. Tests replace this."""
+        if body.get("vpa"):
+            paid_to = "UPI ID " + body["vpa"]
+        else:
+            paid_to = "bank account ending %s (%s)" % (body.get("account", "")[-4:], body.get("ifsc", ""))
+        base = (self.s.get("cloud_url") or "").rstrip("/")
+        text = ("Your tip page will be:\n\n    %s/t/%s\n\nTips are paid to: %s\n\n"
+                "The link and the account are PERMANENT. To change them later you must delete this tip page and set it up "
+                "again from the start. Cashfree will verify you again, and the QR codes you already shared stop working until then."
+                "\n\nCreate the page?" % (base, body["slug"], paid_to))
+        answer = QMessageBox.question(self, "Create your tip page", text, QMessageBox.Yes | QMessageBox.Cancel, QMessageBox.Cancel)
+        return answer == QMessageBox.Yes
 
     def save_upi(self):
         body = self.upi_body()
+        if not body["slug"]:
+            self.upi_save_state.setText("Type a page name first.")
+            return
+        if not self.confirm_create(body):
+            self.upi_save_state.setText("Not created. Nothing was sent.")
+            return
         self.upi_save_state.setText("Saving...")
         run_bg(self.bridge, "upi:save", lambda: self.cloud.call("POST", "/api/tips/setup", body))
+
+    def save_edit(self):
+        body = {"name": self.edit_name.text().strip(), "minAmount": self.edit_min.value()}
+        self.edit_state.setText("Saving...")
+        run_bg(self.bridge, "upi:edit", lambda: self.cloud.call("PUT", "/api/tips", body))
+
+    def ask_delete(self, slug):
+        """Asks the streamer to type the page name. Tests replace this."""
+        typed, ok = QInputDialog.getText(
+            self, "Delete your tip page",
+            "This closes your tip page for good. Tips stop at once, the QR codes you shared stop working, and to take tips "
+            "again you must set up a new page and Cashfree must verify you again. Tips already paid still reach you."
+            "\n\nType your page name (%s) to delete it:" % slug)
+        return typed.strip().lower() if ok else ""
+
+    def delete_upi(self):
+        slug = self.tip.get("slug", "")
+        typed = self.ask_delete(slug)
+        if not typed:
+            return
+        if typed != slug:
+            self.edit_state.setText("That is not your page name. Nothing was deleted.")
+            return
+        self.edit_state.setText("Deleting...")
+        run_bg(self.bridge, "upi:delete", lambda: self.cloud.call("DELETE", "/api/tips", {"confirm": typed}))
 
     def toggle_upi_pause(self):
         if self.tip:
@@ -241,6 +314,8 @@ class PaymentsPage(SubPage):
         self.tip = page or {}
         self.upi_state.setText(describe_page(page))
         verified = bool(page) and page.get("status") == "ACTIVE"
+        self.upi_setup_card.setVisible(not page)       # one page per streamer: set up once, then only edit or delete
+        self.upi_edit_card.setVisible(bool(page))
         self.upi_link_row.setVisible(verified)    # link and QR only once the account is verified
         self.upi_qr_row.setVisible(verified)
         if page and page.get("status") not in ("ACTIVE", "BLOCKED"):
@@ -253,10 +328,10 @@ class PaymentsPage(SubPage):
             self.upi_state.setText("Verified! Your tip link and QR code are ready below.  " + describe_page(page))
             logs.get("tips").info("Tip page %s verified by Cashfree", page.get("slug"))
         self.upi_url.setText(page["url"] if verified else "")
-        if not self.upi_fields["slug"].text():
-            self.upi_fields["slug"].setText(page["slug"])
-            self.upi_fields["name"].setText(page["name"])
-            self.upi_min.setValue(int(page["minAmount"]))
+        self.edit_name.setText(page["name"])
+        self.edit_min.setValue(int(page["minAmount"]))
+        self.locked_note.findChildren(QLabel)[-1].setText(
+            "Link: %s   Paid to: %s. To change either one, delete this page and set it up again." % (page["url"], page.get("payout") or "-"))
         self.upi_pause.setText("Pause tips" if page.get("enabled") else "Resume tips")
         url = page.get("qrUrl")
         if url and verified:
@@ -301,10 +376,17 @@ class PaymentsPage(SubPage):
                 self.qr.show()
             return
         if res.get("error"):
-            (self.upi_save_state if tag == "upi:save" else self.upi_state).setText(res["error"])
+            boxes = {"upi:save": self.upi_save_state, "upi:edit": self.edit_state, "upi:delete": self.edit_state}
+            boxes.get(tag, self.upi_state).setText(res["error"])
             return
+        if tag == "upi:edit":
+            self.edit_state.setText("Saved.")
+        if tag == "upi:delete":
+            self.edit_state.setText("")
+            self.upi_save_state.setText("Your tip page was deleted. You can set up a new one below.")
+            logs.get("tips").info("Tip page deleted by the streamer")
         if tag == "upi:save":
             self.upi_save_state.setText("Saved.")
-            for key in ("vpa", "account", "ifsc", "pan"):      # saved with Cashfree; a later rename must not resend them
-                self.upi_fields[key].clear()
+            for w in self.upi_fields.values():           # saved with Cashfree; nothing is kept in the form
+                w.clear()
         self._show_upi(res)

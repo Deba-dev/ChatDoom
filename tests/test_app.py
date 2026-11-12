@@ -44,7 +44,10 @@ class Cloud(BaseHTTPRequestHandler):
         if self.headers.get("Authorization") != "Bearer KEY": return self.send({"error": "x"}, 401)
         b = self.body()
         if self.path == "/api/tips":
-            C["tip_page"]["enabled"] = bool(b.get("enabled")); return self.send({"ok": True, "page": C["tip_page"]})
+            C["tip_puts"] = C.get("tip_puts", []) + [b]
+            for k in ("enabled", "name", "minAmount"):
+                if k in b: C["tip_page"][k] = b[k]
+            return self.send({"ok": True, "page": C["tip_page"]})
         C["config_puts"].append(b)
         if "inviteRules" in b: C["invite_rules"] = [dict(r, code=r["code"].split("/")[-1]) for r in b["inviteRules"]]
         if b.get("razorpaySecret"): C["secret"] = b["razorpaySecret"]
@@ -52,9 +55,17 @@ class Cloud(BaseHTTPRequestHandler):
             if b.get(g + "Secret"): C.setdefault("gw", set()).add(g)
         self.send({"ok": True, "config": {"hasRazorpaySecret": bool(C.get("secret")), "hasStripeSecret": "stripe" in C.get("gw", set()), "hasGenericSecret": "generic" in C.get("gw", set()), "hasCashfreeSecret": False,
                                           "hookUrl": "https://cv.example/hook/razorpay/abc", "hookUrls": {g: "https://cv.example/hook/%s/abc" % g for g in ("razorpay", "stripe", "cashfree", "generic")}}})
+    def do_DELETE(self):
+        b = self.body()
+        if self.path == "/api/tips":
+            if b.get("confirm") != (C.get("tip_page") or {}).get("slug"): return self.send({"error": "Type your page name to delete it."}, 400)
+            C["tip_page"] = None; C["tip_deletes"] = C.get("tip_deletes", 0) + 1
+            return self.send({"ok": True, "page": None, "terms": TIP_TERMS})
+        self.send({"error": "nf"}, 404)
     def do_POST(self):
         b = self.body()
         if self.path == "/api/tips/setup":
+            if C.get("tip_page"): return self.send({"error": "You already have a tip page."}, 409)
             C["tip_setups"] = C.get("tip_setups", []) + [b]
             if b.get("pan") == "BAD": return self.send({"error": "Cashfree did not accept these details: invalid pan"}, 400)
             base = "http://127.0.0.1:%d/t/%s" % (self.server.server_address[1], b["slug"])
@@ -582,6 +593,7 @@ raw = json.load(open(sp)); S2 = stg.Settings(sp)
 stg.protect, stg.unprotect = stg_p, stg_u
 ok(raw["cloud_token"].startswith("dpapi:") and "KEY-SECRET" not in open(sp).read() and raw["youtube"] == "plain-value" and S2.get("cloud_token") == "KEY-SECRET" and S2.get("g_client_secret") == "GSEC", "settings file keeps sign-in keys encrypted, other values readable, loads back correctly")
 
+from PySide6.QtWidgets import QLabel
 # ===== H. UPI tip page =====
 print("--- H. UPI tip page ---")
 pg = w.payments
@@ -592,6 +604,13 @@ ok("Not set up yet" in pg.upi_state.text(), "before setup the page says it is no
 f = pg.upi_fields
 for k, v in {"slug": "drxshi", "name": "DRXSHI", "vpa": "drxshi@okicici", "holder": "Debarshi Parasar", "pan": "BAD", "email": "a@b.in", "phone": "9876543210"}.items():
     f[k].setText(v)
+asked_create = []
+pg.confirm_create = lambda body: asked_create.append(body) or False
+pg.save_upi(); wait(300)
+ok(len(asked_create) == 1 and "tip_setups" not in C and "Nothing was sent" in pg.upi_save_state.text(),
+   "before creating, the streamer is warned the link and account are permanent; Cancel sends nothing")
+ok(any("permanent" in l.text() for l in pg.upi_setup_card.findChildren(QLabel)), "the setup form warns that the link and payout account are permanent")
+pg.confirm_create = lambda body: asked_create.append(body) or True
 pg.save_upi(); wait(500)
 ok("invalid pan" in pg.upi_save_state.text(), "Cashfree's refusal is shown next to Save")
 f["pan"].setText("ABCDE1234F"); pg.save_upi(); wait(800)
@@ -599,8 +618,11 @@ sent = C["tip_setups"][-1]
 ok(sent["vpa"] == "drxshi@okicici" and sent["pan"] == "ABCDE1234F" and "account" not in sent and sent["minAmount"] == 20, "Save sends the UPI ID, PAN and smallest tip")
 ok(pg.upi_url.text() == "" and pg.upi_link_row.isHidden() and pg.upi_qr_row.isHidden() and pg.upi_wait.isActive()
    and "checking your account" in pg.upi_state.text() and f["pan"].text() == "", "while Cashfree checks the account there is no link or QR yet, the PAN box is cleared, and the app asks again every minute")
-f["name"].setText("DRXSHI LIVE"); pg.save_upi(); wait(500)
-ok("pan" not in C["tip_setups"][-1] and C["tip_setups"][-1]["name"] == "DRXSHI LIVE", "renaming later does not resend bank details")
+ok(pg.upi_setup_card.isHidden() and not pg.upi_edit_card.isHidden() and pg.edit_name.text() == "DRXSHI",
+   "once created, the setup form is gone: only the name viewers see and the smallest tip can be edited")
+pg.edit_name.setText("DRXSHI LIVE"); pg.edit_min.setValue(30); pg.save_edit(); wait(500)
+ok(C["tip_puts"][-1] == {"name": "DRXSHI LIVE", "minAmount": 30} and len(C["tip_setups"]) == 2 and pg.edit_state.text() == "Saved.",
+   "changing the shown name and smallest tip never touches the link or the payout account")
 pg.upi_payout.setCurrentIndex(pg.upi_payout.findData("bank"))
 ok(not pg.upi_rows["account"].isHidden() and pg.upi_rows["vpa"].isHidden(), "choosing a bank account shows account number and IFSC instead of UPI ID")
 C["tip_page"]["status"] = "ACTIVE"; pg.refresh_upi(); wait(500)
@@ -610,6 +632,11 @@ ok("/t/drxshi" in pg.upi_url.text() and not pg.upi_link_row.isHidden() and not p
    "once verified the tip link and QR appear and the app stops asking")
 pg.toggle_upi_pause(); wait(500)
 ok(pg.upi_state.text().startswith("Paused") and pg.upi_pause.text() == "Resume tips", "the streamer can pause tips")
+pg.ask_delete = lambda slug: "wrong-name"; pg.delete_upi(); wait(300)
+ok(C.get("tip_page") and "Nothing was deleted" in pg.edit_state.text(), "deleting needs the exact page name")
+pg.ask_delete = lambda slug: slug; pg.delete_upi(); wait(500)
+ok(C.get("tip_page") is None and not pg.upi_setup_card.isHidden() and pg.upi_edit_card.isHidden() and pg.upi_link_row.isHidden()
+   and "deleted" in pg.upi_save_state.text(), "after deleting, the page is gone and the streamer can set up again from the start")
 pg.tip_link.setText("https://tips.example/creator"); ok(pg.save_tip_link() and w.s.get("tip_link") == "https://tips.example/creator",
    "another tip link accepts and saves a public HTTPS payment URL")
 pg.tip_link.setText("javascript:alert(1)"); ok(not pg.save_tip_link() and w.s.get("tip_link") == "https://tips.example/creator",

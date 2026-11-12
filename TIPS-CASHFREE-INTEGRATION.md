@@ -33,6 +33,8 @@ Commits on `main`:
 4. **Ask a CA** about GST on the 2% commission, and TCS/TDS as an e-commerce operator.
 5. **Send the sandbox keys:** Cashfree dashboard → Developers → API keys, in **Test** mode: Client ID and Client Secret.
 
+**Also ask in the ticket (fees, researched 2026-11-12):** the exact fee for UPI payments under ₹2,000, the Easy Split fee per split, and whether the 0% new-merchant offer (signed up on/after 21 Jul 2026, first ₹20 lakh, until 31 Mar 2027) applies. Public figures: payment fee about 1.95–2% + 18% GST, with one Cashfree post saying UPI is 0% under ₹2,000; Easy Split 0.2% + GST per split. **At the full ~2.3% rate a 2% commission loses about ₹0.54 on every ₹100 tip.** If that rate applies, either set `TIP_GATEWAY_FEE_PCT` (or Cashfree's "bill charges to vendor") so the streamer's share pays the fee, or raise the commission to 3–5%. Not decided yet.
+
 ## 3. Go-live checklist (for Claude, after the steps above)
 
 1. Store the secrets:
@@ -46,7 +48,7 @@ Commits on `main`:
 4. `npx wrangler deploy`. Auto mode blocks production deploys, so the user runs it or approves it.
 5. **Sandbox end-to-end test.** Check these points against the real sandbox. They were built from the docs and are **unverified**:
    - [ ] Vendor create accepts our body (`kyc_details.account_type "INDIVIDUAL"`, `business_type "Content creator"`, `upi` or `bank`). Sandbox vendors turn ACTIVE in about 10 minutes.
-   - [ ] Vendor update uses `PATCH /easy-split/vendors/{id}` with the same body. This is only used when the streamer changes payout details.
+   - [ ] A second vendor for the same streamer (`cd_<guild>_2`, after they delete and set up again) is accepted.
    - [ ] An order with `order_splits: [{vendor_id, percentage: 98}]` is accepted with `payment_methods: "upi"`.
    - [ ] `customer_phone` placeholder `9999999999` is accepted when the viewer gives no phone number.
    - [ ] The hosted checkout opens from `Cashfree({mode}).checkout({paymentSessionId, redirectTarget: "_self"})` (SDK `https://sdk.cashfree.com/js/v3/cashfree.js`) and returns to `/t/<slug>/done?order_id=…`.
@@ -67,8 +69,9 @@ Wired in `cloud/src/index.js`. The shared `addTip()` writes to the existing `tip
 | Route | Who calls it | What it does |
 |---|---|---|
 | `GET /api/tips` | app (server key) | The streamer's page and terms (98/2, sandbox flag). Refreshes the vendor status from Cashfree while it isn't ACTIVE yet. |
-| `POST /api/tips/setup` | app | Validates and creates (or PATCHes) the Cashfree vendor, then stores the page. **PAN and account numbers are not stored**; only a masked payout label is kept. |
-| `PUT /api/tips` | app | Pause or resume, and the smallest tip (₹10 or more). |
+| `POST /api/tips/setup` | app | **Create only.** Validates and creates the Cashfree vendor, then stores the page. Refused (409) if the streamer already has a page. **PAN and account numbers are not stored**; only a masked payout label is kept. |
+| `PUT /api/tips` | app | Pause or resume, the smallest tip (₹10 or more), and the name viewers see. |
+| `DELETE /api/tips` | app | Body `{confirm: <page name>}`. Deletes the page; its vendor is marked closed but kept so pending settlements still pay out. |
 | `GET /t/<slug>` | viewer | The tip page: name, message (200 characters), amount buttons. Shows the 2% note and a Test-mode badge in the sandbox. |
 | `GET /t/<slug>/qr.svg` | OBS, app | QR code of the page link (vendored `src/vendor/qrcode.js`, qrcode-generator 1.4.4, MIT). |
 | `POST /t/<slug>/order` | tip page | Creates the Cashfree order (UPI only, 30-minute expiry, split to the vendor). Rate limit: 6 per minute per IP. |
@@ -79,7 +82,9 @@ Wired in `cloud/src/index.js`. The shared `addTip()` writes to the existing `tip
 - `tip_pages`: slug, guild, vendor_id, name, status, remarks, payout (masked), min_amount, enabled, created.
 - `tip_orders`: order_id, guild, slug, name, message, amount, status, created. Unpaid orders are deleted after 7 days.
 
-**Page names:** 3–30 characters (a–z, 0–9, dashes), with reserved words blocked. Vendor ID is `cd_<discord guild id>`.
+**Page names:** 3–30 characters (a–z, 0–9, dashes), with reserved words blocked. Vendor ID is `cd_<discord guild id>`, then `cd_<guild>_2`, `_3`… for each new setup after a delete.
+
+**Permanent by design (user's decision, 2026-11-12):** the page link and payout account can't be edited. To change them the streamer deletes the page and sets up again; Cashfree verifies the new vendor from scratch. The app warns before Create (confirm dialog + note on the form) and asks for the page name before Delete. `tip_slugs` keeps every name a streamer ever used reserved for them, so an old QR can never pay a different streamer; a deleted page's link says "closed" until the same streamer sets up again (then old names lead to the new page). `tip_vendors` lists every vendor per streamer.
 
 ### App
 - **`app/payments_page.py`:** tabs **UPI tip page** (setup form, status, link, QR, copy QR link for OBS, pause), **Read aloud**, and **Other tip link**. After a successful save, the payout fields are cleared, so a later rename doesn't resend them.

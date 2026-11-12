@@ -66,6 +66,9 @@ async function store(env) {
       await env.DB.prepare("CREATE INDEX IF NOT EXISTS tip_orders_created ON tip_orders (created)").run();
       // Every page name a streamer ever used stays theirs: an old QR or link on a past stream must never pay someone else.
       await env.DB.prepare("CREATE TABLE IF NOT EXISTS tip_slugs (slug TEXT PRIMARY KEY, guild TEXT NOT NULL, created INTEGER NOT NULL)").run();
+      // Every Cashfree vendor ever made for a streamer. A deleted page keeps its vendor (tips already paid still settle to it);
+      // setting up again makes a new vendor that Cashfree verifies from the start.
+      await env.DB.prepare("CREATE TABLE IF NOT EXISTS tip_vendors (vendor_id TEXT PRIMARY KEY, guild TEXT NOT NULL, created INTEGER NOT NULL, closed INTEGER)").run();
     })().catch((e) => { ready = null; throw e; });
   }
   await ready;
@@ -111,35 +114,34 @@ export async function handleTipApi(request, env, url, guildId, body) {
   }
 
   if (route === "POST /api/tips/setup") {
-    const existing = await pageByGuild(d, guildId);
-    const v = validSetup(body, !existing);
+    // Only for a new page. The link and the payout account are permanent: to change them the streamer deletes the page
+    // (DELETE /api/tips) and sets up again, and Cashfree verifies the new account from the start.
+    if (await pageByGuild(d, guildId))
+      return json({ error: "You already have a tip page. Its link and payout account can't be changed: delete the page and set it up again." }, 409);
+    const v = validSetup(body, true);
     if (v.error) return json({ error: v.error }, 400);
     const owner = await slugOwner(d, v.slug);
     if (owner && owner !== String(guildId)) return json({ error: "That page name is taken. Try another." }, 409);
     const digits = String(guildId).replace(/\D/g, "");
-    if (!existing && !digits) return json({ error: "Connect your Discord server in CHATDOOM first." }, 400);
-    const vendorId = existing ? existing.vendor_id : "cd_" + digits.slice(0, 30);     // one Cashfree account per streamer
+    if (!digits) return json({ error: "Connect your Discord server in CHATDOOM first." }, 400);
+    const made = await d.prepare("SELECT COUNT(*) AS n FROM tip_vendors WHERE guild = ?").bind(String(guildId)).first();
+    const n = Number((made && made.n) || 0);
+    const vendorId = "cd_" + digits.slice(0, 30) + (n ? "_" + (n + 1) : "");      // one Cashfree account per streamer, new one per setup
     const vendor = { vendor_id: vendorId, status: "ACTIVE", name: v.holder, email: v.email, phone: v.phone,
       verify_account: true, dashboard_access: false, schedule_option: 2,      // T+2: every working day, two days later
       kyc_details: { account_type: "INDIVIDUAL", business_type: "Content creator", pan: v.pan },
       ...(v.vpa ? { upi: { vpa: v.vpa, account_holder: v.holder } }
         : { bank: { account_number: v.account, account_holder: v.holder, ifsc: v.ifsc } }) };
-    let r;
-    if (!existing) r = await cashfree(env, "POST", "/easy-split/vendors", vendor);
-    else if (v.payoutChanged) r = await cashfree(env, "PATCH", "/easy-split/vendors/" + vendorId, vendor);
-    else r = { ok: true, data: {} };
+    const r = await cashfree(env, "POST", "/easy-split/vendors", vendor);
     if (!r.ok) return json({ error: "Cashfree did not accept these details: " + cfError(r) }, 400);
+    const now = Math.floor(Date.now() / 1000);
+    await d.prepare("INSERT OR IGNORE INTO tip_vendors (vendor_id, guild, created) VALUES (?, ?, ?)").bind(vendorId, String(guildId), now).run();
 
-    const payout = v.vpa ? "UPI " + maskVpa(v.vpa) : v.account ? "Bank account ending " + v.account.slice(-4) + " (" + v.ifsc + ")" : (existing && existing.payout) || "";
-    const status = r.data.status || (existing ? existing.status : "IN_BENE_CREATION");
+    const payout = v.vpa ? "UPI " + maskVpa(v.vpa) : "Bank account ending " + v.account.slice(-4) + " (" + v.ifsc + ")";
+    const status = r.data.status || "IN_BENE_CREATION";
     try {
-      if (existing) {
-        await keepSlug(d, existing.slug, String(guildId));
-        await d.prepare("UPDATE tip_pages SET slug = ?, name = ?, min_amount = ?, payout = ?, status = ? WHERE guild = ?")
-          .bind(v.slug, v.name, v.minAmount, payout, status, guildId).run();
-      } else
-        await d.prepare("INSERT INTO tip_pages (slug, guild, vendor_id, name, status, remarks, payout, min_amount, enabled, created) VALUES (?, ?, ?, ?, ?, '', ?, ?, 1, ?)")
-          .bind(v.slug, guildId, vendorId, v.name, status, payout, v.minAmount, Math.floor(Date.now() / 1000)).run();
+      await d.prepare("INSERT INTO tip_pages (slug, guild, vendor_id, name, status, remarks, payout, min_amount, enabled, created) VALUES (?, ?, ?, ?, ?, '', ?, ?, 1, ?)")
+        .bind(v.slug, guildId, vendorId, v.name, status, payout, v.minAmount, now).run();
       await keepSlug(d, v.slug, String(guildId));
     } catch (e) {
       if (/UNIQUE|constraint/i.test(String(e && e.message))) return json({ error: "That page name is taken. Try another." }, 409);
@@ -148,13 +150,25 @@ export async function handleTipApi(request, env, url, guildId, body) {
     return json({ ok: true, page: publicPage(env, url.origin, await pageByGuild(d, guildId)), terms: terms(env) });
   }
 
+  if (route === "DELETE /api/tips") {
+    const p = await pageByGuild(d, guildId);
+    if (!p) return json({ error: "You have no tip page." }, 404);
+    if (clean(body && body.confirm, 30).toLowerCase() !== p.slug) return json({ error: "Type your page name to delete it." }, 400);
+    // The page name stays reserved for this streamer, and the vendor stays so tips already paid still reach them.
+    await d.prepare("UPDATE tip_vendors SET closed = ? WHERE vendor_id = ?").bind(Math.floor(Date.now() / 1000), p.vendor_id).run();
+    await d.prepare("DELETE FROM tip_pages WHERE guild = ?").bind(guildId).run();
+    return json({ ok: true, page: null, terms: terms(env) });
+  }
+
   if (route === "PUT /api/tips") {
     const p = await pageByGuild(d, guildId);
     if (!p) return json({ error: "Set up your tip page first." }, 404);
     const enabled = body.enabled === undefined ? p.enabled : body.enabled ? 1 : 0;
     const min = body.minAmount === undefined ? p.min_amount : Math.round(Number(body.minAmount));
     if (!(min >= MIN_TIP && min <= MAX_TIP)) return json({ error: "The smallest tip must be between ₹" + MIN_TIP + " and ₹" + MAX_TIP + "." }, 400);
-    await d.prepare("UPDATE tip_pages SET enabled = ?, min_amount = ? WHERE guild = ?").bind(enabled, min, guildId).run();
+    const name = body.name === undefined ? p.name : clean(body.name, 40);          // the name viewers see may change; the link may not
+    if (name.length < 2) return json({ error: "Type the name viewers see on your page." }, 400);
+    await d.prepare("UPDATE tip_pages SET enabled = ?, min_amount = ?, name = ? WHERE guild = ?").bind(enabled, min, name, guildId).run();
     return json({ ok: true, page: publicPage(env, url.origin, await pageByGuild(d, guildId)) });
   }
   return json({ error: "not found" }, 404);
@@ -215,6 +229,7 @@ export async function handleTipPublic(request, env, url, addTip) {
   const d = await store(env);
   const asked = clean(parts[1], 30).toLowerCase();
   const p = await pageForSlug(d, asked);
+  if (!p && (await slugOwner(d, asked))) return tipHtml("Tip page closed", "<p>This tip page is closed. Check the streamer's channel for their new link.</p>", 404);
   if (!p) return tipHtml("Page not found", "<p>There is no tip page with this name. Check the link on stream.</p>", 404);
   const action = parts[2] || "";
 

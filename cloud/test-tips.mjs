@@ -139,33 +139,54 @@ r = await call("POST", "/t/drxshi/order", { key: null, body: { amount: 100 }, he
 ok(r.status === 409, "a paused page takes no orders");
 r = await call("PUT", "/api/tips", { body: { enabled: true, minAmount: 3 } });
 ok(r.status === 400, "the smallest tip cannot go under ₹10");
-r = await call("POST", "/api/tips/setup", { body: { slug: "drxshi-live", name: "DRXSHI LIVE" } });
-ok(r.status === 200 && r.data.page.url.endsWith("/t/drxshi-live") && cf.calls.filter((c) => c.method === "PATCH").length === 0, "renaming the page leaves the Cashfree account alone");
+// ---- the link and payout account are permanent; only the shown name and smallest tip change
+r = await call("PUT", "/api/tips", { body: { name: "DRXSHI LIVE", minAmount: 30 } });
+ok(r.status === 200 && r.data.page.name === "DRXSHI LIVE" && r.data.page.minAmount === 30 && r.data.page.url.endsWith("/t/drxshi"),
+   "the streamer can change the name viewers see and the smallest tip; the link stays");
+const vendorPosts = () => cf.calls.filter((c) => c.method === "POST" && c.path === "/pg/easy-split/vendors").length;
+let before = vendorPosts();
+r = await call("POST", "/api/tips/setup", { body: { ...good, slug: "drxshi-live", vpa: "new@okaxis" } });
+ok(r.status === 409 && vendorPosts() === before && cf.calls.every((c) => c.method !== "PATCH"), "a second setup is refused: the link and payout account can only change by deleting the page");
 
-// ---- every streamer has their own link, QR and Cashfree account; old links never move to someone else
-r = await call("GET", "/t/drxshi", { key: null });
-ok(r.status === 301 || (r.status === 200 && String(r.data).includes("DRXSHI LIVE")), "the old link still goes to the same streamer after a rename");
+// ---- every streamer has their own link, QR and Cashfree account
 await env.KV.put("token:appkey2", JSON.stringify("987654321098765432"));
 await env.KV.put("guild:987654321098765432", JSON.stringify({ guildName: "OTHER", config: {} }));
 const other = { ...good, slug: "drxshi", name: "Someone else", vpa: "else@okaxis", pan: "zyxwv9876k" };
 r = await call("POST", "/api/tips/setup", { body: other, key: "appkey2" });
-ok(r.status === 409, "another streamer cannot take a page name the first streamer used before (old QR codes stay safe)");
-r = await call("POST", "/api/tips/setup", { body: { ...other, slug: "drxshi-live" }, key: "appkey2" });
 ok(r.status === 409, "another streamer cannot take a page name in use");
 r = await call("POST", "/api/tips/setup", { body: { ...other, slug: "someone-else" }, key: "appkey2" });
-const vendors = cf.calls.filter((c) => c.method === "POST" && c.path === "/pg/easy-split/vendors").map((c) => c.body.vendor_id);
+let vendors = cf.calls.filter((c) => c.method === "POST" && c.path === "/pg/easy-split/vendors").map((c) => c.body.vendor_id);
 ok(r.status === 200 && r.data.page.url.endsWith("/t/someone-else") && vendors.at(-1) === "cd_987654321098765432" && !vendors.slice(0, -1).includes("cd_987654321098765432"),
    "a second streamer gets their own page and their own Cashfree account");
-const qrA = await call("GET", "/t/drxshi-live/qr.svg", { key: null }), qrB = await call("GET", "/t/someone-else/qr.svg", { key: null });
+const qrA = await call("GET", "/t/drxshi/qr.svg", { key: null }), qrB = await call("GET", "/t/someone-else/qr.svg", { key: null });
 ok(qrA.status === 200 && qrB.status === 200 && qrA.data !== qrB.data, "each streamer's QR code is different");
 cf.vendorStatus = "ACTIVE"; await call("GET", "/api/tips", { key: "appkey2" });
 r = await call("POST", "/t/someone-else/order", { key: null, body: { name: "V", amount: 100 }, headers: { "cf-connecting-ip": "9.9.9.9" } });
 const order2 = cf.calls.filter((c) => c.path === "/pg/orders").pop();
+const orderOfSecond = r.data.orderId;
 ok(r.status === 200 && order2.body.order_splits[0].vendor_id === "cd_987654321098765432", "a tip on the second page is split to the second streamer only");
-r = await call("GET", "/t/drxshi-live/status/" + r.data.orderId, { key: null });
+r = await call("GET", "/t/drxshi/status/" + orderOfSecond, { key: null });
 ok(r.status === 404, "one streamer's page cannot see or settle another streamer's order");
-r = await call("POST", "/api/tips/setup", { body: { slug: "drxshi", name: "DRXSHI" } });
-ok(r.status === 200 && r.data.page.url.endsWith("/t/drxshi"), "the first streamer can take their own old name back");
+
+// ---- deleting the page, and setting up again from the start
+r = await call("DELETE", "/api/tips", { body: { confirm: "wrong" } });
+ok(r.status === 400, "deleting needs the page name typed");
+r = await call("DELETE", "/api/tips", { body: { confirm: "drxshi" } });
+ok(r.status === 200 && r.data.page === null, "the streamer can delete their tip page");
+r = await call("GET", "/t/drxshi", { key: null });
+ok(r.status === 404 && r.data.includes("closed"), "a deleted page says it is closed");
+r = await call("POST", "/t/drxshi/order", { key: null, body: { amount: 100 }, headers: { "cf-connecting-ip": "6.6.6.6" } });
+ok(r.status === 404, "a deleted page takes no tips");
+r = await call("POST", "/api/tips/setup", { body: { ...other, slug: "drxshi" }, key: "appkey2" });
+ok(r.status === 409, "nobody else can take a deleted page's name, so old QR codes can never pay someone else");
+cf.vendorStatus = "IN_BENE_CREATION";
+before = vendorPosts();
+r = await call("POST", "/api/tips/setup", { body: { ...good, vpa: "newupi@okaxis" } });
+vendors = cf.calls.filter((c) => c.method === "POST" && c.path === "/pg/easy-split/vendors").map((c) => c.body.vendor_id);
+ok(r.status === 200 && vendorPosts() === before + 1 && vendors.at(-1) === "cd_123456789012345678_2" && r.data.page.status === "IN_BENE_CREATION" && !r.data.page.ready,
+   "setting up again makes a new Cashfree account that is verified from the start");
+const rows = await env.DB.prepare("SELECT vendor_id, closed FROM tip_vendors WHERE guild = ? ORDER BY created").bind("123456789012345678").all();
+ok(rows.results.length === 2 && rows.results[0].closed && !rows.results[1].closed, "the old Cashfree account is kept (closed) so tips already paid still reach the streamer");
 
 console.log(fails ? fails + " FAILED" : "all passed");
 process.exit(fails ? 1 : 0);
