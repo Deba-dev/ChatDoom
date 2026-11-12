@@ -2,6 +2,7 @@
 // It never touches money. It only: (1) installs the bot, (2) links viewers to Discord accounts,
 // (3) gives roles when the desktop app reports activity.
 import { handlePlatformAuth } from "./platform-auth.js";
+import { handleKick } from "./kick-chat.js";
 import { handlePublicPage } from "./legal-pages.js";
 import { handleSupport } from "./support.js";
 import { handleYoutubeBot } from "./youtube-bot.js";
@@ -687,6 +688,7 @@ async function route(request, env, url) {
   if (p.startsWith("/v1/")) return handleYoutubeBot(request, env, url);      // the YouTube moderator bot (its own secrets)
   if (p.startsWith("/support/")) return handleSupport(request, env, url);    // the website's support page
   if (p.startsWith("/studio/")) return handleStudio(request, env, url);      // Overlay Studio: saved designs and uploads
+  if (p.startsWith("/kick/")) return handleKick(request, env, url);          // Kick chat through Kick's official webhooks
   if (p.startsWith("/t/") || p === "/cashfree/webhook") {                     // ZunimiLabs tip pages (Cashfree Easy Split)
     const r = await handleTipPublic(request, env, url, (guildId, tip) => addTip(env, guildId, tip));
     if (r) return r;

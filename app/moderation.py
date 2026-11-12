@@ -4,7 +4,7 @@ import re
 import time
 from collections import deque
 
-from .hinglish import has_devanagari
+from .wordguard import WordGuard
 
 KNOWN_BOTS = {"nightbot", "streamelements", "streamlabs", "moobot", "fossabot", "wizebot",
               "botrix", "kickbot", "sery_bot", "soundalerts", "serybot", "commanderroot",
@@ -17,6 +17,8 @@ BOT_TAIL = re.compile(r"(?:^|[_\-.\s\d])bot$", re.I)       # sery_bot, my-bot, C
 CAMEL_BOT = re.compile(r"[a-z0-9]Bot$")                     # MooBot, ChannelBot (but not Abbot)
 TTS_RX = re.compile(r"^\s*!tts\b[\s:,-]*", re.I)
 NOT_PAID, NOT_TTS = "normal messages off", "not a !tts message"
+BLOCKED_NAME = "blocked name"
+SAFE_MODE = "safe mode"
 SHOW_ONLY = (NOT_PAID, NOT_TTS)                             # read mode reasons: the message is fine, it is just not spoken
 SENT = deque(maxlen=60)                                     # (time, text) of what CHATDOOM itself posted in chat
 ECHO_SECS = 180
@@ -24,7 +26,28 @@ LINK_RX = re.compile(r"https?://|www\.|\b[\w-]+\.(?:com|in|net|org|tv|gg|io|me|c
 
 BLOCKED_HELP = """# One word or phrase per line. Messages containing them are NOT read aloud.
 # Lines starting with # are ignored. Add words in English letters and/or Devanagari.
+# Tricks like b.c, bhennnn, bh3n, fancy letters and the other script are caught automatically.
 """
+ALLOWED_HELP = """# Words and phrases that are never blocked, even if they contain a blocked word. One per line.
+# Use this when a blocked word catches normal chat, e.g. a phrase like "chod de" if you blocked "chod".
+"""
+
+
+def read_list(path, help_text):
+    """Lines of a word list file (created with its help text on first run), without comments."""
+    words = []
+    try:
+        if not os.path.exists(path):
+            with open(path, "w", encoding="utf-8") as f:
+                f.write(help_text)
+        with open(path, encoding="utf-8") as f:
+            for line in f:
+                line = line.strip().lower()
+                if line and not line.startswith("#"):
+                    words.append(line)
+    except Exception:
+        pass
+    return words
 
 
 def plain_name(name):
@@ -84,38 +107,54 @@ def spoken_text(text):
 
 
 class Moderator:
-    def __init__(self, settings, blocked_path):
+    def __init__(self, settings, blocked_path, allowed_path=None):
         self.s = settings
         self.blocked_path = blocked_path
-        self.blocked = []
+        self.allowed_path = allowed_path or os.path.join(os.path.dirname(blocked_path), "allowed_words.txt")
+        self._blocked, self._allowed = [], []
+        self.guard = WordGuard()
+        self.safe = ""          # raid safe mode: "" off, "paid" read paid only, "mods" read paid and mods
         self.recent = {}        # (author, text) -> time
         self.last_spoken = {}   # author -> time
         self.reload_blocked()
 
+    @property
+    def blocked(self):
+        return self._blocked
+
+    @blocked.setter
+    def blocked(self, words):
+        self._blocked = list(words)
+        self.guard = WordGuard(self._blocked, self._allowed)
+
+    @property
+    def allowed(self):
+        return self._allowed
+
+    @allowed.setter
+    def allowed(self, words):
+        self._allowed = list(words)
+        self.guard = WordGuard(self._blocked, self._allowed)
+
     def reload_blocked(self):
-        words = []
-        try:
-            if not os.path.exists(self.blocked_path):
-                with open(self.blocked_path, "w", encoding="utf-8") as f:
-                    f.write(BLOCKED_HELP)
-            with open(self.blocked_path, encoding="utf-8") as f:
-                for line in f:
-                    line = line.strip().lower()
-                    if line and not line.startswith("#"):
-                        words.append(line)
-        except Exception:
-            pass
-        self.blocked = words
+        """Read both lists again (blocked words and the allow list)."""
+        self._allowed = read_list(self.allowed_path, ALLOWED_HELP)
+        self.blocked = read_list(self.blocked_path, BLOCKED_HELP)
 
     def _blocked_hit(self, text):
-        low = text.lower()
-        for w in self.blocked:
-            if has_devanagari(w):
-                if w in low:
-                    return True
-            elif re.search(r"(?<![a-z0-9])" + re.escape(w) + r"(?![a-z0-9])", low):
-                return True
-        return False
+        return self.guard.hit(text)
+
+    def name_blocked(self, m):
+        """True when the viewer's name contains a blocked word."""
+        return m.platform != "test" and bool(self.blocked) and self._blocked_hit((m.author or "").lstrip("@"))
+
+    def masked_name(self):
+        """What a blocked name becomes: Hindi wording with a Hindi voice, English otherwise."""
+        return "Ek viewer" if (self.s.get("en_voice") or "").lower().startswith("hi-") else "A viewer"
+
+    def shown_name(self, m):
+        """The name to speak and show on stream: the real one, or a stand-in when it has a blocked word."""
+        return self.masked_name() if self.name_blocked(m) else m.author
 
     def check(self, m, now=None):
         """Return (allowed, reason). Reason is shown in the feed when a message is skipped."""
@@ -133,6 +172,13 @@ class Moderator:
             return False, "CHATDOOM's own message"
         if self._blocked_hit(text):
             return False, "blocked word"
+        if s.get("blocked_name_action") == "skip" and self.name_blocked(m):
+            return False, BLOCKED_NAME
+        if self.safe:                    # raid shield: on top of the settings, which stay untouched
+            if LINK_RX.search(text):
+                return False, "link (" + SAFE_MODE + ")"
+            if not paid and not (m.mod and self.safe == "mods"):
+                return False, SAFE_MODE
         mode = s.get("read_mode") or "all"
         if paid:
             return (True, "") if s.get("read_super") else (False, "paid messages off")

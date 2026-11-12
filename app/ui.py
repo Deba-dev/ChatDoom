@@ -4,6 +4,7 @@ import os
 import sys
 import time
 import urllib.parse
+from dataclasses import replace
 
 from PySide6.QtCore import Property, QEasingCurve, QEvent, QParallelAnimationGroup, QPoint, QPropertyAnimation, QSize, Qt, QTimer, QUrl, QVariantAnimation
 from PySide6.QtGui import QColor, QDesktopServices, QFont, QFontDatabase, QIcon, QPainter, QPalette, QPen, QPixmap, QTextBlockFormat, QTextCursor, QTextOption
@@ -32,7 +33,8 @@ from .ytmod import YtModerator
 from .ytmod_page import YtModPage
 from PySide6.QtCore import QSize
 from .models import Message, viewer_key
-from .moderation import SHOW_ONLY, Moderator, looks_like_bot, spoken_text
+from .moderation import BLOCKED_NAME, SHOW_ONLY, Moderator, looks_like_bot, spoken_text
+from .raidguard import WINDOW as RAID_WINDOW, RaidGuard
 from .platforms import SOURCES, Hub, KickSource, TwitchSource, YouTubeSource, youtube_id
 from .settings import Settings, data_dir
 from .speech import Speaker
@@ -634,6 +636,10 @@ class MainWindow(ChatActions, StreamWatch, QWidget):
         hinglish.load_words(self.words_path)
         hinglish.on_unknown = self._unknown_word
         self.mod = Moderator(self.s, self.blocked_path)
+        self.raid = RaidGuard(self.s)
+        self.raid_timer = QTimer(self)
+        self.raid_timer.setInterval(5000)
+        self.raid_timer.timeout.connect(self._raid_tick)
         self.memes_dir = os.path.join(data_dir(), "Memes")
         self.commands = Commands(self.s, self.memes_dir)
         self.connected = set()
@@ -976,7 +982,13 @@ class MainWindow(ChatActions, StreamWatch, QWidget):
         test.setToolTip("Speak a short sample")
         test.setCursor(Qt.PointingHandCursor)
         test.clicked.connect(self.test_voice)
-        for b in (self.mute_btn, self.tts_btn, skip, test):
+        self.safe_btn = QPushButton("Safe mode")
+        self.safe_btn.setObjectName("quiet")
+        self.safe_btn.setCheckable(True)
+        self.safe_btn.setCursor(Qt.PointingHandCursor)
+        self.safe_btn.setToolTip("Raid shield: read only paid messages and skip links until you turn it off")
+        self.safe_btn.clicked.connect(self.set_safe_mode)
+        for b in (self.mute_btn, self.tts_btn, self.safe_btn, skip, test):
             lay.addWidget(b, 0, Qt.AlignTop)
         return bar
 
@@ -1076,7 +1088,7 @@ class MainWindow(ChatActions, StreamWatch, QWidget):
                                    hint="Reads chat anonymously. Sign in for alerts, moderation, and connecting by itself when you go live.",
                                    field="Channel name",
                                    platform_auth=self.platform_auth),
-            "kick": PlatformCard("kick", "Kick", "Channel name", KickSource(self.hub), self.s,
+            "kick": PlatformCard("kick", "Kick", "Channel name", KickSource(self.hub, cloud=self.platform_auth), self.s,
                                  extra=("kick_room", "Chatroom ID, only if the name lookup fails"),
                                  hint="Reads public chat by channel name. Sign in to post, moderate, and connect by itself when you go live.",
                                  field="Channel name", platform_auth=self.platform_auth),
@@ -1702,7 +1714,7 @@ class MainWindow(ChatActions, StreamWatch, QWidget):
         lay.addWidget(labeled("Ignore repeats for", self._bind_spin("dedupe_secs", 0, 120, " s")))
         lay.addWidget(labeled("Same viewer cooldown", self._bind_spin("user_cooldown", 0, 60, " s")))
         page.add_tab("What gets read").addWidget(filters)
-        words, lay = section_card("Blocked words", "One per line. Never read aloud, and also blocks paid messages.")
+        words, lay = section_card("Blocked words", "One per line. Never read aloud, also blocks paid messages, and is checked in viewer names too.")
         self.blocked_edit = QPlainTextEdit()
         self.blocked_edit.setMinimumHeight(170)
         try:
@@ -1711,11 +1723,55 @@ class MainWindow(ChatActions, StreamWatch, QWidget):
         except Exception:
             pass
         lay.addWidget(self.blocked_edit, 1)
+        self.name_action = QComboBox()
+        self.name_action.addItem("Read the message, hide the name", "anonymous")
+        self.name_action.addItem("Don't read the message", "skip")
+        self.name_action.setCurrentIndex(max(0, self.name_action.findData(self.s.get("blocked_name_action") or "anonymous")))
+        self.name_action.currentIndexChanged.connect(lambda _: self.s.set("blocked_name_action", self.name_action.currentData()))
+        self.name_action.setToolTip("Viewer names are checked against these words too. A hidden name is said as \"Ek viewer\" "
+                                    "(\"A viewer\" with an English voice) and also hidden on the OBS overlay.")
+        lay.addWidget(labeled("Name has a blocked word", self.name_action))
         save = QPushButton("Save blocked words")
         save.setObjectName("primary")
         save.clicked.connect(self._save_blocked)
         lay.addWidget(save, 0, Qt.AlignLeft)
         page.add_tab("Blocked words").addWidget(words, 1)
+        allowed, lay = section_card("Allowed words", "One per line. Never blocked, even when they contain a blocked word. "
+                                                     "Use it when a blocked word catches normal chat.")
+        self.allowed_edit = QPlainTextEdit()
+        self.allowed_edit.setMinimumHeight(170)
+        try:
+            with open(self.mod.allowed_path, encoding="utf-8") as f:
+                self.allowed_edit.setPlainText(f.read())
+        except Exception:
+            pass
+        lay.addWidget(self.allowed_edit, 1)
+        save = QPushButton("Save allowed words")
+        save.setObjectName("primary")
+        save.clicked.connect(self._save_allowed)
+        lay.addWidget(save, 0, Qt.AlignLeft)
+        page.add_tab("Allowed words").addWidget(allowed, 1)
+        shield, lay = section_card("Raid shield", "When lots of new accounts or copy-pasted messages flood chat, safe mode turns on by itself: "
+                                                  "only paid messages are read and links are skipped. Your settings are not changed.")
+        lay.addWidget(self._bind_check("Turn on safe mode by itself during a raid", "raid_on"))
+        lay.addWidget(labeled("New chatters in %ds" % RAID_WINDOW, self._bind_spin("raid_new_chatters", 3, 500, " people")))
+        lay.addWidget(labeled("Turn off after quiet", self._bind_spin("raid_cooldown_min", 1, 60, " min")))
+        self.raid_mode_box = QComboBox()
+        self.raid_mode_box.addItem("Read paid messages only", "paid")
+        self.raid_mode_box.addItem("Read paid messages and mods", "mods")
+        self.raid_mode_box.setCurrentIndex(max(0, self.raid_mode_box.findData(self.s.get("raid_mode") or "paid")))
+        self.raid_mode_box.currentIndexChanged.connect(lambda _: self._raid_mode_changed(self.raid_mode_box.currentData()))
+        lay.addWidget(labeled("While safe mode is on", self.raid_mode_box))
+        lay.addWidget(self._bind_check("Post in Discord when a raid turns it on (uses your Discord webhook)", "raid_discord"))
+        note = QLabel("8 copies of the same message in %ds also count as a raid. Turn it on or off any time with the "
+                      "Safe mode button at the top or the hotkey (Ctrl+Alt+H, change it in Stream tools)." % RAID_WINDOW)
+        note.setWordWrap(True)
+        note.setObjectName("muted")
+        lay.addWidget(note)
+        self.safe_now_btn = QPushButton("Turn safe mode on now")
+        self.safe_now_btn.clicked.connect(lambda: self.set_safe_mode(not self.raid.on))
+        lay.addWidget(self.safe_now_btn, 0, Qt.AlignLeft)
+        page.add_tab("Raid shield").addWidget(shield)
         page.finish()
         return page
 
@@ -1874,6 +1930,77 @@ class MainWindow(ChatActions, StreamWatch, QWidget):
         except Exception as e:
             self.feed.append("<span style='color:#ff5470'>Could not save: %s</span>" % esc(str(e)))
 
+    # ---------- viewer memory cards ----------
+    def _memory_card(self, now=None):
+        """A returning viewer's card: on the streamer's screen only (a pop-up and the Live chat feed), never the overlay."""
+        text = self.tools.memory.next_card(now)
+        if text:
+            self.toasts.show(text, "info", 8)
+            self.feed.append("<span style='color:#c4a7ff'>◆ %s</span>" % esc(text))
+        return text
+
+    # ---------- raid shield (safe mode) ----------
+    def _safe_on(self, reason):
+        """Safe mode is a rule on top of the settings: read_mode and skip_links are never changed, so nothing needs restoring."""
+        self.mod.safe = self.s.get("raid_mode") or "paid"
+        self.raid_timer.start()
+        self._show_safe()
+        manual = self.raid.manual
+        self.feed.append("<span style='color:#ff5470'><b>Safe mode ON</b> (%s). Only paid messages%s are read, links are skipped.</span>"
+                         % (esc(reason), " and mods" if self.mod.safe == "mods" else ""))
+        self.toasts.show("Safe mode ON" if manual else "Safe mode ON (raid detected)", "warn")
+        logs.get("voice").warning("Safe mode on: %s", reason)
+        url = self.s.get("webhook_url")
+        if not manual and self.s.get("raid_discord") and url:
+            text = "CHATDOOM safe mode is ON: possible raid (%s). Only paid messages are read for now." % reason
+            run_bg(self.bridge, "ui:hookraid", lambda: post_webhook(url, text))
+
+    def _safe_off(self, why):
+        self.raid.stop()
+        self.mod.safe = ""
+        self.raid_timer.stop()
+        self._show_safe()
+        self.feed.append("<span style='color:#7cf0c0'><b>Safe mode OFF</b> (%s). Back to your normal settings.</span>" % esc(why))
+        self.toasts.show("Safe mode OFF", "good")
+        logs.get("voice").info("Safe mode off: %s", why)
+
+    def set_safe_mode(self, on):
+        """The Safe mode button and hotkey."""
+        if on and not self.raid.on:
+            self.raid.start()
+            self._safe_on("turned on by you")
+        elif not on and self.raid.on:
+            self._safe_off("turned off by you")
+        else:
+            self._show_safe()
+
+    def _raid_tick(self):
+        if self.raid.tick():
+            self._safe_off("%s quiet minutes" % self.s.get("raid_cooldown_min"))
+
+    def _raid_mode_changed(self, mode):
+        self.s.set("raid_mode", mode)
+        if self.raid.on:
+            self.mod.safe = mode
+
+    def _show_safe(self):
+        on = self.raid.on
+        self.safe_btn.setChecked(on)
+        self.safe_btn.setText("SAFE MODE ON" if on else "Safe mode")
+        self.safe_btn.setStyleSheet("color:#ff5470; font-weight:600;" if on else "")
+        button = getattr(self, "safe_now_btn", None)
+        if button is not None:
+            button.setText("Turn safe mode off" if on else "Turn safe mode on now")
+
+    def _save_allowed(self):
+        try:
+            with open(self.mod.allowed_path, "w", encoding="utf-8") as f:
+                f.write(self.allowed_edit.toPlainText())
+            self.mod.reload_blocked()
+            self.feed.append("<span style='color:#8a93a8'>Allowed words saved (%d)</span>" % len(self.mod.allowed))
+        except Exception as e:
+            self.feed.append("<span style='color:#ff5470'>Could not save: %s</span>" % esc(str(e)))
+
     def _unknown_word(self, w):
         self.feed.append("<span style='color:#8a93a8'>new short word '%s' - add it in Voice > Edit word list</span>" % esc(w))
 
@@ -1915,6 +2042,11 @@ class MainWindow(ChatActions, StreamWatch, QWidget):
             self.feed.append("<span style='color:#5d667d'>%s %s: %s</span>" % (esc(self._tag(m)), esc(m.author), esc(m.text)), "skipped", m, m.stream)
             return
         self.tools.stats.add_message(m)
+        if m.kind == "chat" and not m.mod and m.platform not in ("test", "tip"):
+            key = viewer_key(m)                   # before observe(), which marks the viewer as seen
+            raid = self.raid.feed(key, m.text, key not in self.tools.seen_ever)
+            if raid:
+                self._safe_on(raid)
         is_link = self.links.handle(m)
         if not is_link and self._run_command(m):
             return
@@ -1933,29 +2065,31 @@ class MainWindow(ChatActions, StreamWatch, QWidget):
         color = COLORS.get(m.platform, "#8a93a8")
         amt = " <span style='color:#ffd24d'>[%s]</span>" % esc(m.amount) if m.amount else ""
         tag = "<span style='color:%s'><b>%s</b></span>" % (color, esc(self._tag(m)))
+        hidden = self.mod.name_blocked(m)        # a name with a blocked word is never spoken or shown on stream
+        name = self.mod.masked_name() if hidden else m.author
         if ok or reason in SHOW_ONLY:            # !tts-only and paid-only modes still show chat, they just don't speak it
-            author = shape_chat_text(m.author, self.s.get("chat_transform"))
+            author = shape_chat_text(name, self.s.get("chat_transform"))
             text = shape_chat_text(m.text, self.s.get("chat_transform"))
-            self.feed_message(m, tag, amt, author, text)
+            self.feed_message(m, tag, amt, author, text, BLOCKED_NAME if hidden else "")
             welcome = self.tools.observe(m)
-            if welcome:
+            if welcome and not hidden:            # the welcome line says the name
                 self._welcome(m, welcome)
             if ok:
-                self.speaker.say(m.author, spoken_text(m.text), m.amount if m.kind == "super" else "", self._who(m))
+                self.speaker.say(name, spoken_text(m.text), m.amount if m.kind == "super" else "", self._who(m))
             if m.platform != "tip":
-                self.overlay.push("chat", {"platform": m.platform, "name": m.author, "text": m.text, "mod": bool(m.mod), "emotes": m.emotes})
+                self.overlay.push("chat", {"platform": m.platform, "name": name, "text": m.text, "mod": bool(m.mod), "emotes": m.emotes})
             if m.kind in ("super", "member"):
                 category = "membership" if m.kind == "member" else ("tip" if m.platform == "tip" else "superchat")
-                alert = {"platform": m.platform, "category": category, "name": m.author, "amount": m.amount, "message": m.text}
+                alert = {"platform": m.platform, "category": category, "name": name, "amount": m.amount, "message": m.text}
                 if m.rupees is not None:
                     alert["value"] = m.rupees          # picks the tip's design by amount (Alerts > Tips by amount)
                 self._push_alert(alert)
             if m.kind == "super":
-                self.discord.post_paid(m)
+                self.discord.post_paid(replace(m, author=name) if hidden else m)
             if m.kind in ("super", "member"):
-                self.toasts.show("%s %s %s" % (m.author, "sent" if m.kind == "super" else "became a member", m.amount or ""), "gold")
+                self.toasts.show("%s %s %s" % (name, "sent" if m.kind == "super" else "became a member", m.amount or ""), "gold")
         else:
-            author = shape_chat_text(m.author, self.s.get("chat_transform"))
+            author = shape_chat_text(name, self.s.get("chat_transform"))
             text = shape_chat_text(m.text, self.s.get("chat_transform"))
             self.feed_skipped(m, esc(self._tag(m)), author, text, reason)
 
@@ -1966,7 +2100,8 @@ class MainWindow(ChatActions, StreamWatch, QWidget):
         if m.platform == "tip" or not (text.startswith("!") or (self.tools.poll.active and text.isdigit())):
             return False
         if m.platform != "test" and ((self.s.get("ignore_bots") and looks_like_bot(m, self.s.get("bot_names")))
-                                     or self.mod._blocked_hit(m.text)):
+                                     or self.mod._blocked_hit(m.text) or self.mod.name_blocked(m)
+                                     or (self.mod.safe and not m.mod)):   # no !memes or !commands for raiders
             return False                          # moderation skips it and shows why
         act = self.commands.handle(m) or self.tools.handle(m)
         if act is None:
@@ -2054,6 +2189,7 @@ class MainWindow(ChatActions, StreamWatch, QWidget):
     def _tools_tick(self):
         self._refresh_stats()
         now = time.time()
+        self._memory_card(now)
         poll = self.tools.poll
         if poll.active and now >= poll.ends:
             self.end_poll()
@@ -2268,6 +2404,8 @@ class MainWindow(ChatActions, StreamWatch, QWidget):
         elif act == "hk_tts":
             self.set_read_mode("all" if self.s.get("read_mode") == "tts" else "tts")
             self.toasts.show("Reading only !tts messages" if self.s.get("read_mode") == "tts" else "Reading all chat")
+        elif act == "hk_safe":
+            self.set_safe_mode(not self.raid.on)
         elif act == "hk_music":
             self.music.toggle()
         elif act == "hk_counter":
@@ -2398,7 +2536,7 @@ class MainWindow(ChatActions, StreamWatch, QWidget):
         self.links.save()
         if self.tools.prediction.active:             # nobody loses points because the app was closed
             self.tools.settle_prediction(self.tools.prediction.refund()[0])
-        self.tools.save()
+        self.tools.save(final=True)
         self.hotkeys.clear()
         self.music.stop()
         self.twitch_events.stop()

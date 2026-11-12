@@ -45,7 +45,7 @@ function randomString(length) {
   return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
-async function hash(value) {
+export async function hash(value) {
   const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value));
   return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
 }
@@ -83,7 +83,7 @@ async function decrypt(env, value) {
   return new TextDecoder().decode(plain);
 }
 
-async function database(env) {
+export async function database(env) {
   if (!env.DB) throw new Error("Platform account storage is unavailable; configure the Cloudflare D1 database");
   if (!dbReady) {
     dbReady = Promise.all([
@@ -149,7 +149,7 @@ function returnAddress(value) {
   }
 }
 
-async function tokenResponse(response, provider, stage) {
+export async function tokenResponse(response, provider, stage) {
   const data = await response.json().catch(() => ({}));
   if (!response.ok) {
     const detail = clean(data.error_description || data.message || data.error?.message || data.error || "", 100);
@@ -195,7 +195,7 @@ async function start(env, origin, url) {
     authUrl.searchParams.set("access_type", "offline");
     authUrl.searchParams.set("prompt", "consent");
   } else if (platform === "kick") {
-    authUrl.searchParams.set("scope", "user:read channel:read chat:write moderation:ban moderation:chat_message:manage");
+    authUrl.searchParams.set("scope", "user:read channel:read chat:write moderation:ban moderation:chat_message:manage events:subscribe");
     authUrl.searchParams.set("code_challenge", await pkceChallenge(verifier));
     authUrl.searchParams.set("code_challenge_method", "S256");
   } else {
@@ -515,7 +515,7 @@ async function listBroadcasts(env, account, statuses) {
   return broadcasts;
 }
 
-async function signedIn(request, env) {
+export async function signedIn(request, env) {
   try {
     const account = await accountFor(request, env);
     return account ? { account } : { failure: json({ error: "Platform login expired or disconnected. Sign in again." }, 401) };
@@ -524,7 +524,7 @@ async function signedIn(request, env) {
   }
 }
 
-const failed = (error, fallback) => json({ error: clean(error.message || fallback, 180) },
+export const failed = (error, fallback) => json({ error: clean(error.message || fallback, 180) },
   error.status === 429 ? 429 : error.status === 400 || error.status === 401 || error.status === 403 ? error.status : 502);
 
 // The signed-in channel's own live and scheduled streams. Unlisted ones are included, which no public page can show.

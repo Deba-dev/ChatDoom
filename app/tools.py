@@ -9,6 +9,7 @@ import time
 
 from .commands import PLATFORM_NAMES, clean_name, render
 from .models import viewer_key
+from .viewer_memory import ViewerMemory
 
 ACTIVE_WINDOW = 600            # a viewer who chatted in the last 10 minutes counts as watching for the points bonus
 
@@ -37,12 +38,13 @@ def action(kind, name, skipped="", reply="", speak="", toast=""):
 class JsonFile:
     """A small JSON file that is written only when something changed (save() is called on a timer and on exit)."""
 
-    def __init__(self, path, empty):
+    def __init__(self, path, empty, also=()):
+        """also: older shapes of the file that are still accepted (the owner converts them)."""
         self.path, self.dirty = path, False
         try:
             with open(path, encoding="utf-8") as f:
                 self.data = json.load(f)
-            if not isinstance(self.data, type(empty)):
+            if not isinstance(self.data, (type(empty),) + tuple(also)):
                 self.data = empty
         except Exception:
             self.data = empty
@@ -421,8 +423,9 @@ class Tools:
     def __init__(self, settings, folder, music=None):
         self.s, self.music = settings, music
         self.points = Points(settings, os.path.join(folder, "points.json") if folder else "")
-        self.viewers = JsonFile(os.path.join(folder, "viewers.json") if folder else "", [])
-        self.seen_ever = set(self.viewers.data)
+        self.viewers = JsonFile(os.path.join(folder, "viewers.json") if folder else "", {}, also=(list,))
+        self.memory = ViewerMemory(self.viewers)
+        self.seen_ever = set(self.memory.data)
         self.seen_stream = set()
         self.poll, self.giveaway, self.stats = Poll(), Giveaway(), SessionStats()
         self.prediction, self.queue = Prediction(), ViewerQueue()
@@ -430,9 +433,14 @@ class Tools:
         self.timer_last, self.lines_since = {}, {}
         self.cooldowns = {}
 
-    def save(self):
+    def save(self, final=False):
+        """final: the app is closing, so small changes (message counts) are written too."""
         self.points.file.save()
-        self.viewers.data = sorted(self.seen_ever)[-50000:]
+        self.memory.trim()
+        if final and self.memory.unsaved:
+            self.viewers.dirty = True
+        if self.viewers.dirty:
+            self.memory.unsaved = False
         self.viewers.save()
 
     # ----- every chat message that was allowed (or was a command) -----
@@ -447,10 +455,12 @@ class Tools:
         key = viewer_key(m)
         new_ever, new_stream = key not in self.seen_ever, key not in self.seen_stream
         self.seen_stream.add(key)
+        record = self.memory.saw(key, m.author, new_stream, now)
         if new_ever:
             self.seen_ever.add(key)
-            self.viewers.dirty = True
             self.stats.count("new_viewer")
+        elif new_stream and self.memory.wants_card(record, self.s.get("memory_cards")):
+            self.memory.queue(key)                # a private card for the streamer (never the overlay)
         if not self.s.get("welcome_on") or m.mod:
             return ""
         if (self.s.get("welcome_mode") == "stream" and new_stream) or (self.s.get("welcome_mode") != "stream" and new_ever):
@@ -459,7 +469,12 @@ class Tools:
 
     def forget_viewers(self):
         self.seen_ever, self.seen_stream = set(), set()
-        self.viewers.dirty = True
+        self.memory.clear()
+
+    def forget_viewer(self, key):
+        """Forget one viewer: their card, note and counts. They are welcomed as new next time."""
+        self.memory.forget(key)
+        self.seen_ever.discard(key)
 
     # ----- chat commands owned by the tools -----
     def handle(self, m, now=None):

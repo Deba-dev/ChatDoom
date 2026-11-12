@@ -7,7 +7,7 @@ from PySide6.QtGui import QKeySequence
 WM_HOTKEY = 0x0312
 MOD_ALT, MOD_CONTROL, MOD_SHIFT, MOD_WIN, MOD_NOREPEAT = 0x1, 0x2, 0x4, 0x8, 0x4000
 ACTIONS = (("hk_skip", "Skip the message being read"), ("hk_mute", "Mute / unmute the voice"),
-           ("hk_tts", "Read all chat / only !tts messages"),
+           ("hk_tts", "Read all chat / only !tts messages"), ("hk_safe", "Safe mode on / off (raid shield)"),
            ("hk_counter", "Add 1 to your first counter"), ("hk_music", "Play / pause music"))
 NAMED = {Qt.Key_Space: 0x20, Qt.Key_PageUp: 0x21, Qt.Key_PageDown: 0x22, Qt.Key_End: 0x23, Qt.Key_Home: 0x24,
          Qt.Key_Left: 0x25, Qt.Key_Up: 0x26, Qt.Key_Right: 0x27, Qt.Key_Down: 0x28, Qt.Key_Insert: 0x2D,

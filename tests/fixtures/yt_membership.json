@@ -1,0 +1,13 @@
+{"continuationContents": {"liveChatContinuation": {
+  "continuations": [{"invalidationContinuationData": {"timeoutMs": 10000, "continuation": "NEXT-MEMBER"}}],
+  "actions": [
+    {"addChatItemAction": {"item": {"liveChatMembershipItemRenderer": {
+      "id": "MEMBER-1", "timestampUsec": "1794500000000030",
+      "authorName": {"simpleText": "@NewMember"}, "authorExternalChannelId": "UCtesttesttesttesttest06",
+      "headerSubtext": {"runs": [{"text": "Welcome to "}, {"text": "Test Channel"}, {"text": "!"}]}}}}},
+    {"addChatItemAction": {"item": {"liveChatMembershipItemRenderer": {
+      "id": "MEMBER-2", "timestampUsec": "1794500000000031",
+      "authorName": {"simpleText": "@LoyalMember"}, "authorExternalChannelId": "UCtesttesttesttesttest07",
+      "headerPrimaryText": {"runs": [{"text": "Member for "}, {"text": "6"}, {"text": " months"}]},
+      "message": {"runs": [{"text": "6 months already!"}]}}}}}
+  ]}}}

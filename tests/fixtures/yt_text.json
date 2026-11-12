@@ -1,0 +1,18 @@
+{"continuationContents": {"liveChatContinuation": {
+  "continuations": [{"invalidationContinuationData": {"timeoutMs": 10000, "continuation": "NEXT-TEXT"}}],
+  "actions": [
+    {"clickTrackingParams": "x", "addChatItemAction": {"item": {"liveChatTextMessageRenderer": {
+      "id": "TEXT-1", "timestampUsec": "1794500000000001",
+      "authorName": {"simpleText": "@TestViewer"}, "authorExternalChannelId": "UCtesttesttesttesttest01",
+      "message": {"runs": [{"text": "bhai mast stream "},
+        {"emoji": {"emojiId": "🙏", "shortcuts": [":folded_hands:"], "image": {"thumbnails": [{"url": "https://fonts.gstatic.com/s/e/notoemoji/15.1/1f64f/72.png"}]}}},
+        {"text": " "},
+        {"emoji": {"emojiId": "UCtest/abcdEFGH", "shortcuts": [":yt:"], "isCustomEmoji": true, "image": {"thumbnails": [{"url": "//yt3.ggpht.com/custom-emoji=w24"}, {"url": "//yt3.ggpht.com/custom-emoji=w48"}]}}}]}}}}},
+    {"addChatItemAction": {"item": {"liveChatTextMessageRenderer": {
+      "id": "TEXT-2", "timestampUsec": "1794500000000002",
+      "authorName": {"simpleText": "@TestMod"}, "authorExternalChannelId": "UCtesttesttesttesttest02",
+      "authorBadges": [{"liveChatAuthorBadgeRenderer": {"icon": {"iconType": "MODERATOR"}, "tooltip": "Moderator"}}],
+      "message": {"runs": [{"text": "please be nice in chat"}]}}}}},
+    {"removeChatItemAction": {"targetItemId": "TEXT-0"}},
+    {"addChatItemAction": {"item": {"liveChatViewerEngagementMessageRenderer": {"id": "ENG-1", "message": {"runs": [{"text": "Welcome to live chat!"}]}}}}}
+  ]}}}

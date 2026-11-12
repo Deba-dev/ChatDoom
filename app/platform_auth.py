@@ -166,6 +166,24 @@ class PlatformAuth(QObject):
             return {"error": "Twitch alert subscriptions require an HTTPS CHATDOOM cloud address."}
         return _request(self._base() + "/platform-auth/eventsub", "POST", {"sessionId": session_id}, token)
 
+    # Kick chat through Kick's official webhooks. Called from the Kick reader's thread, so these wait for the answer.
+    def _kick(self, path, method="GET", body=None):
+        token = self.s.get(self._session_key("kick"))
+        if not token:
+            return {"error": "Sign in to Kick first."}
+        if not self._base():
+            return {"error": "Kick official chat requires an HTTPS CHATDOOM cloud address."}
+        return _request(self._base() + path, method, body, token)
+
+    def kick_subscribe(self, channel):
+        return self._kick("/kick/subscribe", "POST", {"channel": channel})
+
+    def kick_chat(self, after):
+        return self._kick("/kick/chat?after=%d" % int(after))
+
+    def kick_unsubscribe(self):
+        return self._kick("/kick/subscribe", "DELETE")
+
     def poll_youtube_subscribers(self, since):
         token = self.s.get(self._session_key("youtube"))
         if not token:
