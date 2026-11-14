@@ -685,6 +685,9 @@ from PySide6.QtWidgets import QLabel
 print("--- H. UPI tip page ---")
 pg = w.payments
 ok(not hasattr(pg, "gw") and pg._names == ["UPI tip page", "Read aloud", "Other tip link"], "the old payment gateway tab is gone: " + ", ".join(pg._names))
+from app import payments_page
+ok(payments_page.UPI_TIPS_LIVE or (not pg.tab_shown("UPI tip page") and pg.current_tab() == "Read aloud"),
+   "until Cashfree is live the UPI tip page tab is hidden and Payments opens on Read aloud")
 pg.refresh_upi(); wait(500)
 ok("you get 98%" in pg.upi_terms.text() and "ZunimiLabs keeps 2%" in pg.upi_terms.text() and "TEST MODE" in pg.upi_terms.text(), "the page explains the 98% / 2% split and test mode")
 ok("Not set up yet" in pg.upi_state.text(), "before setup the page says it is not set up")

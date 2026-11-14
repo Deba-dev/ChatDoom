@@ -188,7 +188,7 @@ class AlertsPage(DesignTools, SubPage):
         c, cl = section_card(
             "A bigger tip gets a bigger alert",
             "Give tips from an amount upwards their own design, sound and time on screen, up to %d steps. A tip uses the "
-            "highest step it reaches; smaller tips use the normal Tips design. Works for rupee tips from your UPI tip page."
+            "highest step it reaches; smaller tips use the normal Tips design. Works for every rupee tip CHATDOOM reads aloud."
             % styles.MAX_TIERS)
         self.tier_rows = QVBoxLayout()
         self.tier_rows.setSpacing(6)

@@ -171,6 +171,19 @@ class SubPage(QWidget):
         for arrow in self._arrows:
             arrow.setVisible(on)
 
+    def hide_tab(self, name):
+        """Takes a tab off the submenu (its widgets stay built). The page moves to the first tab still shown."""
+        index = self._names.index(name)
+        self._group.button(index).hide()
+        if self._tabs.currentIndex() == index:
+            shown = [i for i in range(len(self._names)) if not self._group.button(i).isHidden()]
+            if shown:
+                self.show_tab(shown[0])
+        self.subnav.setVisible(sum(not self._group.button(i).isHidden() for i in range(len(self._names))) > 1)
+
+    def tab_shown(self, name):
+        return not self._group.button(self._names.index(name)).isHidden()
+
     def current_tab(self):
         return self._names[self._tabs.currentIndex()]
 

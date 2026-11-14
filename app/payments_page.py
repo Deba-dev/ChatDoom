@@ -17,6 +17,11 @@ from .theme import DEFAULT_THEME, THEMES
 from .ui_kit import SubPage, bind_switch, field_row, hrow, info_box, option_switch_row, section_card
 
 
+# Off until ZunimiLabs' Cashfree account (Easy Split) is live: the tab stays built but hidden, and the app does not ask
+# the cloud about tip pages. Go-live checklist: TIPS-CASHFREE-INTEGRATION.md.
+UPI_TIPS_LIVE = False
+
+
 def describe_page(page):
     """One line on where the tip page stands."""
     if not page:
@@ -87,7 +92,7 @@ class PaymentsPage(SubPage):
         c, cl = section_card(
             "Another tipping link",
             "Have a tipping page somewhere else too? Save its link here to copy or open it quickly. "
-            "Tips there are not read aloud; only your UPI tip page is.",
+            "Tips there are not read aloud." + (" Only your UPI tip page is." if UPI_TIPS_LIVE else ""),
         )
         self.tip_link = QLineEdit(self.s.get("tip_link"))
         self.tip_link.setPlaceholderText("https://your-payment-provider.example/your-link")
@@ -107,7 +112,10 @@ class PaymentsPage(SubPage):
         self.finish()
         bridge.done.connect(self.on_done)
         poller.status.connect(self.status.setText)
-        self.refresh_upi()
+        if UPI_TIPS_LIVE:
+            self.refresh_upi()
+        else:
+            self.hide_tab("UPI tip page")
 
     # ---------------- UPI tip page ----------------
     def _build_upi_tab(self, lay):

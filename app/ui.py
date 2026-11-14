@@ -23,6 +23,7 @@ from .overlay import Overlay
 from .overlay_ui import OverlayPage
 from .platform_events import TwitchEventSub
 from .payments import TipPoller
+from . import payments_page
 from .payments_page import PaymentsPage
 from .platform_auth import PlatformAuth
 from .hotkeys import Hotkeys
@@ -1017,6 +1018,8 @@ class MainWindow(ChatActions, StreamWatch, QWidget):
         if i == 5:
             page = self.payments.tip
             state = ("Live" if page.get("enabled") else "Paused") if page.get("status") == "ACTIVE" else ("Checking" if page else "Not set")
+            if not payments_page.UPI_TIPS_LIVE:
+                state = "Coming soon"
             return (("money", "violet", state, "UPI tip page"),
                     ("check", "green", on_off(s.get("tips_on")), "Listening"), ("star", "orange", self.tools.stats.paid_count, "Paid this stream"))
         if i == 6:
